@@ -2909,6 +2909,27 @@ mod tests {
             check_command_with_rules("rm -rf /", &[], &[], &allow),
             PermissionVerdict::Default
         );
+        // Cursor and Gemini rules without `*` keep their prefix reading.
+        for (rule, prefixes) in [
+            ("Shell(npm test)", &["Shell("][..]),
+            ("run_shell_command(npm test)", &["run_shell_command(", "ShellTool("][..]),
+            ("ShellTool(npm test)", &["run_shell_command(", "ShellTool("][..]),
+        ] {
+            let mut allow = Vec::new();
+            append_wrapped_rules(Some(&serde_json::json!([rule])), prefixes, &mut allow);
+            for cmd in ["npm test", "npm test --x"] {
+                assert_eq!(
+                    check_command_with_rules(cmd, &[], &[], &allow),
+                    PermissionVerdict::Allow,
+                    "{rule} {cmd}"
+                );
+            }
+            assert_eq!(
+                check_command_with_rules("npm testx", &[], &[], &allow),
+                PermissionVerdict::Default,
+                "{rule}"
+            );
+        }
     }
 
     #[test]

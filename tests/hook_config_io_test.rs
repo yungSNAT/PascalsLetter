@@ -237,6 +237,8 @@ fn cursor_settings_keep_missing_and_empty_behavior_but_step_aside_on_failures() 
     let valid = sandbox.cursor("git status");
     assert_eq!(valid["permission"], "allow");
     assert_eq!(valid["updated_input"]["command"], "rtk git status");
+    // A Cursor rule without `*` keeps its prefix reading.
+    assert_eq!(sandbox.cursor("git status --short")["permission"], "allow");
     assert_eq!(
         sandbox.cursor("git push origin main"),
         serde_json::json!({})
