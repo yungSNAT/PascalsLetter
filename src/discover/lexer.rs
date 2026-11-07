@@ -1411,7 +1411,10 @@ pub(crate) fn words_before_expansion(
     } else {
         0
     };
-    let first = start + words[start..].iter().position(|(raw, _)| word_expands(raw))?;
+    let first = start
+        + words[start..]
+            .iter()
+            .position(|(raw, _)| word_expands(raw))?;
     let passed = words[start..first]
         .iter()
         .map(|(raw, _)| resolve_word_text(raw, true))
