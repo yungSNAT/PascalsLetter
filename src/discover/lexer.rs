@@ -1426,9 +1426,11 @@ pub(crate) fn words_before_expansion(
 /// Whether bash or zsh may turn `word` into other text, or into more or fewer
 /// words, at run time: parameter, command or arithmetic substitution (zsh also
 /// reads `$+x`, `$=x`, `$~x` and `$^x`), brace expansion, tilde expansion,
-/// zsh's `=cmd`, or pathname expansion. Text in single quotes or after a
-/// backslash stays as written. zsh's `(a|b)` and `word(N)` globs never reach
-/// here, since a segment ends at the `(`: see [`opens_zsh_glob_group`].
+/// zsh's `=cmd`, or pathname expansion, including zsh's EXTENDED_GLOB `^x`
+/// and `x#` (its `a~b` globs only beside another glob character). Text in
+/// single quotes or after a backslash stays as written. zsh's `(a|b)`,
+/// `word(N)` and `(#i)` globs never reach here, since a segment ends at the
+/// `(`: see [`opens_zsh_glob_group`].
 fn word_expands(word: &str) -> bool {
     let bytes = word.as_bytes();
     let mut bracket = false;
@@ -1450,7 +1452,8 @@ fn word_expands(word: &str) -> bool {
                 return true;
             }
             _ if in_double => {}
-            b'*' | b'?' => return true,
+            b'*' | b'?' | b'^' => return true,
+            b'#' if i > 0 => return true,
             b'[' => bracket = true,
             b']' if bracket => return true,
             b'{' => brace = true,
