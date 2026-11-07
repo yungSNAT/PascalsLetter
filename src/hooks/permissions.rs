@@ -1811,6 +1811,59 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_zsh_extended_glob_word_asks() {
+        // zsh 5.9 with `setopt extendedglob` and a file named `--force` passes
+        // `--force` for each of these; bash passes them as written.
+        let rule = vec!["git push * --force".to_string()];
+        let allow = vec!["git push *".to_string()];
+        for cmd in [
+            "git push origin ^x",
+            "git push origin --forcee#",
+            "git push origin --forc#e",
+            "git push origin -#-force",
+            "git push origin (#i)--FORCE",
+            "git push origin --forc(#i)E",
+            // bash passes `--force` for `$"$F"`; zsh passes `$--force`.
+            "git push origin $\"$F\"",
+        ] {
+            assert_eq!(
+                check_command_with_rules(cmd, &rule, &[], &allow),
+                PermissionVerdict::Ask,
+                "{cmd:?}"
+            );
+            assert_eq!(
+                check_command_with_rules(cmd, &[], &rule, &allow),
+                PermissionVerdict::Ask,
+                "{cmd:?}"
+            );
+        }
+        // zsh keeps `HEAD~1` as written, `'^x'` and `\#` are quoted, and
+        // `$'…'` holds no expansion.
+        for cmd in [
+            "git push origin HEAD~1",
+            "git push origin '^x' a\\#",
+            "git push origin $'$F'",
+        ] {
+            assert_eq!(
+                check_command_with_rules(cmd, &rule, &[], &allow),
+                PermissionVerdict::Allow,
+                "{cmd:?}"
+            );
+        }
+        // The rule's own prefix still has to fit.
+        let rule = vec!["git reset --hard *".to_string()];
+        let allow = vec!["git *".to_string()];
+        assert_eq!(
+            check_command_with_rules("git log HEAD^", &rule, &[], &allow),
+            PermissionVerdict::Allow
+        );
+        assert_eq!(
+            check_command_with_rules("git reset HEAD^", &rule, &[], &allow),
+            PermissionVerdict::Ask
+        );
+    }
+
     // Integration: deny *:* blocks everything
     #[test]
     fn test_deny_star_colon_star() {
