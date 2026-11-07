@@ -1392,15 +1392,32 @@ pub(crate) fn shell_split_as_passed(input: &str) -> Vec<String> {
 
 /// The words of `input` before the first word the shell expands when it runs
 /// the command: the text as written, and the words as bash passes them (see
-/// [`shell_split_as_passed`]). `None` when no word expands.
-pub(crate) fn words_before_expansion(input: &str) -> Option<(&str, Vec<String>)> {
+/// [`shell_split_as_passed`]). `None` when no word expands. With
+/// `past_assignments`, leading `name=value` words are left out, since their
+/// values never become words of the command.
+pub(crate) fn words_before_expansion(
+    input: &str,
+    past_assignments: bool,
+) -> Option<(&str, Vec<String>)> {
     let words = coalesce_words(input, &tokenize(input));
-    let first = words.iter().position(|(raw, _)| word_expands(raw))?;
-    let passed = words[..first]
+    let start = if past_assignments {
+        words
+            .iter()
+            .take_while(|(raw, _)| {
+                raw.split_once('=')
+                    .is_some_and(|(name, _)| is_name(name.strip_suffix('+').unwrap_or(name)))
+            })
+            .count()
+    } else {
+        0
+    };
+    let first = start + words[start..].iter().position(|(raw, _)| word_expands(raw))?;
+    let passed = words[start..first]
         .iter()
         .map(|(raw, _)| resolve_word_text(raw, true))
         .collect();
-    Some((&input[..words[first].1], passed))
+    let from = words.get(start).map_or(0, |(_, offset)| *offset);
+    Some((&input[from..words[first].1], passed))
 }
 
 /// Whether bash or zsh may turn `word` into other text, or into more or fewer

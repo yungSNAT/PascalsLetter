@@ -865,11 +865,14 @@ fn restricting_rule_matches(cmd: &str, pattern: &str) -> RuleMatch {
         command_matches_pattern(cmd, pattern)
             || command_matches_pattern(cmd, &format!("{pattern} *"))
     };
+    // A leading assignment's value never becomes a word of the command, so it
+    // matters only to a rule that names an assignment.
+    let past_assignments = !pattern.contains('=');
     if matches(cmd)
         || (cmd.contains(['\'', '"', '\\']) && matches(&passed_text(&shell_split_as_passed(cmd))))
     {
         RuleMatch::Yes
-    } else if words_before_expansion(cmd).is_some_and(|(written, passed)| {
+    } else if words_before_expansion(cmd, past_assignments).is_some_and(|(written, passed)| {
         rule_admits_prefix(&normalize_command_text(written), pattern)
             || rule_admits_prefix(&passed_text(&passed), pattern)
     }) {
@@ -1785,6 +1788,27 @@ mod tests {
                 "{cmd:?}"
             );
         }
+    }
+
+    #[test]
+    fn test_leading_assignment_value_is_no_command_word() {
+        let all = vec!["*".to_string()];
+        let rule = vec!["git push * --force".to_string()];
+        assert_eq!(
+            check_command_with_rules("PYTHONPATH=$PWD pytest", &rule, &[], &all),
+            PermissionVerdict::Allow
+        );
+        // The command word after the assignment still expands.
+        assert_eq!(
+            check_command_with_rules("f=$x $g push origin --force", &rule, &[], &all),
+            PermissionVerdict::Ask
+        );
+        // A rule that names an assignment can still be matched by its value.
+        let rule = vec!["HUSKY=0 git push *".to_string()];
+        assert_eq!(
+            check_command_with_rules("HUSKY=$Z git push origin", &rule, &[], &all),
+            PermissionVerdict::Ask
+        );
     }
 
     // Integration: deny *:* blocks everything
