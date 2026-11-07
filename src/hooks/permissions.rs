@@ -590,7 +590,14 @@ fn append_wrapped_rules(rules_value: Option<&Value>, prefixes: &[&str], target: 
                 break;
             }
             if let Some(inner) = rule.strip_prefix(pre).and_then(|s| s.strip_suffix(')')) {
-                target.push(inner.to_string());
+                // Only Claude Code documents a rule without `*` as the whole
+                // command; these hosts' rules keep the prefix reading they had.
+                // An empty rule stays empty rather than becoming `*`.
+                target.push(if inner.contains('*') || inner.trim().is_empty() {
+                    inner.to_string()
+                } else {
+                    format!("{inner} *")
+                });
                 break;
             }
         }
@@ -798,7 +805,8 @@ pub(crate) fn normalize_command_text(text: &str) -> String {
 /// - `*` → matches everything
 /// - `prefix:*` or `prefix *` (trailing `*`, no other wildcards) → prefix match with word boundary
 /// - `* suffix`, `pre * suf` → glob matching where `*` matches any sequence of characters
-/// - `pattern` → exact match or prefix match (cmd must equal pattern or start with `{pattern} `)
+/// - `pattern` → the whole command only, as Claude Code documents for a rule
+///   without `*`: `npm run build` does not match `npm run build --watch`
 pub(crate) fn command_matches_pattern(cmd: &str, pattern: &str) -> bool {
     let cmd_norm = normalize_command_text(cmd);
     let pattern_norm = normalize_command_text(pattern);
@@ -830,13 +838,14 @@ pub(crate) fn command_matches_pattern(cmd: &str, pattern: &str) -> bool {
         return glob_matches(cmd, pattern);
     }
 
-    // 4. No wildcard: exact match or prefix with word boundary
-    cmd == pattern || cmd.starts_with(&format!("{} ", pattern))
+    // 4. No wildcard: the whole command
+    cmd == pattern
 }
 
 /// A deny or ask rule's match: the rule as written, or the rule followed by more
-/// words, as a rule without a wildcard already is. Claude Code matches a rule
-/// against the whole command, so `git push * --force` alone misses
+/// words. Claude Code matches a rule against the whole command, so
+/// `git push --force` alone misses `git push --force main`, and
+/// `git push * --force` alone misses
 /// `git push origin --force # note` (whether Claude Code drops the comment is
 /// not documented) and `git push origin --force main`, and an allow rule such as
 /// `git push *` would then approve the force push. The words are also read with
@@ -1246,11 +1255,29 @@ mod tests {
     }
 
     #[test]
-    fn test_prefix_match() {
-        assert!(command_matches_pattern(
-            "git push --force origin main",
-            "git push --force"
-        ));
+    fn test_rule_without_wildcard_allows_only_the_whole_command() {
+        // Claude Code: `Bash(npm run build)` matches `npm run build` but not
+        // `npm run build --watch`.
+        let rule = vec!["npm run build".to_string()];
+        assert_eq!(
+            check_command_with_rules("npm run build", &[], &[], &rule),
+            PermissionVerdict::Allow
+        );
+        assert_eq!(
+            check_command_with_rules("npm run build --watch", &[], &[], &rule),
+            PermissionVerdict::Default
+        );
+        // Deny and ask rules still read past trailing words.
+        let cmd = "git push --force origin main";
+        let rule = vec!["git push --force".to_string()];
+        assert_eq!(
+            check_command_with_rules(cmd, &rule, &[], &[]),
+            PermissionVerdict::Deny
+        );
+        assert_eq!(
+            check_command_with_rules(cmd, &[], &rule, &[]),
+            PermissionVerdict::Ask
+        );
     }
 
     #[test]
@@ -1271,7 +1298,7 @@ mod tests {
     #[test]
     fn test_extra_whitespace_still_matches() {
         assert!(command_matches_pattern("git  push", "git push"));
-        assert!(command_matches_pattern("git\tpush origin", "git push"));
+        assert!(command_matches_pattern("git\tpush", "git push"));
         assert!(command_matches_pattern(
             "git   push   --force",
             "git push --force"
@@ -2785,11 +2812,12 @@ mod tests {
             "Shell(git)",
             "Shell(curl:*)",
             "Read(src/**)",
-            "Shell(npm test)"
+            "Shell(npm test)",
+            "Shell()"
         ]);
         let mut out = Vec::new();
         append_wrapped_rules(Some(&v), &["Shell("], &mut out);
-        assert_eq!(out, vec!["git", "curl:*", "npm test"]);
+        assert_eq!(out, vec!["git *", "curl:*", "npm test *", ""]);
     }
 
     #[test]
@@ -2802,7 +2830,7 @@ mod tests {
         ]);
         let mut out = Vec::new();
         append_wrapped_rules(Some(&v), &["run_shell_command(", "ShellTool("], &mut out);
-        assert_eq!(out, vec!["git", "npm test", "*"]);
+        assert_eq!(out, vec!["git *", "npm test *", "*"]);
     }
 
     #[test]
