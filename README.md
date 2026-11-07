@@ -17,7 +17,7 @@
 
 </div>
 
-PascalsLetter is yungSNAT's distribution of [RTK](https://github.com/rtk-ai/rtk), the Rust Token Killer. RTK filters and compresses command output before it reaches your coding agent's context: one Rust binary, more than 100 supported commands. PascalsLetter is based on upstream RTK as of 2 November 2026 and adds fixes where compression lost or mangled output an agent needed, several of them on Windows. It installs a binary named `rtk`, so hooks, agent configuration and every `rtk` command work unchanged.
+PascalsLetter is yungSNAT's distribution of [RTK](https://github.com/rtk-ai/rtk), the Rust Token Killer. RTK filters and compresses command output before it reaches your coding agent's context: one Rust binary, more than 100 supported commands. PascalsLetter is based on upstream RTK as of 7 November 2026 and adds fixes where compression lost or mangled output an agent needed, several of them on Windows. It installs a binary named `rtk`, so hooks, agent configuration and every `rtk` command work unchanged.
 
 ## Install
 

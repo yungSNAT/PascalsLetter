@@ -28,9 +28,9 @@ Trigger: pull_request to develop or master
            ▼       ▼              ▼               ▼        ▼
      ┌──────────┐ ┌──────────┐ ┌───────────┐ ┌─────────┐ ┌──────────┐
      │ test     │ │ security │ │ semgrep   │ │benchmark│ │ doc      │
-     │ ubuntu   │ │ cargo    │ │ AST-aware │ │ >=80%   │ │ review   │
-     │ windows  │ │ audit    │ │ diff-only │ │ savings │ │ ai agent │
-     │ macos    │ │ patterns │ │           │ │         │ │          │
+     │ ubuntu   │ │ cargo    │ │ AST-aware │ │ no empty│ │ review   │
+     │ windows  │ │ audit    │ │ diff-only │ │ or grown│ │ ai agent │
+     │ macos    │ │ patterns │ │           │ │ output  │ │          │
      └────┬─────┘ └────┬─────┘ └─────┬─────┘ └────┬────┘ └────┬─────┘
           │            │             │             │            │
           └────────────┴─────────┬───┴─────────────┴────────────┘
@@ -40,6 +40,7 @@ Trigger: pull_request to develop or master
                       │  to merge          │
                       └────────────────────┘
 
+     + release (build, after clippy: must also pass to merge)
      + DCO check (independent, develop PRs only)
      + Dependabot (weekly: Cargo deps + GitHub Actions)
      + coverage.yml (push to develop or manual dispatch only: cargo-llvm-cov, then Codecov)
