@@ -1751,6 +1751,42 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_zsh_glob_group_joined_to_any_word_asks() {
+        // zsh globs a word joined to `(`, a reserved word or `!` included, and
+        // `bash -O extglob` reads `!(…)`; each passes the denied word when a
+        // file of that name exists.
+        let all = vec!["*".to_string()];
+        for (rule, cmd) in [
+            ("npm install *", "npm in(stall|x) y"),
+            ("make install", "make in(stall|x)"),
+            ("git push * --force", "git push origin !(install)"),
+            ("git push * --force", "git push origin --force=(x|y)"),
+        ] {
+            let rule = vec![rule.to_string()];
+            for (deny, ask) in [(&rule, &vec![]), (&vec![], &rule)] {
+                assert_eq!(
+                    check_command_with_rules(cmd, deny, ask, &all),
+                    PermissionVerdict::Ask,
+                    "{cmd:?}"
+                );
+            }
+        }
+        // A `(` set apart from a reserved word or `!` opens a subshell.
+        let rule = vec!["git push * --force".to_string()];
+        for cmd in [
+            "if (true); then git push origin main; fi",
+            "! (git push origin main)",
+            "a=(1 2); git push origin main",
+        ] {
+            assert_eq!(
+                check_command_with_rules(cmd, &rule, &[], &all),
+                PermissionVerdict::Allow,
+                "{cmd:?}"
+            );
+        }
+    }
+
     // Integration: deny *:* blocks everything
     #[test]
     fn test_deny_star_colon_star() {

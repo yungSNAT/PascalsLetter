@@ -1446,10 +1446,11 @@ fn word_expands(word: &str) -> bool {
 }
 
 /// Whether an unquoted `(` follows a word of the same command, as in
-/// `--forc(e)`, `x*(N)` or `ls (a|b)`. zsh globs such a word where bash
-/// refuses the command, and the segments end at the `(`, so no rule reads the
-/// word whole. A function definition's `()`, an array's `=(` and a `(` after a
-/// reserved word such as `if` or `in` open no glob.
+/// `--forc(e)`, `x*(N)`, `in(stall|x)` or `ls (a|b)`. zsh globs such a word
+/// where bash refuses the command (`bash -O extglob` also reads `!(…)`), and the
+/// segments end at the `(`, so no rule reads the word whole. A function
+/// definition's `()`, an array's `name=(` and a `(` set apart from a reserved
+/// word such as `if` or `in`, or from `!`, open no glob.
 pub(crate) fn opens_zsh_glob_group(cmd: &str) -> bool {
     const RESERVED: &[&str] = &[
         "if", "then", "else", "elif", "do", "while", "until", "time", "in",
@@ -1460,13 +1461,21 @@ pub(crate) fn opens_zsh_glob_group(cmd: &str) -> bool {
     let tokens = tokenize_with_newlines(&blank_comments(cmd).code);
     (1..tokens.len()).any(|i| {
         let prev = &tokens[i - 1];
+        let joined = tokens[i].offset == prev.offset + prev.value.len();
         is(tokens.get(i), TokenKind::Shellism, &["("])
             && !is(tokens.get(i + 1), TokenKind::Shellism, &[")"])
             && (is(Some(prev), TokenKind::Shellism, &["*", "?"])
+                || (joined && is(Some(prev), TokenKind::Shellism, &["!"]))
                 || (prev.kind == TokenKind::Arg
-                    && !prev.value.ends_with('=')
-                    && !RESERVED.contains(&prev.value.as_str())))
+                    && !prev.value.strip_suffix('=').is_some_and(is_name)
+                    && (joined || !RESERVED.contains(&prev.value.as_str()))))
     })
+}
+
+/// A shell variable name: a letter or `_`, then letters, digits or `_`.
+fn is_name(word: &str) -> bool {
+    word.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_')
+        && word.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 #[cfg(test)]
