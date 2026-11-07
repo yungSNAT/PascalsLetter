@@ -7,8 +7,9 @@ use crate::core::user_dirs;
 use crate::core::user_env;
 use crate::core::utils::strip_leading_bom;
 use crate::discover::lexer::{
-    ShellDialect, gate_segments, is_word_boundary_whitespace, shell_split_as_passed,
-    split_for_wrappers, split_for_wrappers_as_code, unattestable_either_reading,
+    ShellDialect, gate_segments, is_word_boundary_whitespace, opens_zsh_glob_group,
+    shell_split_as_passed, split_for_wrappers, split_for_wrappers_as_code,
+    unattestable_either_reading, words_before_expansion,
 };
 use crate::discover::registry;
 #[cfg(test)]
@@ -239,10 +240,13 @@ pub(crate) fn check_command_with_rules_and_prefixes(
     let joined_as_code = registry::collapse_ignoring_quotes_and_comments(cmd);
     let mut wrapper_segments = split_for_wrappers(&joined);
     wrapper_segments.extend(split_for_wrappers_as_code(&joined_as_code));
+    // A zsh glob such as `--forc(e)` may become any word a deny or ask rule
+    // names, but its segments end at the `(`, where no rule can read it.
+    let glob_group = (!deny_rules.is_empty() || !ask_rules.is_empty()) && opens_zsh_glob_group(cmd);
     gate_verdict(
         &split_compound_command(cmd),
         &wrapper_segments,
-        unattestable_either_reading(cmd, ShellDialect::Posix),
+        glob_group || unattestable_either_reading(cmd, ShellDialect::Posix),
         deny_rules,
         ask_rules,
         allow_rules,
@@ -278,19 +282,20 @@ fn gate_verdict(
             (segment, peeled)
         })
         .collect();
-    let matches_any = |segment: &str, peeled: &Option<MatchingReadings<'_>>, pattern: &str| {
+    let rule_match = |segment: &str, peeled: &Option<MatchingReadings<'_>>, pattern: &str| {
         let readings = peeled.iter().flat_map(|peeled| peeled.readings.iter());
-        restricting_rule_matches(segment, pattern)
-            || readings
-                .filter(|reading| **reading != segment)
-                .any(|reading| restricting_rule_matches(reading, pattern))
+        std::iter::once(segment)
+            .chain(readings.copied().filter(|reading| *reading != segment))
+            .map(|reading| restricting_rule_matches(reading, pattern))
+            .max()
+            .unwrap_or(RuleMatch::No)
     };
 
     // Deny takes highest priority and pre-empts every other construct.
     for (segment, peeled) in &readings {
         if deny_rules
             .iter()
-            .any(|pattern| matches_any(segment, peeled, pattern))
+            .any(|pattern| rule_match(segment, peeled, pattern) == RuleMatch::Yes)
         {
             return PermissionVerdict::Deny;
         }
@@ -323,12 +328,15 @@ fn gate_verdict(
 
         // Ask — if any segment matches an ask rule, the final verdict is Ask.
         // A segment whose prefixes ran past the peel's cap hides a command
-        // no deny or ask rule was matched against, so it asks too.
+        // no deny or ask rule was matched against, so it asks too, as does a
+        // deny rule that only an expanded word can make match (a deny rule
+        // matching outright has already returned).
         if !any_ask {
             any_ask = peeled.as_ref().is_some_and(|peeled| !peeled.complete)
                 || ask_rules
                     .iter()
-                    .any(|pattern| matches_any(segment, peeled, pattern));
+                    .chain(deny_rules)
+                    .any(|pattern| rule_match(segment, peeled, pattern) != RuleMatch::No);
         }
 
         // Allow — every non-empty segment must match an allow rule independently.
@@ -389,9 +397,9 @@ fn check_shell_wrapper_permissions(
                 std::iter::once(inner_segment)
                     .chain(readings)
                     .any(|reading| {
-                        deny_rules
-                            .iter()
-                            .any(|pattern| restricting_rule_matches(reading, pattern))
+                        deny_rules.iter().any(|pattern| {
+                            restricting_rule_matches(reading, pattern) == RuleMatch::Yes
+                        })
                     })
             });
             if inner_denied {
@@ -838,23 +846,65 @@ pub(crate) fn command_matches_pattern(cmd: &str, pattern: &str) -> bool {
 /// argument (`git commit -m 'never use --force'`) is not read as words. Deny and
 /// ask only: on allow these readings would approve more.
 ///
-/// Gap: a rule with a literal after `*` does not see a word the shell makes by
-/// brace, parameter or command expansion (`--force{,}`, `$F`), and these cannot
-/// all be decided before the command runs.
-fn restricting_rule_matches(cmd: &str, pattern: &str) -> bool {
+/// A word the shell expands (`--force{,}`, `$F`, `--forc*`, `~`) is text the gate
+/// cannot read before the command runs, and it may become any number of words.
+/// So when the words before the first such word leave the rule able to match,
+/// as `git push origin` and `git` both do for `git push * --force`, the match is
+/// [`RuleMatch::Possible`], and the gate asks even for a deny rule.
+fn restricting_rule_matches(cmd: &str, pattern: &str) -> RuleMatch {
     let matches = |cmd: &str| {
         command_matches_pattern(cmd, pattern)
             || command_matches_pattern(cmd, &format!("{pattern} *"))
     };
-    matches(cmd)
-        || (cmd.contains(['\'', '"', '\\'])
-            && matches(
-                &shell_split_as_passed(cmd)
-                    .iter()
-                    .map(|word| word.replace(is_word_boundary_whitespace, "\u{1}"))
-                    .collect::<Vec<_>>()
-                    .join(" "),
-            ))
+    if matches(cmd)
+        || (cmd.contains(['\'', '"', '\\']) && matches(&passed_text(&shell_split_as_passed(cmd))))
+    {
+        RuleMatch::Yes
+    } else if words_before_expansion(cmd).is_some_and(|(written, passed)| {
+        rule_admits_prefix(&normalize_command_text(written), pattern)
+            || rule_admits_prefix(&passed_text(&passed), pattern)
+    }) {
+        RuleMatch::Possible
+    } else {
+        RuleMatch::No
+    }
+}
+
+/// How a deny or ask rule reads a command.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum RuleMatch {
+    No,
+    /// A word the shell expands at run time may make the rule match.
+    Possible,
+    Yes,
+}
+
+/// Words as the shell passes them, joined by spaces. Whitespace inside one word
+/// becomes U+0001, which is no word boundary.
+fn passed_text(words: &[String]) -> String {
+    words
+        .iter()
+        .map(|word| word.replace(is_word_boundary_whitespace, "\u{1}"))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Whether a command starting with the words `known` and going on with any
+/// words at all can match `pattern` as a deny or ask rule reads it: `known`
+/// runs inside the rule's text before its first `*`, or covers that text.
+fn rule_admits_prefix(known: &str, pattern: &str) -> bool {
+    let pattern = normalize_command_text(pattern).replace(":*", " *");
+    // A rule without `*` also matches with more words after it.
+    let literal = match pattern.split_once('*') {
+        Some((literal, _)) => literal.to_string(),
+        None => format!("{pattern} "),
+    };
+    let known = if known.is_empty() {
+        String::new()
+    } else {
+        format!("{known} ")
+    };
+    literal.starts_with(&known) || known.starts_with(&literal)
 }
 
 /// Glob-style matching where `*` matches any character sequence (including empty).
@@ -1603,6 +1653,77 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_restricting_rule_asks_for_a_word_the_shell_expands() {
+        // Bash, zsh or both pass `--force` for each of these (checked against
+        // bash 5.3 and zsh 5.9, with a file named `--force` for the globs).
+        let rule = vec!["git push * --force".to_string()];
+        let git_push = vec!["git push *".to_string()];
+        let git = vec!["git *".to_string()];
+        let all = vec!["*".to_string()];
+        for (cmd, allow) in [
+            ("git push origin --force{,}", &git_push),
+            ("git push origin --forc{e..e}", &git_push),
+            ("git push origin --{force,x}", &git_push),
+            ("F=--force; git push origin $F", &all),
+            ("git push origin \"$F\"", &git_push),
+            ("git push origin ${F:---force}", &git_push),
+            ("git push origin $+F", &git_push),
+            ("timeout 5 git push origin $F", &all),
+            ("git push origin --forc*", &git_push),
+            ("git push origin --forc?", &git_push),
+            ("git push origin --forc[e]", &git_push),
+            ("git push origin ~+", &git_push),
+            ("git $P origin --force", &git),
+            ("$G push origin --force", &all),
+            ("~/git push origin --force", &all),
+            // zsh globs these; bash refuses them.
+            ("git push origin --forc(e)", &all),
+            ("git push origin --forc*(N)", &all),
+            ("git push origin (--force|x)", &all),
+        ] {
+            assert_eq!(
+                check_command_with_rules(cmd, &rule, &[], allow),
+                PermissionVerdict::Ask,
+                "{cmd:?}"
+            );
+            assert_eq!(
+                check_command_with_rules(cmd, &[], &rule, allow),
+                PermissionVerdict::Ask,
+                "{cmd:?}"
+            );
+        }
+        // Text the shells keep as written, and expansions in commands the rule
+        // cannot match whatever they become.
+        for (cmd, allow) in [
+            ("git push origin '$F' '--forc*' \\$F --forc\\*", &git_push),
+            (
+                "git push origin \"--forc*\" --force{} {--force} HEAD~1 $",
+                &git_push,
+            ),
+            ("git push origin [ x ]", &git_push),
+            ("git status $F", &git),
+            ("ls --forc* ~", &all),
+            // A `(` that opens no glob.
+            ("(cd a && git push origin main)", &all),
+            ("a=(1 2); git push origin main", &all),
+            ("if (true); then git push origin main; fi", &all),
+            ("f() { git push origin main; }", &all),
+            ("git push origin main # fix(y)", &all),
+        ] {
+            assert_eq!(
+                check_command_with_rules(cmd, &rule, &[], allow),
+                PermissionVerdict::Allow,
+                "{cmd:?}"
+            );
+        }
+        // A rule that matches outright still denies.
+        assert_eq!(
+            check_command_with_rules("git push origin --force $F", &rule, &[], &git_push),
+            PermissionVerdict::Deny
+        );
+    }
+
     // Integration: deny *:* blocks everything
     #[test]
     fn test_deny_star_colon_star() {
@@ -1665,7 +1786,6 @@ mod tests {
         let deny = vec!["git push *".to_string()];
         for cmd in [
             "1A=b git push",
-            "=x git push",
             "FOO-BAR=x git push",
             "\"FOO\"=x git push",
             "FOO=\"x git push y\" echo hi",
@@ -1677,6 +1797,12 @@ mod tests {
                 "denied a command bash would not run as `git push`: {cmd}"
             );
         }
+        // zsh expands `=x` to the path of the command `x`, which no rule can
+        // read before it runs, so this asks rather than denies.
+        assert_eq!(
+            check_command_with_rules("=x git push", &deny, &[], &[]),
+            PermissionVerdict::Ask
+        );
     }
 
     /// Grammar left by the split and a prefix behind it, together: the `{`,

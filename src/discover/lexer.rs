@@ -1390,6 +1390,85 @@ pub(crate) fn shell_split_as_passed(input: &str) -> Vec<String> {
         .collect()
 }
 
+/// The words of `input` before the first word the shell expands when it runs
+/// the command: the text as written, and the words as bash passes them (see
+/// [`shell_split_as_passed`]). `None` when no word expands.
+pub(crate) fn words_before_expansion(input: &str) -> Option<(&str, Vec<String>)> {
+    let words = coalesce_words(input, &tokenize(input));
+    let first = words.iter().position(|(raw, _)| word_expands(raw))?;
+    let passed = words[..first]
+        .iter()
+        .map(|(raw, _)| resolve_word_text(raw, true))
+        .collect();
+    Some((&input[..words[first].1], passed))
+}
+
+/// Whether bash or zsh may turn `word` into other text, or into more or fewer
+/// words, at run time: parameter, command or arithmetic substitution (zsh also
+/// reads `$+x`, `$=x`, `$~x` and `$^x`), brace expansion, tilde expansion,
+/// zsh's `=cmd`, or pathname expansion. Text in single quotes or after a
+/// backslash stays as written. zsh's `(a|b)` and `word(N)` globs never reach
+/// here, since a segment ends at the `(`: see [`opens_zsh_glob_group`].
+fn word_expands(word: &str) -> bool {
+    let bytes = word.as_bytes();
+    let mut bracket = false;
+    let mut brace = false;
+    let mut brace_list = false;
+    for (i, b, in_single, in_double) in QuoteScan::new(word) {
+        if in_single {
+            continue;
+        }
+        let next = bytes.get(i + 1).copied();
+        match b {
+            b'`' => return true,
+            // A `$` before a quote opens `$'…'` or `$"…"` (or closes `"…$"`).
+            b'$' if !matches!(
+                next,
+                None | Some(b' ' | b'\t' | b'\n' | b'\'' | b'"' | b'\\')
+            ) =>
+            {
+                return true;
+            }
+            _ if in_double => {}
+            b'*' | b'?' => return true,
+            b'[' => bracket = true,
+            b']' if bracket => return true,
+            b'{' => brace = true,
+            b',' if brace => brace_list = true,
+            b'.' if brace && next == Some(b'.') => brace_list = true,
+            b'}' if brace_list => return true,
+            b'~' if i == 0 || matches!(bytes[i - 1], b'=' | b':') => return true,
+            b'=' if i == 0 && next.is_some() => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
+/// Whether an unquoted `(` follows a word of the same command, as in
+/// `--forc(e)`, `x*(N)` or `ls (a|b)`. zsh globs such a word where bash
+/// refuses the command, and the segments end at the `(`, so no rule reads the
+/// word whole. A function definition's `()`, an array's `=(` and a `(` after a
+/// reserved word such as `if` or `in` open no glob.
+pub(crate) fn opens_zsh_glob_group(cmd: &str) -> bool {
+    const RESERVED: &[&str] = &[
+        "if", "then", "else", "elif", "do", "while", "until", "time", "in",
+    ];
+    let is = |tok: Option<&ParsedToken>, kind: TokenKind, values: &[&str]| {
+        tok.is_some_and(|tok| tok.kind == kind && values.contains(&tok.value.as_str()))
+    };
+    let tokens = tokenize_with_newlines(&blank_comments(cmd).code);
+    (1..tokens.len()).any(|i| {
+        let prev = &tokens[i - 1];
+        is(tokens.get(i), TokenKind::Shellism, &["("])
+            && !is(tokens.get(i + 1), TokenKind::Shellism, &[")"])
+            && (is(Some(prev), TokenKind::Shellism, &["*", "?"])
+                || (prev.kind == TokenKind::Arg
+                    && !prev.value.ends_with('=')
+                    && !RESERVED.contains(&prev.value.as_str())))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
