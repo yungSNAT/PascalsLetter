@@ -222,6 +222,9 @@ fn swappable(
         HookDecision::AllowRewrite(_) | HookDecision::AskRewrite(..) => true,
         HookDecision::Deny => false,
         HookDecision::Defer => {
+            // Quotes inside a word join its pieces (`cu''rl` runs `curl`), so the
+            // opt-out checks also read the command with its quotes resolved.
+            let resolved = crate::discover::lexer::shell_split(cmd).join(" ");
             matches!(
                 verdict,
                 PermissionVerdict::Allow | PermissionVerdict::Ask | PermissionVerdict::Default
@@ -230,8 +233,10 @@ fn swappable(
                 crate::discover::lexer::ShellDialect::Posix,
             ) && !crate::discover::fish_script::is_unambiguous_fish(cmd)
                 && !runs_rtk(cmd)
+                && !runs_rtk(&resolved)
                 && !cmd.contains(['\n', '\r', '\\'])
                 && !registry::chain_mentions_excluded(cmd, excluded)
+                && !registry::chain_mentions_excluded(&resolved, excluded)
                 && sh_can_run(cmd, program_exists)
         }
     }
@@ -594,6 +599,8 @@ mod tests {
             "./node_modules/.bin/terraform plan",
             "python3 -c 1 | /usr/bin/curl -s a",
             "env X=1 /usr/bin/curl -s a",
+            "/usr/bin/cu''rl -s a",
+            "/usr/bin/cu\"r\"l -s a",
         ] {
             assert!(!decide(cmd, PermissionVerdict::Default, &excluded), "{cmd}");
             assert!(decide(cmd, PermissionVerdict::Default, &[]), "{cmd}");
@@ -614,6 +621,8 @@ mod tests {
             "time rtk bypass ./run-suite.sh",
             "X=1 rtk bypass ./run-suite.sh",
             "/usr/local/bin/rtk bypass ./run-suite.sh",
+            "/usr/local/bin/r't'k bypass cat",
+            "/usr/local/bin/\"rtk\" bypass cat",
         ] {
             assert!(!decide(cmd, PermissionVerdict::Default, &[]), "{cmd}");
         }
