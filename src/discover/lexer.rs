@@ -1390,6 +1390,117 @@ pub(crate) fn shell_split_as_passed(input: &str) -> Vec<String> {
         .collect()
 }
 
+/// The words of `input` before the first word the shell expands when it runs
+/// the command: the text as written, and the words as bash passes them (see
+/// [`shell_split_as_passed`]). `None` when no word expands. With
+/// `past_assignments`, leading `name=value` words are left out, since their
+/// values never become words of the command.
+pub(crate) fn words_before_expansion(
+    input: &str,
+    past_assignments: bool,
+) -> Option<(&str, Vec<String>)> {
+    let words = coalesce_words(input, &tokenize(input));
+    let start = if past_assignments {
+        words
+            .iter()
+            .take_while(|(raw, _)| {
+                raw.split_once('=')
+                    .is_some_and(|(name, _)| is_name(name.strip_suffix('+').unwrap_or(name)))
+            })
+            .count()
+    } else {
+        0
+    };
+    let first = start
+        + words[start..]
+            .iter()
+            .position(|(raw, _)| word_expands(raw))?;
+    let passed = words[start..first]
+        .iter()
+        .map(|(raw, _)| resolve_word_text(raw, true))
+        .collect();
+    let from = words.get(start).map_or(0, |(_, offset)| *offset);
+    Some((&input[from..words[first].1], passed))
+}
+
+/// Whether bash or zsh may turn `word` into other text, or into more or fewer
+/// words, at run time: parameter, command or arithmetic substitution (zsh also
+/// reads `$+x`, `$=x`, `$~x` and `$^x`), brace expansion, tilde expansion,
+/// zsh's `=cmd`, or pathname expansion, including zsh's EXTENDED_GLOB `^x`
+/// and `x#` (its `a~b` globs only beside another glob character). Text in
+/// single quotes or after a backslash stays as written. zsh's `(a|b)`,
+/// `word(N)` and `(#i)` globs never reach here, since a segment ends at the
+/// `(`: see [`opens_zsh_glob_group`].
+fn word_expands(word: &str) -> bool {
+    let bytes = word.as_bytes();
+    let mut bracket = false;
+    let mut brace = false;
+    let mut brace_list = false;
+    for (i, b, in_single, in_double) in QuoteScan::new(word) {
+        if in_single {
+            continue;
+        }
+        let next = bytes.get(i + 1).copied();
+        match b {
+            b'`' => return true,
+            // A `$` before a quote opens `$'…'` or `$"…"` (or closes `"…$"`).
+            b'$' if !matches!(
+                next,
+                None | Some(b' ' | b'\t' | b'\n' | b'\'' | b'"' | b'\\')
+            ) =>
+            {
+                return true;
+            }
+            _ if in_double => {}
+            b'*' | b'?' | b'^' => return true,
+            b'#' if i > 0 => return true,
+            b'[' => bracket = true,
+            b']' if bracket => return true,
+            b'{' => brace = true,
+            b',' if brace => brace_list = true,
+            b'.' if brace && next == Some(b'.') => brace_list = true,
+            b'}' if brace_list => return true,
+            b'~' if i == 0 || matches!(bytes[i - 1], b'=' | b':') => return true,
+            b'=' if i == 0 && next.is_some() => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
+/// Whether an unquoted `(` follows a word of the same command, as in
+/// `--forc(e)`, `x*(N)`, `in(stall|x)` or `ls (a|b)`. zsh globs such a word
+/// where bash refuses the command (`bash -O extglob` also reads `!(…)`), and the
+/// segments end at the `(`, so no rule reads the word whole. A function
+/// definition's `()`, an array's `name=(` and a `(` set apart from a reserved
+/// word such as `if` or `in`, or from `!`, open no glob.
+pub(crate) fn opens_zsh_glob_group(cmd: &str) -> bool {
+    const RESERVED: &[&str] = &[
+        "if", "then", "else", "elif", "do", "while", "until", "time", "in",
+    ];
+    let is = |tok: Option<&ParsedToken>, kind: TokenKind, values: &[&str]| {
+        tok.is_some_and(|tok| tok.kind == kind && values.contains(&tok.value.as_str()))
+    };
+    let tokens = tokenize_with_newlines(&blank_comments(cmd).code);
+    (1..tokens.len()).any(|i| {
+        let prev = &tokens[i - 1];
+        let joined = tokens[i].offset == prev.offset + prev.value.len();
+        is(tokens.get(i), TokenKind::Shellism, &["("])
+            && !is(tokens.get(i + 1), TokenKind::Shellism, &[")"])
+            && (is(Some(prev), TokenKind::Shellism, &["*", "?"])
+                || (joined && is(Some(prev), TokenKind::Shellism, &["!"]))
+                || (prev.kind == TokenKind::Arg
+                    && !prev.value.strip_suffix('=').is_some_and(is_name)
+                    && (joined || !RESERVED.contains(&prev.value.as_str()))))
+    })
+}
+
+/// A shell variable name: a letter or `_`, then letters, digits or `_`.
+fn is_name(word: &str) -> bool {
+    word.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_')
+        && word.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
