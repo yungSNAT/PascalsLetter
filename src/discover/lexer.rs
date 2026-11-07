@@ -1,3 +1,4 @@
+use crate::core::utils::decode_backslashes;
 use std::borrow::Cow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -105,24 +106,34 @@ impl Iterator for QuoteScan<'_> {
     }
 }
 
-/// Only `\'` inside `$'…'` diverges: bash keeps the string open, the lexer
-/// closes it (#3188). Every operator past that point yields no token, so the
-/// whole line reads as one segment and whatever follows rides along unchecked.
+/// At `\'` inside `$'…'` bash keeps the string open where the lexer closes it
+/// (#3188). Every operator past that point yields no token, so the whole line
+/// reads as one segment and whatever follows rides along unchecked. Bash and
+/// zsh also pass different words for a `$'…'` holding `\c`, `\C` or `\M`, an
+/// escape only bash keeps as written, or one that yields NUL or bytes that are
+/// not UTF-8, so no one reading of it is evidence.
 pub(crate) fn ansi_c_quote_defeats_lexer(cmd: &str) -> bool {
-    let mut ansi_span = false;
+    // Where the body of the open `$'…'` starts.
+    let mut ansi_body = None;
     let mut backslash_run = 0u32;
     // The `$` must be one QuoteScan yielded: in `\$'...'` it was consumed as an
     // escape, so indexing the raw bytes would read a `$` that never opened a span.
     let mut prev_yielded = None;
-    for (_, b, in_single, in_double) in QuoteScan::new(cmd) {
+    for (i, b, in_single, in_double) in QuoteScan::new(cmd) {
         if b == b'\'' && !in_double {
             if !in_single {
-                ansi_span = prev_yielded == Some(b'$');
+                ansi_body = (prev_yielded == Some(b'$')).then_some(i + 1);
                 backslash_run = 0;
-            } else if ansi_span && backslash_run % 2 == 1 {
+            } else if let Some(start) = ansi_body.take()
+                && (backslash_run % 2 == 1 || ansi_c_shells_disagree(&cmd[start..i]))
+            {
                 return true;
             }
         } else if in_single {
+            // zsh also decodes `\C-x` and `\M-x`, which bash keeps as written.
+            if matches!(b, b'c' | b'C' | b'M') && backslash_run % 2 == 1 && ansi_body.is_some() {
+                return true;
+            }
             if b == b'\\' {
                 backslash_run += 1;
             } else {
@@ -131,23 +142,46 @@ pub(crate) fn ansi_c_quote_defeats_lexer(cmd: &str) -> bool {
         }
         prev_yielded = Some(b);
     }
-    false
+    ansi_body.is_some_and(|start| ansi_c_shells_disagree(&cmd[start..]))
+}
+
+/// Bash ends a `$'…'` string at a NUL and zsh ends the whole word there, bytes
+/// that are not UTF-8 have no reading here at all, and the shells read some
+/// escapes differently (see [`decode_ansi_c`]).
+fn ansi_c_shells_disagree(body: &str) -> bool {
+    let (text, decoded) = decode_ansi_c(body);
+    !decoded || text.contains('\0')
 }
 
 /// Inside double quotes, `${...}` and `$[...]` hold a quoting context of their
 /// own: the shell opens a nested string at a `"` where the lexer closes the
 /// outer one, and what a `'` does depends on the operator. The lexer models
-/// neither, so its quote state is no evidence once one appears. Either comment
-/// reading of `cmd` is enough.
+/// neither, so its quote state is no evidence once one appears. An unquoted
+/// `$[...]` too: zsh reads its body as double-quoted text, so `$[##']` closes
+/// where the lexer opens a string. zsh reads `((...))` the same way, so a quote
+/// inside one is no evidence either. Either comment reading of `cmd` is enough.
 pub(crate) fn expansion_quote_defeats_lexer(cmd: &str) -> bool {
     fn scan(text: &str) -> bool {
         let mut depth = 0u32;
+        // Parentheses open since an unquoted `((`, the pair included.
+        let mut arith = 0u32;
         let mut prev_yielded = None;
-        for (_, b, _, in_double) in QuoteScan::new(text) {
+        for (_, b, in_single, in_double) in QuoteScan::new(text) {
+            if b == b'[' && prev_yielded == Some(b'$') && !in_single {
+                return true;
+            }
+            if !in_single && !in_double {
+                match b {
+                    b'"' | b'\'' if arith > 0 => return true,
+                    b'(' if arith > 0 => arith += 1,
+                    b'(' if prev_yielded == Some(b'(') => arith = 2,
+                    b')' if arith > 0 => arith -= 1,
+                    _ => {}
+                }
+            }
             if in_double {
                 match b {
                     b'"' | b'\'' if depth > 0 => return true,
-                    b'[' if prev_yielded == Some(b'$') => return true,
                     b'{' if prev_yielded == Some(b'$') => depth += 1,
                     b'}' if depth > 0 => depth -= 1,
                     _ => {}
@@ -157,7 +191,7 @@ pub(crate) fn expansion_quote_defeats_lexer(cmd: &str) -> bool {
         }
         false
     }
-    scan(cmd) || blank_comments(cmd).is_some_and(|code| scan(&code))
+    scan(cmd) || scan(&blank_comments(cmd).code)
 }
 
 /// Bash's default `$IFS` is exactly space/tab/newline — not Rust's
@@ -511,15 +545,21 @@ fn flush_arg(tokens: &mut Vec<ParsedToken>, current: &mut String, offset: usize)
 /// after unquoted, unescaped whitespace or one of `; & | ( ) < >` — and the
 /// comment runs to the end of the line.
 ///
-/// `None` when this scan cannot say the `#` is a comment: right after `(` (zsh
-/// reads `(#i)` as a glob flag) or `)` (zsh reads `(a)#` as one glob word, so
-/// `ls (a)#; rm x` runs `rm`); inside backticks, `${...}` or
+/// The scan is `ambiguous` when it cannot say a `#` is a comment: right after
+/// `(` (zsh reads `(#i)` as a glob flag) or `)` (zsh reads `(a)#` as one glob
+/// word, so `ls (a)#; rm x` runs `rm`); inside backticks, `${...}` or
 /// `((...))`/`$((...))`, or after a heredoc `<<`, whose ends this scan does not
 /// reliably find; or a comment holding a lone `\r` (a line break to the
-/// conservative splitter, not to bash). Callers must not attest those.
-pub(crate) fn blank_comments(cmd: &str) -> Option<Cow<'_, str>> {
+/// conservative splitter, not to bash). Such a `#` is left as text, and a
+/// lone `\r` ends its comment, so what follows is still read; the other
+/// comments stay blanked, so their quotes hide no later line. Callers must not
+/// attest an ambiguous command.
+pub(crate) fn blank_comments(cmd: &str) -> CommentScan<'_> {
     if !cmd.contains('#') {
-        return Some(Cow::Borrowed(cmd));
+        return CommentScan {
+            code: Cow::Borrowed(cmd),
+            ambiguous: false,
+        };
     }
     let bytes = cmd.as_bytes();
     let mut out = String::with_capacity(cmd.len());
@@ -532,13 +572,20 @@ pub(crate) fn blank_comments(cmd: &str) -> Option<Cow<'_, str>> {
     let mut brace_depth = 0u32;
     let mut arith_depth = 0u32;
     let mut heredoc = false;
+    let mut ambiguous = false;
 
     for (i, c) in cmd.char_indices() {
         if in_comment {
             if c == '\n' || is_crlf_at(bytes, i) {
                 in_comment = false;
             } else if c == '\r' {
-                return None;
+                // Read as the conservative splitter reads it, a line break.
+                in_comment = false;
+                ambiguous = true;
+                out.push(c);
+                word_start = true;
+                prev = None;
+                continue;
             } else {
                 out.extend(std::iter::repeat_n(' ', c.len_utf8()));
                 continue;
@@ -571,10 +618,8 @@ pub(crate) fn blank_comments(cmd: &str) -> Option<Cow<'_, str>> {
 
         let blind = in_backtick || brace_depth > 0 || arith_depth > 0 || heredoc;
         match c {
+            '#' if word_start && (blind || matches!(prev, Some('(' | ')'))) => ambiguous = true,
             '#' if word_start => {
-                if blind || matches!(prev, Some('(' | ')')) {
-                    return None;
-                }
                 out.pop();
                 out.push(' ');
                 in_comment = true;
@@ -595,7 +640,19 @@ pub(crate) fn blank_comments(cmd: &str) -> Option<Cow<'_, str>> {
             is_word_boundary_whitespace(c) || matches!(c, ';' | '&' | '|' | '(' | ')' | '<' | '>');
         prev = Some(c);
     }
-    Some(Cow::Owned(out))
+    CommentScan {
+        code: Cow::Owned(out),
+        ambiguous,
+    }
+}
+
+/// What [`blank_comments`] read.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct CommentScan<'a> {
+    /// The command with every comment the scan could place blanked to spaces.
+    pub(crate) code: Cow<'a, str>,
+    /// A `#` the scan could not place, so the command must not be attested.
+    pub(crate) ambiguous: bool,
 }
 
 /// Which grammar a command string is written in.
@@ -646,10 +703,11 @@ fn unattestable_under(cmd: &str, dialect: ShellDialect, blank: bool) -> bool {
     let code = if !blank || dialect == ShellDialect::Fish {
         Cow::Borrowed(cmd)
     } else {
-        let Some(code) = blank_comments(cmd) else {
+        let scan = blank_comments(cmd);
+        if scan.ambiguous {
             return true;
-        };
-        code
+        }
+        scan.code
     };
     if contains_substitution(&code) {
         return true;
@@ -826,11 +884,10 @@ pub(crate) fn unattestable_either_reading(cmd: &str, dialect: ShellDialect) -> b
 /// shells disagree about a `#` in it. The rewrite works from one reading alone, so
 /// such a command is left as written.
 pub(crate) fn comment_readings_disagree(cmd: &str) -> bool {
-    let Some(code) = blank_comments(cmd) else {
-        return true;
-    };
-    matches!(code, Cow::Owned(_))
-        && split_for_permissions(cmd) != split_for_permissions_as_code(cmd)
+    let scan = blank_comments(cmd);
+    scan.ambiguous
+        || (matches!(scan.code, Cow::Owned(_))
+            && split_for_permissions(cmd) != split_for_permissions_as_code(cmd))
 }
 
 /// True for a heredoc or here-string redirect (`<<`, `<<-`, `<<<`), with or
@@ -1013,14 +1070,14 @@ pub(crate) fn segment(cmd: &str, policy: Policy) -> Vec<Segment<'_>> {
     }
 
     // Tokens come from the comment-blanked text (same offsets); segments keep
-    // the original text. Where shells disagree about a `#`, the raw text is
-    // tokenized and `contains_unattestable_construct` refuses the command anyway.
+    // the original text. A `#` shells disagree about stays text there, and
+    // `contains_unattestable_construct` refuses the command anyway.
     let code = if policy.blank_comments {
-        blank_comments(trimmed)
+        blank_comments(trimmed).code
     } else {
-        Some(Cow::Borrowed(trimmed))
+        Cow::Borrowed(trimmed)
     };
-    let tokens = tokenize_inner(code.as_deref().unwrap_or(trimmed), policy.newline);
+    let tokens = tokenize_inner(&code, policy.newline);
     let mut out = Vec::new();
     let mut seg_start: usize = 0;
     let mut seg_end: Option<usize> = None;
@@ -1170,14 +1227,28 @@ pub fn strip_quotes(s: &str) -> String {
 
 /// Turns a coalesced word's raw text (quotes/escapes still literal, as
 /// `tokenize()` preserves them) into argv-ready text: quote chars that
-/// open/close a span are stripped, backslash escapes resolved.
-fn resolve_word_text(raw: &str) -> String {
+/// open/close a span are stripped, backslash escapes resolved. With
+/// `as_passed`, the word is read as bash passes it: an unquoted `$'…'` is
+/// decoded, the `$` of an unquoted `$"…"` is dropped and so is a `\<LF>`
+/// outside single quotes.
+fn resolve_word_text(raw: &str, as_passed: bool) -> String {
     let mut result = String::new();
     let mut chars = raw.chars().peekable();
     let mut quote: Option<char> = None;
 
     while let Some(c) = chars.next() {
         match c {
+            '$' if as_passed && quote.is_none() && chars.peek() == Some(&'\'') => {
+                chars.next();
+                let span: String = chars.by_ref().take_while(|&c| c != '\'').collect();
+                // Bash ends the string at its first NUL.
+                let (text, _) = decode_ansi_c(&span);
+                result.push_str(text.split('\0').next().unwrap_or_default());
+            }
+            '$' if as_passed && quote.is_none() && chars.peek() == Some(&'"') => {}
+            '\\' if as_passed && quote != Some('\'') && chars.peek() == Some(&'\n') => {
+                chars.next();
+            }
             // Inside double quotes bash only lets `\` escape `$`, `` ` ``, `"`,
             // `\` or a newline; before anything else it is a literal character.
             // That is what keeps a quoted Windows path (`"C:\Program Files"`)
@@ -1220,7 +1291,102 @@ fn resolve_word_text(raw: &str) -> String {
 pub fn shell_split(input: &str) -> Vec<String> {
     coalesce_words(input, &tokenize(input))
         .into_iter()
-        .map(|(raw, _)| resolve_word_text(raw))
+        .map(|(raw, _)| resolve_word_text(raw, false))
+        .collect()
+}
+
+/// Decodes the body of a `$'…'` string as bash does: [`decode_backslashes`]
+/// with ANSI-C escapes, plus `\uHHHH`, `\UHHHHHHHH` and `\cX`. Bash keeps `\u`
+/// and `\c` with nothing to decode as written. Also returns whether every
+/// escape decoded to UTF-8 and bash and zsh read it alike; the text of one
+/// that did not follows a single shell. A NUL stays in the text, since the
+/// shells end the word at different places.
+fn decode_ansi_c(span: &str) -> (String, bool) {
+    fn flush(out: &mut String, plain: &mut String) -> bool {
+        let text = decode_backslashes(plain, true);
+        out.push_str(text.as_deref().unwrap_or(plain));
+        plain.clear();
+        text.is_some()
+    }
+    let mut out = String::new();
+    let mut decoded = true;
+    // Text whose escapes decode_backslashes handles, decoded on the next flush
+    // so a character decoded here is never decoded twice.
+    let mut plain = String::new();
+    let mut chars = span.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            plain.push(c);
+            continue;
+        }
+        let Some(escape) = chars.next() else {
+            plain.push(c);
+            break;
+        };
+        let special = match escape {
+            'u' | 'U' => {
+                let rest = chars.as_str();
+                let max = if escape == 'u' { 4 } else { 8 };
+                let n = rest
+                    .bytes()
+                    .take(max)
+                    .take_while(u8::is_ascii_hexdigit)
+                    .count();
+                let value = u32::from_str_radix(&rest[..n], 16).ok();
+                chars = rest[n..].chars();
+                Some(match value.and_then(char::from_u32) {
+                    Some(ch) => ch.to_string(),
+                    None => {
+                        // Bash writes a surrogate or a value past U+10FFFF as
+                        // bytes that are not UTF-8, and keeps `\u` with no digit
+                        // as written, where zsh reads NUL.
+                        decoded = false;
+                        format!("\\{escape}{}", &rest[..n])
+                    }
+                })
+            }
+            'c' => match chars.next() {
+                Some(x) if x.is_ascii() => {
+                    // Bash reads `\c\\` as the control character of one `\`.
+                    if x == '\\' && chars.as_str().starts_with('\\') {
+                        chars.next();
+                    }
+                    Some(char::from(if x == '?' { 0x7f } else { x as u8 & 0x1f }).to_string())
+                }
+                Some(x) => Some(format!("\\c{x}")),
+                None => Some("\\c".to_string()),
+            },
+            _ => {
+                // Bash keeps any other escape as written and zsh drops its
+                // backslash; `\x` with no digit bash keeps and zsh reads as NUL.
+                decoded &= match escape {
+                    'x' => chars.as_str().starts_with(|c: char| c.is_ascii_hexdigit()),
+                    _ => "abeEfnrtv\\'\"?01234567".contains(escape),
+                };
+                None
+            }
+        };
+        match special {
+            Some(text) => {
+                decoded &= flush(&mut out, &mut plain);
+                out.push_str(&text);
+            }
+            None => {
+                plain.push(c);
+                plain.push(escape);
+            }
+        }
+    }
+    decoded &= flush(&mut out, &mut plain);
+    (out, decoded)
+}
+
+/// [`shell_split`] reading each word as bash passes it (see
+/// [`resolve_word_text`]), for the permission gate's deny and ask reading.
+pub(crate) fn shell_split_as_passed(input: &str) -> Vec<String> {
+    coalesce_words(input, &tokenize(input))
+        .into_iter()
+        .map(|(raw, _)| resolve_word_text(raw, true))
         .collect()
 }
 
@@ -1961,6 +2127,25 @@ mod tests {
     }
 
     #[test]
+    fn test_shell_split_as_passed_decodes_as_bash() {
+        // Each expected word is what bash 5 passes.
+        for (input, word) in [
+            (r"$'a\0b'c", "ac"),
+            (r"$'a\c@b'c", "ac"),
+            (r"$'\cA'", "\u{1}"),
+            (r"$'a\c\\x'", "a\u{1c}x"),
+            (r"$'a\c'", r"a\c"),
+            (r"$'\u'", r"\u"),
+            (r"$'\u2dx'", "-x"),
+            (r"$'\u005cx66'", r"\x66"),
+            ("\"a\\\nb\"", "ab"),
+            ("'a\\\nb'", "a\\\nb"),
+        ] {
+            assert_eq!(shell_split_as_passed(input), vec![word], "{input:?}");
+        }
+    }
+
+    #[test]
     fn test_shell_split_unclosed_quote() {
         let result = shell_split("echo 'hello");
         assert_eq!(result, vec!["echo", "hello"]);
@@ -2633,15 +2818,42 @@ mod tests {
             "ls <<EOF\n# n\nEOF",
             "ls (a)\\\n# n",
         ] {
-            assert_eq!(blank_comments(cmd), None, "{cmd:?}");
+            let scan = blank_comments(cmd);
+            assert!(scan.ambiguous, "{cmd:?}");
+            // The `#` stays text: the scan does not guess it is a comment.
+            assert_eq!(scan.code, cmd, "{cmd:?}");
             assert!(contains_unattestable_construct(cmd), "{cmd:?}");
         }
         // Text that only resembles those constructs leaves the comment a comment.
+        for (cmd, code) in [("ls $\\{{ #n", "ls $\\{{   "), ("ls ${x} #n", "ls ${x}   ")] {
+            assert_eq!(
+                blank_comments(cmd),
+                CommentScan {
+                    code: Cow::Borrowed(code),
+                    ambiguous: false
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn test_unplaced_hash_leaves_other_comments_blanked() {
+        // One `#` the scan cannot place no longer unblanks every comment, so an
+        // apostrophe in an earlier one hides no later line.
+        let scan = blank_comments("ls # it's\nrm -rf x\necho `ls #`");
+        assert!(scan.ambiguous);
         assert_eq!(
-            blank_comments("ls $\\{{ #n").as_deref(),
-            Some("ls $\\{{   ")
+            scan.code,
+            format!("ls{}\nrm -rf x\necho `ls #`", " ".repeat(7))
         );
-        assert_eq!(blank_comments("ls ${x} #n").as_deref(), Some("ls ${x}   "));
+        assert!(split_for_permissions("ls # it's\nrm -rf x\necho `ls #`").contains(&"rm -rf x"));
+        // A lone CR ends a comment as the conservative splitter reads it.
+        let scan = blank_comments("ls # x\r# it's\nrm -rf x");
+        assert!(scan.ambiguous);
+        assert_eq!(
+            scan.code,
+            format!("ls{}\r{}\nrm -rf x", " ".repeat(4), " ".repeat(6))
+        );
     }
 
     #[test]

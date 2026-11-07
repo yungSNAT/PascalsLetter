@@ -410,9 +410,11 @@ fn normalize_php_tool_word<'a>(word: &str, bin_dirs: &'a [std::path::PathBuf]) -
     // reducing it to the bare tool would run the current project's copy. A redirect or
     // operator inside the word (`a/>o/vendor/bin/pint` runs `a/` with stdout to a file)
     // would be dropped with the path, and `#a/vendor/bin/pint` (a comment) or
-    // `X=a/vendor/bin/pint` (an assignment) runs nothing at all.
+    // `X=a/vendor/bin/pint` (an assignment) runs nothing at all. A quote would be
+    // dropped too, freeing what it held: `'a/vendor/bin/pint && ls'` is one word.
     if word.contains([
         '$', '`', '~', '*', '?', '[', '!', '(', ')', '{', '}', '<', '>', '&', '|', ';', '#', '=',
+        '\'', '"',
     ]) {
         return None;
     }
@@ -742,16 +744,18 @@ fn strip_trailing_redirects(cmd: &str) -> (&str, &str) {
 }
 
 /// Matches a bash line-continuation: a backslash immediately followed by
-/// `\n` or `\r\n`, *plus* any horizontal whitespace on the line before AND
+/// `\n`, *plus* any horizontal whitespace on the line before AND
 /// after the break, so commands authored across multiple lines still hit the
 /// rewrite rules. Consuming the whitespace prevents double spaces in cases like
-/// `git diff \<NL>HEAD~1`.
+/// `git diff \<NL>HEAD~1`. Not `\<CR><NL>`: there the backslash escapes the CR
+/// and the newline ends the command, in bash and zsh alike.
 static LINE_CONTINUATION_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?m)[ \t\x0B\x0C]*\\\r?\n[ \t\x0B\x0C]*").unwrap());
+    LazyLock::new(|| Regex::new(r"(?m)[ \t\x0B\x0C]*\\\n[ \t\x0B\x0C]*").unwrap());
 
 static BASH_JOIN_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\\\r?\n").unwrap());
 
-/// A backslash that opens a line continuation (`\<NL>` or `\<CR><NL>`).
+/// A backslash that opens a line continuation (`\<NL>`), or one before a
+/// `\<CR><NL>`, which bash does not continue.
 struct Continuation {
     at: usize,
     in_double: bool,
@@ -824,9 +828,8 @@ fn line_continuation_quoting_unknown(s: &str) -> bool {
 /// beside it becomes a single space, and inside double quotes only the `\<NL>`
 /// goes. Inside single quotes, after a backslash that escapes this one
 /// (`\\<NL>`) or in a comment, which the newline ends whatever comes before it,
-/// it is no continuation and stays as written. A `\<CR><NL>`, which bash does
-/// not continue, still becomes a single space outside those places, as it
-/// always has. Returns a borrowed `&str` when the input contains
+/// it is no continuation and stays as written, as is a `\<CR><NL>`, which bash
+/// does not continue. Returns a borrowed `&str` when the input contains
 /// no continuations, so the common fast path allocates nothing.
 pub(crate) fn collapse_line_continuations(s: &str) -> std::borrow::Cow<'_, str> {
     collapse_continuations(s, true, true)
@@ -857,8 +860,8 @@ fn collapse_continuations(
     if !s.contains('\\') {
         return std::borrow::Cow::Borrowed(s);
     }
-    // Where shells disagree about a `#` the raw text is read, and callers refuse it.
-    let code = track_comments.then(|| blank_comments(s)).flatten();
+    // A `#` shells disagree about stays text, and callers refuse the command.
+    let code = track_comments.then(|| blank_comments(s).code);
     let live = line_continuations(code.as_deref().unwrap_or(s), track_quotes);
     LINE_CONTINUATION_RE.replace_all(s, |caps: &regex::Captures<'_>| {
         let m = caps.get(0).expect("group 0 always matches");
@@ -868,9 +871,7 @@ fn collapse_continuations(
             Ok(i) => live[i].in_double,
             Err(_) => return text.to_string(),
         };
-        if text.contains('\r') {
-            " ".to_string()
-        } else if in_double {
+        if in_double {
             text.replacen("\\\n", "", 1)
         } else if text.starts_with('\\') && text.ends_with('\n') {
             String::new()
@@ -948,9 +949,19 @@ pub(crate) fn rewrite_command_precompiled(
         if line_continuation_quoting_unknown(cmd) {
             return None;
         }
+        // Bash does not continue a line at `\<CR><NL>`: the backslash escapes the
+        // CR and the newline ends the command. The collapse below keeps it, and
+        // the line-by-line rewrite does not model a line ending in an escaped CR.
+        let code = blank_comments(cmd).code;
+        if line_continuations(&code, true)
+            .iter()
+            .any(|c| is_crlf_at(code.as_bytes(), c.at + 1))
+        {
+            return None;
+        }
     }
 
-    // Bash line continuations (`\<NL>`, `\<CRLF>`) and the leading whitespace that
+    // Bash line continuations (`\<NL>`) and the leading whitespace that
     // follows are syntactically equivalent to a single space, but `cmd.trim()` does
     // not unwrap them so a leading backslash-newline used to defeat the whole matcher.
     // Normalize first, then trim. See issue #1564.
@@ -8670,11 +8681,26 @@ mod tests {
 
     #[test]
     fn test_rewrite_leading_backslash_crlf() {
-        // CRLF line ending — same shape, Windows shells / Git Bash.
+        // CRLF line ending: bash does not continue the line there. The backslash
+        // escapes the CR, which runs as a command of its own before `git diff`, so
+        // a rewrite that joined the lines would drop it.
         assert_eq!(
             rewrite_command_no_prefixes("\\\r\ngit diff HEAD~1", &[]),
-            Some("rtk git diff HEAD~1".into())
+            None
         );
+    }
+
+    #[test]
+    fn test_backslash_before_crlf_is_no_continuation() {
+        // `git\<CR><NL>status` runs `git<CR>` and then `status`; joined, the
+        // rewrite would run `git status` instead and drop the second line.
+        for cmd in [
+            "git\\\r\nstatus",
+            "git status \\\r\n  --short",
+            "ls # it's\ngit \\\r\n  diff",
+        ] {
+            assert_eq!(rewrite_command_no_prefixes(cmd, &[]), None, "{cmd:?}");
+        }
     }
 
     #[test]
@@ -8821,8 +8847,16 @@ mod tests {
             collapse_line_continuations("bash -c \"echo 'a\\\nb'\""),
             "bash -c \"echo 'ab'\""
         );
-        // `\<CR><NL>` keeps its single space outside single quotes.
-        assert_eq!(collapse_line_continuations("git\\\r\nstatus"), "git status");
+        // `\<CR><NL>` is no continuation: the backslash escapes the CR and the
+        // newline ends the command, so the next line runs on its own. Joining it
+        // hid a shell wrapper there from the gate.
+        for collapse in [
+            collapse_line_continuations,
+            collapse_line_continuations_ignoring_quotes,
+            collapse_ignoring_quotes_and_comments,
+        ] {
+            assert_eq!(collapse("git\\\r\nstatus"), "git\\\r\nstatus");
+        }
         assert_eq!(
             collapse_line_continuations("git 'a\\\r\nb'"),
             "git 'a\\\r\nb'"
@@ -8946,6 +8980,27 @@ mod tests {
             ("X=a/vendor/bin/pint", "X=a/vendor/bin/pint"),
             ("~/tools/vendor/bin/pint --test", "~/tools/vendor/bin/pint"),
             ("*/vendor/bin/phpunit tests/", "*/vendor/bin/phpunit"),
+        ] {
+            if let Some(out) = rewrite_command_no_prefixes(cmd, &[]) {
+                assert!(out.contains(path), "{cmd:?} -> {out:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn test_php_tool_path_with_quotes_is_not_rewritten() {
+        // Found by fuzz/fuzz_targets/rewrite.rs: the quote went with the path, so an
+        // unclosed `'` no longer hid the `;` after it, and quoted text ran as the tool.
+        for (cmd, path) in [
+            (
+                "gt  \u{686}`;/`;'\0/vendor/bin/pint  \u{686} s ;",
+                "'\0/vendor/bin/pint",
+            ),
+            ("'a'/vendor/bin/pint --test", "'a'/vendor/bin/pint"),
+            (
+                "\"a\"/vendor/bin/phpunit tests/",
+                "\"a\"/vendor/bin/phpunit",
+            ),
         ] {
             if let Some(out) = rewrite_command_no_prefixes(cmd, &[]) {
                 assert!(out.contains(path), "{cmd:?} -> {out:?}");

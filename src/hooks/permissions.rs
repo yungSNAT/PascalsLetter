@@ -7,8 +7,8 @@ use crate::core::user_dirs;
 use crate::core::user_env;
 use crate::core::utils::strip_leading_bom;
 use crate::discover::lexer::{
-    ShellDialect, gate_segments, is_word_boundary_whitespace, split_for_wrappers,
-    split_for_wrappers_as_code, unattestable_either_reading,
+    ShellDialect, gate_segments, is_word_boundary_whitespace, shell_split_as_passed,
+    split_for_wrappers, split_for_wrappers_as_code, unattestable_either_reading,
 };
 use crate::discover::registry;
 #[cfg(test)]
@@ -280,10 +280,10 @@ fn gate_verdict(
         .collect();
     let matches_any = |segment: &str, peeled: &Option<MatchingReadings<'_>>, pattern: &str| {
         let readings = peeled.iter().flat_map(|peeled| peeled.readings.iter());
-        command_matches_pattern(segment, pattern)
+        restricting_rule_matches(segment, pattern)
             || readings
                 .filter(|reading| **reading != segment)
-                .any(|reading| command_matches_pattern(reading, pattern))
+                .any(|reading| restricting_rule_matches(reading, pattern))
     };
 
     // Deny takes highest priority and pre-empts every other construct.
@@ -391,7 +391,7 @@ fn check_shell_wrapper_permissions(
                     .any(|reading| {
                         deny_rules
                             .iter()
-                            .any(|pattern| command_matches_pattern(reading, pattern))
+                            .any(|pattern| restricting_rule_matches(reading, pattern))
                     })
             });
             if inner_denied {
@@ -824,6 +824,37 @@ pub(crate) fn command_matches_pattern(cmd: &str, pattern: &str) -> bool {
 
     // 4. No wildcard: exact match or prefix with word boundary
     cmd == pattern || cmd.starts_with(&format!("{} ", pattern))
+}
+
+/// A deny or ask rule's match: the rule as written, or the rule followed by more
+/// words, as a rule without a wildcard already is. Claude Code matches a rule
+/// against the whole command, so `git push * --force` alone misses
+/// `git push origin --force # note` (whether Claude Code drops the comment is
+/// not documented) and `git push origin --force main`, and an allow rule such as
+/// `git push *` would then approve the force push. The words are also read with
+/// their quoting removed, as the shell passes them, so `git push origin "--force"`
+/// and `git push origin $'--force'` are force pushes too. Whitespace inside one of
+/// those words becomes U+0001, which is no word boundary, so the text of a quoted
+/// argument (`git commit -m 'never use --force'`) is not read as words. Deny and
+/// ask only: on allow these readings would approve more.
+///
+/// Gap: a rule with a literal after `*` does not see a word the shell makes by
+/// brace, parameter or command expansion (`--force{,}`, `$F`), and these cannot
+/// all be decided before the command runs.
+fn restricting_rule_matches(cmd: &str, pattern: &str) -> bool {
+    let matches = |cmd: &str| {
+        command_matches_pattern(cmd, pattern)
+            || command_matches_pattern(cmd, &format!("{pattern} *"))
+    };
+    matches(cmd)
+        || (cmd.contains(['\'', '"', '\\'])
+            && matches(
+                &shell_split_as_passed(cmd)
+                    .iter()
+                    .map(|word| word.replace(is_word_boundary_whitespace, "\u{1}"))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            ))
 }
 
 /// Glob-style matching where `*` matches any character sequence (including empty).
@@ -1366,6 +1397,210 @@ mod tests {
             check_command_with_rules("git push", &deny, &[], &[]),
             PermissionVerdict::Default
         );
+    }
+
+    #[test]
+    fn test_restricting_rule_with_a_literal_after_a_wildcard_survives_trailing_text() {
+        // A rule naming a force push still names it with a comment or another
+        // argument behind the flag, so the allow rule cannot approve it.
+        let rule = vec!["git push * --force".to_string()];
+        let allow = vec!["git push *".to_string()];
+        for cmd in [
+            "git push origin --force # note",
+            "git push origin --force main",
+        ] {
+            assert_eq!(
+                check_command_with_rules(cmd, &rule, &[], &allow),
+                PermissionVerdict::Deny,
+                "{cmd:?}"
+            );
+            assert_eq!(
+                check_command_with_rules(cmd, &[], &rule, &allow),
+                PermissionVerdict::Ask,
+                "{cmd:?}"
+            );
+        }
+        assert_eq!(
+            check_command_with_rules(
+                "bash -c 'git push origin --force # note'",
+                &rule,
+                &[],
+                &allow
+            ),
+            PermissionVerdict::Defer
+        );
+        assert_eq!(
+            check_command_with_rules("git push origin --forceful", &rule, &[], &allow),
+            PermissionVerdict::Allow
+        );
+        // Allow gets no extra reading.
+        assert_eq!(
+            check_command_with_rules("git push origin --force main", &[], &[], &rule),
+            PermissionVerdict::Default
+        );
+    }
+
+    #[test]
+    fn test_restricting_rule_reads_words_without_their_quotes() {
+        // Bash removes the quotes, so each of these runs `--force`.
+        let rule = vec!["git push * --force".to_string()];
+        let allow = vec!["git push *".to_string()];
+        for cmd in [
+            "git push origin \"--force\"",
+            "git push origin --force\"\"",
+            "git push origin '--force' # note",
+            "git push origin --\\force",
+            // ANSI-C quoting is decoded, and `$"…"` is a plain string here.
+            "git push origin $'--force'",
+            "git push origin $'--\\x66orce'",
+            "git push origin $\"--force\"",
+            // Bash ends a `$'…'` string at a NUL and decodes `\u`, `\U` and `\c`.
+            "git push origin $'--force\\0x'",
+            "git push origin $'--force\\x00x'",
+            "git push origin $'--force\\c@x'",
+            "git push origin $'\\u002d-force'",
+            "git push origin $'\\U0000002d-force'",
+            // The shell removes `\<LF>` outside single quotes.
+            "git push origin \"--for\\\nce\"",
+            "git push origin --for\\\nce",
+        ] {
+            assert_eq!(
+                check_command_with_rules(cmd, &rule, &[], &allow),
+                PermissionVerdict::Deny,
+                "{cmd:?}"
+            );
+            assert_eq!(
+                check_command_with_rules(cmd, &[], &rule, &allow),
+                PermissionVerdict::Ask,
+                "{cmd:?}"
+            );
+        }
+        // Allow gets no extra reading.
+        assert_eq!(
+            check_command_with_rules(
+                "git push origin \"--force\"",
+                &[],
+                &[],
+                &["git push origin --force".to_string()]
+            ),
+            PermissionVerdict::Default
+        );
+    }
+
+    #[test]
+    fn test_ansi_c_string_the_shells_read_differently_asks() {
+        let all = vec!["*".to_string()];
+        let rule = vec!["git push * --force".to_string()];
+        let allow = vec!["git push *".to_string()];
+        // The shells agree on these.
+        for cmd in [
+            r"git status $'\n'",
+            r"git status $'\t'",
+            r"git status $'\x2d-force'",
+            r"git status $'a\\c'",
+            r"git status $'a\\C-e'",
+            r"git status $'a\\M-e'",
+            r"git status $'\E'",
+            r#"git status $'\?\"'"#,
+        ] {
+            assert_eq!(
+                check_command_with_rules(cmd, &[], &[], &all),
+                PermissionVerdict::Allow,
+                "{cmd:?}"
+            );
+        }
+        assert_eq!(
+            check_command_with_rules(r"git push origin $'\x2d-force'", &rule, &[], &allow),
+            PermissionVerdict::Deny
+        );
+        // Bash and zsh pass different words for a `$'…'` body holding `\c`, an
+        // escape that yields NUL or bytes that are not UTF-8.
+        for cmd in [
+            r"git status $'a\0'",
+            r"git status $'a\00b'",
+            r"git status $'a\000'",
+            r"git status $'a\x0'",
+            r"git status $'a\x00'",
+            r"git status $'a\u0'",
+            r"git status $'a\U0'",
+            r"git status $'a\cAb'",
+            r"git status $'a\xff'",
+            r"git status $'\C-e'",
+            r"git status $'\M-e'",
+            // Bash keeps an escape it does not know as written, and `\x`, `\u`
+            // or `\U` with no digit; zsh drops the backslash or yields NUL.
+            r"git status $'a\q'",
+            r"git status $'a\8'",
+            r"git status $'a\ b'",
+            r"git status $'a\é'",
+            r"git status $'a\xg'",
+            r"git status $'a\ug'",
+            r"git status $'a\U'",
+        ] {
+            assert_eq!(
+                check_command_with_rules(cmd, &[], &[], &all),
+                PermissionVerdict::Ask,
+                "{cmd:?}"
+            );
+        }
+        // zsh ends the word at the NUL, reads `\c` as `c`, and `\C-@`, or `\u`
+        // or `\x` with no digit, as NUL; each passes `--force` in bash, zsh or both.
+        for cmd in [
+            r"git push origin $'\x2d-force\0\xff'",
+            r"git push origin $'\x2d-force\0\377'",
+            r"git push origin $'--force\0'x",
+            r"git push origin $'--for\ce'",
+            r"git push origin $'--force\C-@x'",
+            r"git push origin --force$'\u'",
+            r"git push origin --force$'\x'",
+        ] {
+            let verdict = check_command_with_rules(cmd, &rule, &[], &allow);
+            assert!(
+                matches!(verdict, PermissionVerdict::Ask | PermissionVerdict::Deny),
+                "{cmd:?}: {verdict:?}"
+            );
+            assert_eq!(
+                check_command_with_rules(cmd, &[], &rule, &allow),
+                PermissionVerdict::Ask,
+                "{cmd:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_ansi_c_upper_e_is_escape_for_deny_and_ask() {
+        // Both shells read `\E` in `$'…'` as ESC, as they read `\e`.
+        let rule = vec!["printf \u{1b}".to_string()];
+        let allow = vec!["printf *".to_string()];
+        for cmd in [r"printf $'\E'", r"printf $'\e'"] {
+            assert_eq!(
+                check_command_with_rules(cmd, &rule, &[], &allow),
+                PermissionVerdict::Deny,
+                "{cmd:?}"
+            );
+            assert_eq!(
+                check_command_with_rules(cmd, &[], &rule, &allow),
+                PermissionVerdict::Ask,
+                "{cmd:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_restricting_rule_keeps_a_quoted_word_whole() {
+        // Removing the quotes leaves one word; its spaces are no word boundary.
+        let allow = vec!["*".to_string()];
+        for (rule, cmd) in [
+            ("* --force", "git commit -m 'never use --force'"),
+            ("* main", "git log 'feature main'"),
+        ] {
+            let rule = vec![rule.to_string()];
+            assert_eq!(
+                check_command_with_rules(cmd, &rule, &[], &allow),
+                PermissionVerdict::Allow,
+                "{cmd:?}"
+            );
+        }
     }
 
     // Integration: deny *:* blocks everything
@@ -2034,6 +2269,44 @@ mod tests {
     }
 
     #[test]
+    fn test_unreadable_comment_hides_no_other_line() {
+        // A `#` the comment scan cannot place leaves the other comments blanked, so
+        // an apostrophe in one cannot hide the next line from the deny rule.
+        let allow = vec!["ls:*".to_string(), "echo:*".to_string()];
+        let deny = vec!["rm:*".to_string()];
+        for cmd in [
+            "ls # it's\nrm -rf x\necho `ls #`",
+            "ls # it's\nrm -rf x\nls ${x:-{} # n",
+            "ls (#i)ls # it's\nrm -rf x",
+            "ls # x\ry # it's\nrm -rf x",
+        ] {
+            assert_eq!(
+                check_command_with_rules(cmd, &deny, &[], &allow),
+                PermissionVerdict::Deny,
+                "{cmd:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_backslash_before_crlf_hides_no_shell_wrapper() {
+        // Bash and zsh do not continue a line at `\<CR><NL>`, so the wrapper on
+        // the next line runs as a command of its own.
+        let deny = vec!["rm:*".to_string()];
+        let allow = vec!["*".to_string()];
+        for cmd in [
+            "ls \\\r\nbash -c 'rm -rf x'",
+            "ls # n \\\r\nbash -c 'rm -rf x'",
+        ] {
+            assert_eq!(
+                check_command_with_rules(cmd, &deny, &[], &allow),
+                PermissionVerdict::Defer,
+                "{cmd:?}"
+            );
+        }
+    }
+
+    #[test]
     fn test_the_gate_takes_the_stricter_of_2_readings() {
         let deny = vec!["rm:*".to_string()];
         let allow = vec!["ls".to_string(), "echo".to_string(), "git".to_string()];
@@ -2095,6 +2368,50 @@ mod tests {
                 "{cmd:?}"
             );
         }
+    }
+
+    #[test]
+    fn test_quote_inside_an_unquoted_dollar_bracket_asks() {
+        // zsh reads `$[…]` as double-quoted text, so `##'` is the code of `'` and
+        // zsh runs `rm -rf y`; the lexer reads a `'` that hides the line.
+        let allow = vec!["*".to_string()];
+        let deny = vec!["rm:*".to_string()];
+        for cmd in ["ls $[##']\nrm -rf y\n#'", "ls $[ 1 ]$[##']\nrm -rf y\n#'"] {
+            assert_eq!(
+                check_command_with_rules(cmd, &deny, &[], &allow),
+                PermissionVerdict::Ask,
+                "{cmd:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_quote_inside_an_arithmetic_command_asks() {
+        // zsh reads `((…))` as it reads `$[…]`, so these run `rm -rf y`.
+        let allow = vec!["*".to_string()];
+        let deny = vec!["rm:*".to_string()];
+        for cmd in [
+            "((x=##'))\nrm -rf y\n#'",
+            "for ((i=##';i<40;i++)); do :; done\nrm -rf y\n#'",
+            "ls; ((x=##'))\nrm -rf y\n#'",
+        ] {
+            assert_eq!(
+                check_command_with_rules(cmd, &deny, &[], &allow),
+                PermissionVerdict::Ask,
+                "{cmd:?}"
+            );
+        }
+        // Arithmetic without a quote is read as before.
+        assert_eq!(
+            check_command_with_rules("((i++))\nls", &deny, &[], &allow),
+            PermissionVerdict::Allow
+        );
+        // Nested subshells written with `((` read as arithmetic to this check, so a
+        // quote inside them asks too: deliberately stricter.
+        assert_eq!(
+            check_command_with_rules("((cd a && ls 'q') )", &deny, &[], &allow),
+            PermissionVerdict::Ask
+        );
     }
 
     /// Every row reads as allowed under a reading that trusts what the lexer
