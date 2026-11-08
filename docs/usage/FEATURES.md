@@ -487,7 +487,7 @@ Shows the commit summary + stat + compact diff.
 rtk git add [args...]    # Supports -A, -p, --all, etc.
 ```
 
-**Output:** `ok` and the `git diff --shortstat` summary of what this call staged, such as `ok 2 files changed, 5 insertions(+)`; nothing when it staged nothing, as with `git add` itself. While a conflict is unresolved, `ok` alone. A bare `rtk git add` passes on git's own message.
+**Output:** `ok` and a `--shortstat` summary of what this call staged, such as `ok 2 files changed, 5 insertions(+)`; nothing when it staged nothing, as with `git add` itself. While a conflict is unresolved, `ok` alone. A bare `rtk git add` passes on git's own message.
 
 ---
 

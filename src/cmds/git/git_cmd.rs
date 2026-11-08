@@ -3334,23 +3334,21 @@ fn run_add(args: &[String], verbose: u8, global_args: &[String]) -> Result<i32> 
     if result.success() {
         // Mirror git's own behaviour: a no-op `git add` is silent. Emitting a
         // generic "ok" here is misleading — an agent can't tell "staged N files"
-        // from "staged nothing" when both print "ok".
-        let compact = match &index_before {
-            Some(tree) => {
-                let mut stat_cmd = git_cmd(global_args);
-                stat_cmd.args(["diff", "--cached", "--shortstat", tree.as_str(), "--"]);
-                let stat_result =
-                    exec_capture(&mut stat_cmd).context("Failed to check staged files")?;
-                // "1 file changed, 5 insertions(+)"
-                let short = stat_result.stdout.trim();
-                if short.is_empty() {
-                    String::new()
-                } else {
-                    format!("ok {short}")
-                }
-            }
-            // An index with unmerged entries (a merge or rebase stopped on a conflict)
-            // cannot be written as a tree, so what this call staged cannot be counted.
+        // from "staged nothing" when both print "ok". `counted` is `None`, and the
+        // answer a bare "ok", when what this call staged cannot be counted: as when the
+        // index holds unmerged entries (a merge or rebase stopped on a conflict), which
+        // git cannot write as a tree.
+        let counted = index_before.and_then(|tree| {
+            let mut stat_cmd = git_cmd(global_args);
+            stat_cmd.args(["diff", "--cached", "--shortstat", tree.as_str(), "--"]);
+            exec_capture(&mut stat_cmd)
+                .ok()
+                .filter(|stat| stat.success())
+        });
+        let compact = match counted {
+            // "1 file changed, 5 insertions(+)"
+            Some(stat) if stat.stdout.trim().is_empty() => String::new(),
+            Some(stat) => format!("ok {}", stat.stdout.trim()),
             None => "ok".to_string(),
         };
 
