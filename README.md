@@ -53,7 +53,7 @@ A weekly CI job runs [`scripts/fork-proof.sh`](scripts/fork-proof.sh), which che
 | Unusual whitespace | Not in upstream | A command holding whitespace Bash does not split words at, such as a vertical tab or a no-break space, runs as written. The rewriter split there, which could turn `>&2` into a redirect of another descriptor. Found by the `rewrite` fuzz target. |
 | `rtk-proxy` key lending | Not in upstream | The relayed provider key is lent only to a keyless request carrying the `x-rtk-proxy` header (which `rtk <task>` sends) with a `localhost` or IP `Host`, so a web page, including a DNS-rebound one, cannot spend it. |
 | `rtk-proxy` health check | Not proved: macOS only | A server on the proxy port that answers and hangs up early reads as not the proxy. On macOS the check, which the session-start hook also runs, could panic inside ureq instead ([rtk-ai/rtk#4912](https://github.com/rtk-ai/rtk/issues/4912)). |
-| `rtk gain` | Not in upstream | The summary, per-command and daily, weekly and monthly tables count an oversised row at a fixed 7,500-token cap, and the headline figure is net. |
+| `rtk gain` | Not in upstream | The summary, per-command and daily, weekly and monthly tables count an oversized row at a fixed 7,500-token cap, and the headline figure is net. |
 | `rtk session` | Not in upstream | Ends with Bash's share of all tool output in recent sessions, the denominator `rtk gain` lacks, and says what the figure leaves out. |
 | `rtk cc-economics` | Not in upstream | Without a global ccusage, the `npx` fallback runs the exact ccusage release pinned in `src/analytics/ccusage-pin/package.json`, which Dependabot bumps, instead of whatever npm serves as latest. |
 
