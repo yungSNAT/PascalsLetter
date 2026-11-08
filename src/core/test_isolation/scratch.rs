@@ -175,7 +175,10 @@ fn remove_at_exit(dir: &Path) {
 /// `VOLTA_HOME` are the developer's own directories, where those managers write
 /// their bookkeeping and logs, and where volta, or proto set to auto-install,
 /// installs a version a project asks for: the price of a child running the
-/// developer's toolchains at all.
+/// developer's toolchains at all. Under `cargo llvm-cov`, an instrumented rtk
+/// writes its profile where `LLVM_PROFILE_FILE` names, in the target directory;
+/// without it, the child writes `default_*.profraw` into its working directory,
+/// often the test's repository, and its coverage is lost.
 const KEPT: &[&str] = &[
     "PATH",
     "LD_LIBRARY_PATH",
@@ -208,6 +211,7 @@ const KEPT: &[&str] = &[
     "RUSTUP_TOOLCHAIN",
     "PROTO_HOME",
     "VOLTA_HOME",
+    "LLVM_PROFILE_FILE",
 ];
 
 /// What a Windows child keeps besides: the system and program directories its
