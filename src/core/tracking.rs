@@ -416,7 +416,7 @@ const SCHEMA_VERSION: i64 = 2;
 
 /// Ceiling on what a row counts for in every savings aggregate. 7,500 DB tokens is
 /// exactly 30,000 chars at the bytes/4 estimate — Claude Code's default Bash output
-/// limit (BASH_MAX_OUTPUT_LENGTH), i.e. the most the agent ingests of either the raw
+/// limit (its `bashOutputMaxChars` setting), i.e. the most the agent ingests of either the raw
 /// or the filtered output. Leaving oversized rows out of the headline but in the
 /// per-command table made that table claim five times the headline's savings; each
 /// row now counts as [`seen_by_agent`] everywhere, and the rows the cap touched are

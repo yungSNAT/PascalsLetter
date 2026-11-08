@@ -47,7 +47,9 @@ Windows arguments	windows	-	-	# MSYS quoting runs only on Windows; its tests are
 Progress output	linux	tests/fork_output_test.rs	a_progress_redraw_reaches_the_filter_as_its_last_state
 `rtk gain`	linux	tests/fork_output_test.rs	gain_counts_an_oversized_row_at_the_cap_and_nets_a_worse_one
 `rtk cc-economics`	linux	tests/fork_output_test.rs	cc_economics_npx_fallback_names_an_exact_ccusage_release
+`rtk config --create`	linux	tests/config_create_test.rs	config_create_keeps_an_existing_config
 `yadm`	linux	tests/fork_rewrite_test.rs	yadm_goes_through_rtk_yadm_not_rtk_git
 `git add`	linux	tests/rewrite_exit_code_test.rs	bare_git_add_stages_nothing_as_git_does
+`git add` summary	linux	tests/rewrite_exit_code_test.rs	git_add_reports_only_what_it_staged
 PHP tool paths	linux	tests/fork_rewrite_test.rs	a_php_tool_path_the_shell_expands_keeps_the_path
 Unusual whitespace	linux	tests/fork_rewrite_test.rs	whitespace_bash_does_not_split_at_is_not_rewritten
