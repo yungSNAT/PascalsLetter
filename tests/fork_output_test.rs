@@ -146,4 +146,13 @@ fn cc_economics_npx_fallback_names_an_exact_ccusage_release() {
                 .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit())),
         "{package} is not an exact release"
     );
+    let pin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src/analytics/ccusage-pin/package.json");
+    let pin: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(pin).expect("read the ccusage pin"))
+            .expect("the ccusage pin is JSON");
+    assert_eq!(
+        version, pin["dependencies"]["ccusage"],
+        "{package} is not the pinned release"
+    );
 }
