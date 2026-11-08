@@ -5,6 +5,9 @@
 //! silently replace the command with whatever `rtk rewrite` returns. So the
 //! rewritten command must exit with exactly the code the raw command would
 //! have — compressing the output may never change the status.
+//!
+//! The same holds for a command's other effects: rtk shapes what the agent
+//! reads, never what the command writes or stages (the last two tests).
 
 mod common;
 
@@ -194,4 +197,71 @@ fn every_case_actually_goes_through_a_rewrite() {
             "case must exercise the rewrite path: {case}"
         );
     }
+}
+
+/// A file the command writes holds what the command printed: the hook leaves a
+/// command that writes output to a file as typed, so no filtered view lands
+/// in it (BL-1331). `{out}` is the file each side writes.
+#[test]
+fn output_written_to_a_file_is_the_raw_commands() {
+    let sb = Sandbox::new();
+    let mut cases = vec![
+        "git log --stat > {out}",
+        "git diff >> {out}",
+        "grep -r alpha a.txt 1> {out}",
+        "git log --no-such-flag 2> {out}",
+        "git log --oneline > {out} 2>&1",
+    ];
+    // Plain `rg PAT > file` is the case reported; CI has rg, a bare box may not.
+    if sb.command("rg").arg("--version").output().is_ok() {
+        cases.push("rg alpha a.txt > {out}");
+    }
+    for case in cases {
+        let raw = case.replace("{out}", "raw.txt");
+        let hooked_case = case.replace("{out}", "hooked.txt");
+        let hooked = sb.rewrite(&hooked_case).unwrap_or(hooked_case);
+        assert_eq!(sb.sh_exit(&raw), sb.sh_exit(&hooked), "exit code: {case}");
+        let read = |name: &str| std::fs::read(sb.repo().join(name)).expect("output file");
+        assert_eq!(
+            read("raw.txt"),
+            read("hooked.txt"),
+            "the file differs from the raw command's: {case} ran as {hooked:?}"
+        );
+        for name in ["raw.txt", "hooked.txt"] {
+            std::fs::remove_file(sb.repo().join(name)).expect("remove output file");
+        }
+    }
+}
+
+/// A bare `git add` stages nothing and says so on stderr; `rtk git add` used to
+/// run `git add .` and stage everything (rtk-ai/rtk#3408).
+#[test]
+fn bare_git_add_stages_nothing_as_git_does() {
+    let sb = Sandbox::new();
+    std::fs::write(sb.repo().join("u.txt"), "untracked\n").expect("write");
+    let status = || {
+        let out = sb
+            .command("git")
+            .args(["status", "--porcelain"])
+            .output()
+            .expect("git status");
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    };
+    let before = status();
+    let git = sb.command("git").arg("add").output().expect("git add");
+    assert_eq!(status(), before, "plain git add changed the index");
+
+    let rtk = common::rtk_command()
+        .current_dir(sb.repo())
+        .env("LC_ALL", "C")
+        .args(["git", "add"])
+        .output()
+        .expect("rtk git add");
+    assert_eq!(status(), before, "rtk git add staged files");
+    assert_eq!(rtk.status.code(), git.status.code());
+    assert_eq!(rtk.stdout, git.stdout);
+    assert_eq!(
+        String::from_utf8_lossy(&rtk.stderr).trim(),
+        String::from_utf8_lossy(&git.stderr).trim()
+    );
 }

@@ -3279,14 +3279,10 @@ fn run_add(args: &[String], verbose: u8, global_args: &[String]) -> Result<i32> 
     let mut cmd = git_cmd(global_args);
     cmd.arg("add");
 
-    // Pass all arguments directly to git (flags like -A, -p, --all, etc.)
-    if args.is_empty() {
-        cmd.arg(".");
-    } else {
-        for arg in args {
-            cmd.arg(arg);
-        }
-    }
+    // Pass every argument to git as typed: a bare `git add` stages nothing, and
+    // rtk must not turn it into `git add .`. Adapted from kylehgc/rtk 1d672725
+    // by RawNuke (Apache-2.0); see rtk-ai/rtk#3408.
+    cmd.args(args);
 
     let result = exec_capture(&mut cmd).context("Failed to run git add")?;
 
