@@ -366,7 +366,7 @@ fn gate_verdict(
         if all_segments_allowed {
             let matched = allow_rules
                 .iter()
-                .any(|pattern| command_matches_pattern(segment, pattern));
+                .any(|pattern| allow_rule_matches(segment, pattern));
             if !matched {
                 all_segments_allowed = false;
             }
@@ -829,7 +829,24 @@ pub(crate) fn normalize_command_text(text: &str) -> String {
 /// - `* suffix`, `pre * suf` → glob matching where `*` matches any sequence of characters
 /// - `pattern` → the whole command only, as Claude Code documents for a rule
 ///   without `*`: `npm run build` does not match `npm run build --watch`
+///
+/// This is how a deny or ask rule reads a command; see [`allow_rule_matches`].
 pub(crate) fn command_matches_pattern(cmd: &str, pattern: &str) -> bool {
+    pattern_matches(cmd, pattern, true)
+}
+
+/// How an allow rule reads a command. Claude Code lets a trailing `*` match the
+/// bare command only when it is the rule's only wildcard, so `* --help *` does
+/// not match `npm --help`. An allow must not approve more than Claude Code would,
+/// so a middle part here needs text after it: `git -C * diff:*` does not allow
+/// `git -C /p diff`.
+fn allow_rule_matches(cmd: &str, pattern: &str) -> bool {
+    pattern_matches(cmd, pattern, false)
+}
+
+/// [`command_matches_pattern`], where `middle_may_end` lets a middle part ending
+/// in whitespace match at the end of the command.
+fn pattern_matches(cmd: &str, pattern: &str, middle_may_end: bool) -> bool {
     let cmd_norm = normalize_command_text(cmd);
     let pattern_norm = normalize_command_text(pattern);
     let cmd = cmd_norm.as_str();
@@ -857,7 +874,7 @@ pub(crate) fn command_matches_pattern(cmd: &str, pattern: &str) -> bool {
 
     // 3. Complex wildcards (leading, middle, multiple): glob matching
     if pattern.contains('*') {
-        return glob_matches(cmd, pattern);
+        return glob_matches(cmd, pattern, middle_may_end);
     }
 
     // 4. No wildcard: the whole command
@@ -944,7 +961,7 @@ fn rule_admits_prefix(known: &str, pattern: &str) -> bool {
 /// Glob-style matching where `*` matches any character sequence (including empty).
 ///
 /// Colon syntax normalized: `sudo:*` treated as `sudo *` for word separation.
-fn glob_matches(cmd: &str, pattern: &str) -> bool {
+fn glob_matches(cmd: &str, pattern: &str, middle_may_end: bool) -> bool {
     // Normalize colon-wildcard syntax: "sudo:*" -> "sudo *", "*:rm" -> "* rm"
     let normalized = pattern.replace(":*", " *").replace("*:", "* ");
     let parts: Vec<&str> = normalized.split('*').collect();
@@ -974,15 +991,16 @@ fn glob_matches(cmd: &str, pattern: &str) -> bool {
             }
         } else {
             // Middle segment: find next occurrence.
-            // Also accept end-of-string when the segment ends with whitespace — this
-            // handles commands that terminate at the middle token without trailing args,
-            // e.g. "git -C * diff:*" should match bare "git -C /path diff" (#1105).
+            // With `middle_may_end`, also accept end-of-string when the segment ends with
+            // whitespace — this handles commands that terminate at the middle token without
+            // trailing args, e.g. "git -C * diff:*" should match bare "git -C /path diff"
+            // (#1105). Deny and ask only: see `allow_rule_matches`.
             let remaining = &cmd[search_from..];
             if let Some(pos) = remaining.find(*part) {
                 search_from += pos + part.len();
             } else {
                 let trimmed = part.trim_end();
-                if !trimmed.is_empty() && remaining.ends_with(trimmed) {
+                if middle_may_end && !trimmed.is_empty() && remaining.ends_with(trimmed) {
                     search_from += remaining.len();
                 } else {
                     return false;
@@ -2188,6 +2206,39 @@ mod tests {
     }
 
     // --- Allow rules tests ---
+
+    #[test]
+    fn test_allow_needs_the_text_after_a_middle_wildcard() {
+        // Claude Code: `Bash(* --help *)` matches `npm --help x` but not
+        // `npm --help`; a trailing `*` matches the bare command only when it is
+        // the rule's only wildcard.
+        for (rule, bare, longer) in [
+            ("git -C * diff:*", "git -C /p diff", "git -C /p diff --stat"),
+            ("* --help *", "npm --help", "npm --help x"),
+        ] {
+            let allow = vec![rule.to_string()];
+            assert_eq!(
+                check_command_with_rules(bare, &[], &[], &allow),
+                PermissionVerdict::Default,
+                "{rule}: {bare}"
+            );
+            assert_eq!(
+                check_command_with_rules(longer, &[], &[], &allow),
+                PermissionVerdict::Allow,
+                "{rule}: {longer}"
+            );
+        }
+        // Deny and ask still read the bare command.
+        let rule = vec!["git -C * push:*".to_string()];
+        assert_eq!(
+            check_command_with_rules("git -C /p push", &rule, &[], &[]),
+            PermissionVerdict::Deny
+        );
+        assert_eq!(
+            check_command_with_rules("git -C /p push", &[], &rule, &[]),
+            PermissionVerdict::Ask
+        );
+    }
 
     #[test]
     fn test_explicit_allow_rule() {
