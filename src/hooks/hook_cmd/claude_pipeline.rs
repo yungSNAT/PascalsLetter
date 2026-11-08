@@ -622,7 +622,7 @@ mod tests {
             "X=1 rtk bypass ./run-suite.sh",
             "/usr/local/bin/rtk bypass ./run-suite.sh",
             "/usr/local/bin/r't'k bypass cat",
-            "/usr/local/bin/\"rtk\" bypass cat",
+            "/usr/local/bin/r\"\"tk bypass cat",
         ] {
             assert!(!decide(cmd, PermissionVerdict::Default, &[]), "{cmd}");
         }
