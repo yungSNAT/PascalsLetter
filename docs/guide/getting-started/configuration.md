@@ -13,10 +13,11 @@ sidebar:
 |----------|------|
 | Linux | `~/.config/rtk/config.toml` |
 | macOS | `~/Library/Application Support/rtk/config.toml` |
+| Windows | `%APPDATA%\rtk\config.toml` |
 
 ```bash
-rtk config            # show current configuration
-rtk config --create   # create config file with defaults
+rtk config            # show the file's path and the configuration in force
+rtk config --create   # create the file with defaults; an existing file is left unchanged
 ```
 
 ## Full config structure
@@ -60,7 +61,18 @@ wrap_fish_scripts = false   # opt in to handing a fish script back as `rtk run -
 
 [awareness]
 level = "default"           # "default", "high", "full" — see Awareness level
+
+[limits]
+grep_max_results = 200      # most grep/rg matches shown (`rtk grep --max` overrides)
+grep_max_per_file = 25      # most matches shown per file
+grep_max_line_len = 160     # characters kept of each line once grep/rg output is capped
+agent_output_max_chars = 30000 # your agent's own output cap, in characters
+status_max_files = 15       # accepted but not used
+status_max_untracked = 10   # accepted but not used
+passthrough_max_chars = 2000 # raw output shown when a filter cannot parse a tool's output
 ```
+
+Set `agent_output_max_chars` to your agent's limit or a little under: Claude Code's is `bashOutputMaxChars` in `settings.json`, 30,000 characters by default. A `git diff` up to that size is shown whole, and `grep` or `rg` output over it is capped even when capping saves less than a third.
 
 For full details on what is collected, opt-out options, and GDPR rights, see [Telemetry & Privacy](../resources/telemetry.md).
 

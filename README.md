@@ -57,7 +57,7 @@ Set it to your agent's limit or a little under. rtk counts the characters a comm
 
 Checked on 8 November 2026; agents change these between releases. Vibe's figure comes from its source code, as its documentation does not list the key. No documented setting was found for the other agents rtk supports.
 
-For mostly ASCII output, rtk's default fits every agent above at its default except Mistral Vibe; other scripts take more than one byte per character. For Vibe, or after lowering your agent's limit, set it in rtk's `config.toml`; `rtk config` prints the file's path and the values in force. Edit the file by hand: `rtk config --create` replaces an existing one with defaults.
+For mostly ASCII output, rtk's default fits every agent above at its default except Mistral Vibe; other scripts take more than one byte per character. For Vibe, or after lowering your agent's limit, set it in rtk's `config.toml`; `rtk config` prints the file's path and the values in force. `rtk config --create` writes a file of defaults when there is none; then edit it by hand.
 
 ```toml
 [limits]
@@ -94,7 +94,8 @@ CI runs [`scripts/fork-proof.sh`](scripts/fork-proof.sh) weekly and on every pul
 | `rtk read` | Not in upstream | Exact line ranges, and a missing-file error worded as `cat` words it. |
 | `gh api` | Not in upstream | GitHub API `*_url` links are dropped, with the whole response kept for `rtk recall`. Anything left unfiltered is written back byte for byte, and `--jq` and `--template` are untouched. |
 | `yadm` | Not in upstream | Removed from the `git` rewrite rule, which would run git on the current project instead of yadm's dotfiles repository. It goes through `rtk yadm`, and `rtk discover` lists it as unhandled, as it does `jq` and other commands with only a TOML filter. From [kylehgc/rtk](https://github.com/kylehgc/rtk/commit/1d672725f8cf9d43da32212310dd7abb5bca814d) by RawNuke (Apache-2.0); see [rtk-ai/rtk#3408](https://github.com/rtk-ai/rtk/issues/3408). |
-| `git add` | Not in upstream | A bare `rtk git add` stages nothing, as `git add` does; it ran `git add .`, which staged every change (from [kylehgc/rtk](https://github.com/kylehgc/rtk/commit/1d672725f8cf9d43da32212310dd7abb5bca814d) by RawNuke, Apache-2.0; see [rtk-ai/rtk#3408](https://github.com/rtk-ai/rtk/issues/3408)). Only a call that names paths, or uses `-A` or `-u`, gets rtk's one-line summary; any other, such as `git add --` or a dry run, passes on git's own answer instead of a summary that includes changes staged earlier. |
+| `git add` | Not in upstream | A bare `rtk git add` stages nothing, as `git add` does; it ran `git add .`, which staged every change (from [kylehgc/rtk](https://github.com/kylehgc/rtk/commit/1d672725f8cf9d43da32212310dd7abb5bca814d) by RawNuke, Apache-2.0; see [rtk-ai/rtk#3408](https://github.com/rtk-ai/rtk/issues/3408)). Only a call that names paths, or uses `-A` (`--all`) or `-u` (`--update`), gets rtk's one-line summary; any other, such as `git add --` or a dry run, passes on git's own answer instead of a summary that includes changes staged earlier. |
+| `git add` summary | Not in upstream | rtk's one-line `git add` summary counts only what that call staged. It counted every change staged since the last commit, so re-adding a staged file looked like new work. |
 | PHP tool paths | Not in upstream | A tool path the shell expands or that holds shell syntax, such as `$ROOT/vendor/bin/phpunit` or `~/x/vendor/bin/pint`, is no longer cut down to the bare tool, which ran the current project's copy instead of the one the path names. Found by the `rewrite` fuzz target. |
 | Unusual whitespace | Not in upstream | A command holding whitespace Bash does not split words at, such as a vertical tab or a no-break space, runs as written. The rewriter split there, which could turn `>&2` into a redirect of another descriptor. Found by the `rewrite` fuzz target. |
 | `rtk-proxy` key lending | Not in upstream | The relayed provider key is lent only to a keyless request carrying the `x-rtk-proxy` header (which `rtk <task>` sends) with a `localhost` or IP `Host`, so a web page, including a DNS-rebound one, cannot spend it. |
@@ -102,6 +103,7 @@ CI runs [`scripts/fork-proof.sh`](scripts/fork-proof.sh) weekly and on every pul
 | `rtk gain` | Not in upstream | The summary, per-command and daily, weekly and monthly tables count an oversized row at a fixed 7,500-token cap, and the headline figure is net. |
 | `rtk session` | Not in upstream | Ends with Bash's share of all tool output in recent sessions, the denominator `rtk gain` lacks, and says what the figure leaves out. |
 | `rtk cc-economics` | Not in upstream | Without a global ccusage, the `npx` fallback runs the exact ccusage release pinned in `src/analytics/ccusage-pin/package.json`, which Dependabot bumps, instead of whatever npm serves as latest. |
+| `rtk config --create` | Not in upstream | Leaves an existing `config.toml` unchanged and exits 1. It replaced the file with defaults, losing the user's settings. |
 
 These fixes are not currently offered upstream. Past contributions to RTK are listed in [FORKS.md](https://github.com/yungSNAT/yungSNAT/blob/main/FORKS.md).
 

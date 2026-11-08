@@ -39,7 +39,7 @@ For each command RTK runs, the database records:
 | `savings_pct` | `saved / input × 100`, a bash output byte ratio |
 | `exec_time_ms` | Execution time in milliseconds |
 
-The same database also holds filter parse failures and hook rewrite decisions, which feed `rtk gain` and `rtk session`.
+The same database also holds filter parse failures, which `rtk gain --failures` lists, and hook rewrite decisions, which feed `rtk discover`.
 
 Commands RTK passes through without filtering are tracked at 0% reduction. They still count toward
 `commands` and the token totals, but they are left out of `total_time_ms` and `avg_time_ms` (in the

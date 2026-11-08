@@ -3307,13 +3307,22 @@ fn run_add(args: &[String], verbose: u8, global_args: &[String]) -> Result<i32> 
     // by RawNuke (Apache-2.0); see rtk-ai/rtk#3408.
     cmd.args(args);
 
+    // The index before this call, so the summary below counts only what this call
+    // staged; `git diff --cached` alone also counts changes staged earlier.
+    let summary_fits = add_summary_fits(args);
+    let index_before = if summary_fits {
+        index_tree(global_args)
+    } else {
+        None
+    };
+
     let result = exec_capture(&mut cmd).context("Failed to run git add")?;
 
     if verbose > 0 {
         eprintln!("git add executed");
     }
 
-    if !add_summary_fits(args) {
+    if !summary_fits {
         print!("{}", result.stdout);
         eprint!("{}", result.stderr);
         timer.track_passthrough("git add", &tracking::passthrough_label("git add"));
@@ -3323,24 +3332,24 @@ fn run_add(args: &[String], verbose: u8, global_args: &[String]) -> Result<i32> 
     let raw_output = format!("{}\n{}", result.stdout, result.stderr);
 
     if result.success() {
-        // Count what was added
-        let mut stat_cmd = git_cmd(global_args);
-        stat_cmd.args(["diff", "--cached", "--stat", "--shortstat"]);
-        let stat_result = exec_capture(&mut stat_cmd).context("Failed to check staged files")?;
-
         // Mirror git's own behaviour: a no-op `git add` is silent. Emitting a
         // generic "ok" here is misleading — an agent can't tell "staged N files"
-        // from "staged nothing" when both print "ok".
-        let compact = if stat_result.stdout.trim().is_empty() {
-            String::new()
-        } else {
-            // Parse "1 file changed, 5 insertions(+)" format
-            let short = stat_result.stdout.lines().last().unwrap_or("").trim();
-            if short.is_empty() {
-                "ok".to_string()
-            } else {
-                format!("ok {}", short)
-            }
+        // from "staged nothing" when both print "ok". `counted` is `None`, and the
+        // answer a bare "ok", when what this call staged cannot be counted: as when the
+        // index holds unmerged entries (a merge or rebase stopped on a conflict), which
+        // git cannot write as a tree.
+        let counted = index_before.and_then(|tree| {
+            let mut stat_cmd = git_cmd(global_args);
+            stat_cmd.args(["diff", "--cached", "--shortstat", tree.as_str(), "--"]);
+            exec_capture(&mut stat_cmd)
+                .ok()
+                .filter(|stat| stat.success())
+        });
+        let compact = match counted {
+            // "1 file changed, 5 insertions(+)"
+            Some(stat) if stat.stdout.trim().is_empty() => String::new(),
+            Some(stat) => format!("ok {}", stat.stdout.trim()),
+            None => "ok".to_string(),
         };
 
         if !compact.is_empty() {
@@ -3365,6 +3374,16 @@ fn run_add(args: &[String], verbose: u8, global_args: &[String]) -> Result<i32> 
     }
 
     Ok(0)
+}
+
+/// The index written as a tree object (as `git commit` writes it), or `None` when git
+/// cannot write one, as while the index holds unmerged entries.
+fn index_tree(global_args: &[String]) -> Option<String> {
+    let mut cmd = git_cmd(global_args);
+    cmd.arg("write-tree");
+    let out = exec_capture(&mut cmd).ok()?;
+    let tree = out.stdout.trim();
+    (out.success() && !tree.is_empty()).then(|| tree.to_string())
 }
 
 fn build_commit_command(args: &[String], global_args: &[String]) -> Command {

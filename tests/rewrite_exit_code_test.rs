@@ -312,3 +312,44 @@ fn git_add_with_a_path_keeps_the_summary() {
         "ok 1 file changed, 1 insertion(+)\n"
     );
 }
+
+/// `rtk git add <paths>` counts what this call staged, not the whole index: a
+/// change staged earlier is not reported again, re-adding a file counts only
+/// its new lines, and `-u` counts only the deletion it stages.
+#[test]
+fn git_add_reports_only_what_it_staged() {
+    let sb = Sandbox::new();
+    // a.txt's added "gamma" line, staged before rtk runs.
+    let ok = sb.command("git").args(["add", "a.txt"]).status();
+    assert!(ok.expect("git add a.txt").success());
+    std::fs::write(sb.repo().join("b.txt"), "one\ntwo\n").expect("write");
+    let rtk_add = |arg: &str| {
+        let out = common::rtk_command()
+            .current_dir(sb.repo())
+            .env("LC_ALL", "C")
+            .args(["git", "add", arg])
+            .output()
+            .expect("rtk git add");
+        assert!(out.status.success(), "rtk git add {arg}: {out:?}");
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+    assert_eq!(
+        rtk_add("b.txt"),
+        "ok 1 file changed, 2 insertions(+)",
+        "a new file"
+    );
+    assert_eq!(rtk_add("a.txt"), "", "a staged file, unchanged since");
+    std::fs::write(sb.repo().join("a.txt"), "alpha\nbeta\ngamma\ndelta\n").expect("modify");
+    assert_eq!(
+        rtk_add("a.txt"),
+        "ok 1 file changed, 1 insertion(+)",
+        "a staged file, changed since"
+    );
+    std::fs::remove_file(sb.repo().join("b.txt")).expect("remove");
+    assert_eq!(
+        rtk_add("-u"),
+        "ok 1 file changed, 2 deletions(-)",
+        "-u, a staged file deleted since"
+    );
+    assert_eq!(rtk_add("-A"), "", "-A with nothing left to stage");
+}

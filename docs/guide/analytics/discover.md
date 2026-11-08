@@ -17,20 +17,34 @@ rtk discover --all              # all projects
 rtk discover --all --since 7    # last 7 days, all projects
 ```
 
-**Example output** (illustrative values):
+**Example output** of a plain `rtk discover` (illustrative values):
 
 ```
-Missed savings analysis (last 7 days)
-────────────────────────────────────
-Command              Count   Est. lost
-cargo test              12     ~48,000 tokens
-git log                  8     ~12,000 tokens
-pnpm list                3      ~6,000 tokens
-────────────────────────────────────
-Total missed:           23     ~66,000 tokens
+RTK Discover -- Savings Opportunities
+====================================================
+Scanned: 14 sessions (last 30 days), 1240 Bash commands
+Already using RTK: 1102 commands (88.9%)
 
-Run `rtk init --global` to capture these automatically.
+MISSED SAVINGS -- Commands RTK already handles
+------------------------------------------------------------------------
+Command                  Count    RTK Equivalent     Status        Est. Savings
+cargo test                  12    rtk cargo          existing      ~48.0K tokens
+git log                      8    rtk git            existing      ~12.0K tokens
+pnpm list                    3    rtk pnpm           existing      ~6.0K tokens
+------------------------------------------------------------------------
+Total: 23 commands -> ~66.0K tokens saveable
+
+TOP UNHANDLED COMMANDS -- open an issue?
+----------------------------------------------------
+Command                  Count    Example
+bazel                        5    bazel build //app:server
+----------------------------------------------------
+-> github.com/yungSNAT/PascalsLetter/issues
+
+~estimated from tool_result output sizes
 ```
+
+'Already using RTK' counts explicit `rtk` commands and those the Claude Code hook recorded rewriting. For history from before the hook kept that record, coverage is estimated from the current hook and config, and the report adds a line saying how many commands were estimated.
 
 The `~N tokens` figures are **estimated bash output bytes divided by 4**, not tokens billed by your provider. RTK ships no real tokenizer, and bash output is only one contributor to input tokens. Read them as an order of magnitude of the output volume RTK could have compressed. See [How RTK Savings Work](../resources/savings-explained.md).
 
@@ -38,7 +52,7 @@ If commands appear in the missed list after installing RTK, it usually means the
 
 ## rtk session — adoption tracking
 
-`rtk session` shows RTK adoption across recent Claude Code sessions: how many shell commands ran through RTK vs. raw.
+`rtk session` summarises your 10 most recent Claude Code sessions: for each, how many shell commands it ran, how many of them RTK handles, and how much output they returned.
 
 ```bash
 rtk session
@@ -47,22 +61,21 @@ rtk session
 **Example output** (illustrative values):
 
 ```
-Recent sessions (last 10)
-─────────────────────────────────────────────────────
-Session                         Total   RTK   Coverage
-2026-01-03 10:00  (40 cmds)       40    38      95.0%
-2026-01-02 10:00  (40 cmds)       40    40     100.0%
-2026-01-01 10:00  (40 cmds)       40    36      90.0%
-─────────────────────────────────────────────────────
-Average coverage: 95.0%
+RTK Session Overview (last 10)
+----------------------------------------------------------------------
+Session      Date          Cmds   RTK  Adoption           Output
+----------------------------------------------------------------------
+3f9c2a1b     Today           40    38       95% @@@@@     520.4K
+a71e04d2     Yesterday       52    40       77% @@@@.     610.0K
+c05b9e33     3d ago          18    10       56% @@@..      69.6K
+----------------------------------------------------------------------
+Average adoption: 80%
+Bash share of tool output: 40% (1.2M of 3.0M bytes, 3 of 3 sessions)
+  Only Bash reaches RTK's default hook, so `rtk gain` leaves out the rest.
+  Text in logged tool results, after any filtering. Images and subagent logs are not counted.
+Tip: Run `rtk discover` to find missed RTK opportunities
 ```
 
-Low coverage on a session usually means RTK was disabled (`RTK_DISABLED=1`) or the hook wasn't active for a specific subagent.
+Adoption counts explicit `rtk` commands and every command RTK could rewrite, whether or not the hook rewrote it: Claude Code logs the command as typed. It cannot confirm the hook is active; `rtk discover` and `rtk gain --history` can. Low adoption means many of the session's commands are ones RTK does not handle, or ran through `rtk bypass`.
 
-The report ends with Bash's share of all tool output, the denominator `rtk gain` lacks:
-
-```
-Bash share of tool output: 40% (1.2M of 3.0M bytes, 10 of 10 sessions)
-```
-
-Only Bash reaches RTK's default hook, so `rtk gain` leaves out what Read, Grep, MCP servers and other tools return, unless a pipeline adds them. The figure covers the text in the tool results of the same 10 logs, including any session with no Bash. It is measured after filtering, so it falls as RTK cuts Bash output. Images and subagent logs are not counted, and the report says how many logs or lines it could not read.
+The Bash share line is the denominator `rtk gain` lacks. Only Bash reaches RTK's default hook, so `rtk gain` leaves out what Read, Grep, MCP servers and other tools return, unless a pipeline adds them. The figure covers the text in the tool results of the same 10 logs, including any session with no Bash. It is measured after filtering, so it falls as RTK cuts Bash output. Images and subagent logs are not counted, and the report says how many logs or lines it could not read.
