@@ -17,7 +17,7 @@ rtk discover --all              # all projects
 rtk discover --all --since 7    # last 7 days, all projects
 ```
 
-**Example output** (illustrative values):
+**Example output** of a plain `rtk discover` (illustrative values):
 
 ```
 RTK Discover -- Savings Opportunities
