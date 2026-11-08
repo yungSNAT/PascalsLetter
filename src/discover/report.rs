@@ -281,7 +281,7 @@ pub fn format_text(report: &DiscoverReport, limit: usize, verbose: bool) -> Stri
 
         out.push_str(&"-".repeat(52));
         out.push('\n');
-        out.push_str("-> github.com/rtk-ai/rtk/issues\n");
+        out.push_str("-> github.com/yungSNAT/PascalsLetter/issues\n");
     }
 
     // RTK_DISABLED bypass warning

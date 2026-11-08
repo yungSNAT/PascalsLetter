@@ -1,0 +1,196 @@
+name: Release
+
+# Builds the Apache-2.0 edition of rtk (`rtk-oss`, --no-default-features) for
+# 5 targets. A `fork-v*` tag also gets checksums.txt, a signed build
+# provenance attestation and a DRAFT release holding them; a maintainer
+# reviews the draft and publishes it. A pull request that changes this file
+# runs every job except the draft, as a dry run.
+#
+# Only the Apache-2.0 edition ships until it is settled whether the BUSL-1.1
+# grant in engine/LICENSE covers a binary RTK AI Labs did not build, so
+# rtk-proxy (BUSL-1.1) is not shipped either. Asset names and checksums.txt
+# follow upstream's releases, so install.sh can switch by changing its REPO.
+
+on:
+  push:
+    tags: ["fork-v*"]
+  pull_request:
+    branches: [develop]
+    paths: [".github/workflows/release.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: build ${{ matrix.target }}
+    timeout-minutes: 45
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Each target builds on a runner that can execute it, so every archive's
+        # binary is run before it is packaged.
+        include:
+          - { target: x86_64-pc-windows-msvc, os: windows-2025, archive: zip }
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-24.04, archive: tar.gz }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-24.04-arm, archive: tar.gz }
+          - { target: x86_64-apple-darwin, os: macos-15-intel, archive: tar.gz }
+          - { target: aarch64-apple-darwin, os: macos-15, archive: tar.gz }
+    env:
+      TARGET: ${{ matrix.target }}
+      ASSET: rtk-oss-${{ matrix.target }}.${{ matrix.archive }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install musl tools
+        if: endsWith(matrix.target, '-musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      # The static C runtime lets rtk.exe run without the Visual C++
+      # redistributable. With --target, RUSTFLAGS skips build scripts.
+      - name: Build the Apache-2.0 edition
+        shell: bash
+        env:
+          RUSTFLAGS: ${{ endsWith(matrix.target, '-msvc') && '-C target-feature=+crt-static' || '' }}
+        run: cargo build --locked --release --no-default-features --target "$TARGET"
+
+      - name: Require a static C runtime
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup component add llvm-tools
+          readobj="$(cygpath -u "$(rustc --print sysroot)")/lib/rustlib/$(rustc --print host-tuple)/bin/llvm-readobj.exe"
+          imports=$("$readobj" --coff-imports "target/$TARGET/release/rtk.exe" | grep 'Name: ')
+          echo "$imports"
+          if grep -iE 'vcruntime|msvcp|ucrtbase|api-ms-win-crt' <<<"$imports"; then
+            echo "::error::rtk.exe imports a C runtime DLL"
+            exit 1
+          fi
+
+      - name: Check the version and package the archive
+        shell: bash
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          exe=rtk
+          if [ "$RUNNER_OS" = Windows ]; then exe=rtk.exe; fi
+          out=$("target/$TARGET/release/$exe" --version)
+          echo "$out"
+          case "$out" in
+            "rtk "?*) version=${out#rtk } ;;
+            *) echo "::error::unexpected --version output: $out"; exit 1 ;;
+          esac
+          # shortcut: one release per upstream version. The tag carries the
+          # version without its `+pascalsletter` metadata, so a second release
+          # on the same upstream base needs a numbered tag scheme first.
+          if [ "$REF_TYPE" = tag ] && [ "$TAG" != "fork-v${version%%+*}" ]; then
+            echo "::error::tag $TAG does not match rtk $version; expected fork-v${version%%+*}"
+            exit 1
+          fi
+          mkdir pkg
+          cp "target/$TARGET/release/$exe" LICENSE NOTICE pkg/
+          if [ "$RUNNER_OS" = Windows ]; then
+            (cd pkg && 7z a "../$ASSET" "$exe" LICENSE NOTICE)
+          else
+            tar -czf "$ASSET" -C pkg "$exe" LICENSE NOTICE
+          fi
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rtk-oss-${{ matrix.target }}
+          path: ${{ env.ASSET }}
+          if-no-files-found: error
+
+  checksums:
+    name: checksums
+    needs: build
+    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: rtk-oss-*
+          path: dist
+          merge-multiple: true
+
+      - name: Require exactly the 5 archives and write checksums.txt
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          printf '%s\n' * | LC_ALL=C sort | diff - <(printf '%s\n' \
+            rtk-oss-aarch64-apple-darwin.tar.gz \
+            rtk-oss-aarch64-unknown-linux-musl.tar.gz \
+            rtk-oss-x86_64-apple-darwin.tar.gz \
+            rtk-oss-x86_64-pc-windows-msvc.zip \
+            rtk-oss-x86_64-unknown-linux-musl.tar.gz)
+          sha256sum -- * > checksums.txt
+          cat checksums.txt
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-assets
+          path: dist/
+          if-no-files-found: error
+
+  draft:
+    name: draft release
+    needs: checksums
+    if: github.ref_type == 'tag'
+    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    # The only job with write scopes. It runs no repository code.
+    permissions:
+      contents: write # create the draft release
+      id-token: write # sign the provenance attestation
+      attestations: write
+    steps:
+      - name: Require the tagged commit to be on develop
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          status=$(gh api "repos/$GITHUB_REPOSITORY/compare/develop...$GITHUB_SHA" --jq .status)
+          case "$status" in
+            identical | behind) ;;
+            *) echo "::error::$GITHUB_SHA is not on develop (compare status: $status)"; exit 1 ;;
+          esac
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-assets
+          path: dist
+
+      - name: Check the archives against checksums.txt
+        working-directory: dist
+        run: sha256sum --strict -c checksums.txt
+
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/*
+
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
+            --title "PascalsLetter ${TAG#fork-v}" \
+            --notes "The Apache-2.0 edition of rtk (\`rtk-oss\`), built from $TAG. Check an archive against \`checksums.txt\`, and its provenance with \`gh attestation verify <archive> --repo $GITHUB_REPOSITORY\`."

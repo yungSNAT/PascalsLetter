@@ -28,7 +28,7 @@ cargo install --git https://github.com/yungSNAT/PascalsLetter rtk --locked
 rtk --version   # rtk 1.1.0+pascalsletter
 ```
 
-PascalsLetter and upstream RTK both install `rtk`, so uninstall any Homebrew, winget or `install.sh` copy of RTK first. Add `--no-default-features` for the Apache-2.0-only build without the compression engine. Then set up your agent with `rtk init` as in [Quick Start](#quick-start). The `rtk-proxy` daemon is a separate package that this command does not install; build it with `cargo build --release --manifest-path proxy/Cargo.toml`.
+PascalsLetter and upstream RTK both install `rtk`, so uninstall any Homebrew, winget or `install.sh` copy of RTK first. Add `--no-default-features` for the Apache-2.0 edition, `rtk-oss`, which leaves out the BUSL-1.1 compression engine. Then set up your agent with `rtk init` as in [Quick Start](#quick-start). The `rtk-proxy` daemon is a separate package that this command does not install; build it with `cargo build --release --manifest-path proxy/Cargo.toml`.
 
 ## Use
 
@@ -302,7 +302,7 @@ It links one component under a different licence. `rtk-engine` (`engine/`) is **
 
 The `rtk-proxy` daemon (`proxy/`) is **BUSL-1.1** on the same terms, built on its own with its licence alongside; `rtk` never links it.
 
-[Editions and Licensing](docs/guide/resources/editions.md) sets out what the Apache-2.0-only build omits and where the BUSL-1.1 grant stops. See also [DISCLAIMER.md](DISCLAIMER.md).
+[Editions and Licensing](docs/guide/resources/editions.md) sets out what the Apache-2.0 edition omits and where the BUSL-1.1 grant stops. See also [DISCLAIMER.md](DISCLAIMER.md).
 
 ---
 

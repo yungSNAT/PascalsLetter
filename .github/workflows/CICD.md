@@ -1,10 +1,9 @@
 # CI/CD Flows
 
-This fork runs pull request checks in `ci.yml` and coverage after pushes to
-`develop` or manual dispatch. The upstream `cd.yml`, `next-release.yml`,
-`release.yml` and `stale.yml` workflows are removed here. The release diagrams
-below remain as upstream reference; they describe no active release automation
-in this fork.
+This fork runs pull request checks in `ci.yml`, coverage after pushes to
+`develop` or manual dispatch, and draft releases in `release.yml`. Upstream's
+`cd.yml`, `next-release.yml`, `release.yml` and `stale.yml` workflows are
+removed; this `release.yml` is the fork's own.
 
 ## PR Quality Gates (ci.yml)
 
@@ -46,103 +45,35 @@ Trigger: pull_request to develop or master
      + coverage.yml (push to develop or manual dispatch only: cargo-llvm-cov, then Codecov)
 ```
 
-## Merge to develop — pre-release (cd.yml)
+## Draft release (release.yml)
 
-Trigger: push to develop | workflow_dispatch (not master) | Concurrency: cancel-in-progress
+Trigger: push of a `fork-v*` tag | pull_request to develop that changes
+release.yml (a dry run: build and checksums only)
 
 ```
-     ┌──────────────────┐
-     │ push to develop   │
-     │ OR dispatch       │
-     └────────┬─────────┘
-              │
-     ┌────────▼──────────────────┐
-     │ pre-release                │
-     │ compute next version      │
-     │ from conventional commits │
-     │ tag = v{next}-rc.{run}    │
-     └────────┬──────────────────┘
-              │
-     ┌────────▼──────────────────┐
-     │ release.yml               │
-     │ prerelease = true         │
-     └────────┬──────────────────┘
-              │
-     ┌────────▼──────────────────┐
-     │ Build                     │
-     │ 5 platforms + DEB + RPM   │
-     └────────┬──────────────────┘
-              │
-     ┌────────▼──────────────────┐
-     │ GitHub Release            │
-     │ (pre-release badge)       │
-     │                           │
-     │ Discord:  SKIPPED         │
-     │ Homebrew: SKIPPED         │
+     ┌──────────────────────────┐
+     │ build, one per target    │
+     │ --no-default-features    │
+     │ run --version, package   │
+     └────────────┬─────────────┘
+                  │
+     ┌────────────▼─────────────┐
+     │ checksums                │
+     │ exactly 5 archives       │
+     │ checksums.txt            │
+     └────────────┬─────────────┘
+                  │ tags only
+     ┌────────────▼─────────────┐
+     │ draft                    │
+     │ tagged commit on develop │
+     │ provenance attestation   │
+     │ DRAFT GitHub release     │
      └──────────────────────────┘
 ```
 
-## Merge to master — stable release (cd.yml)
-
-Trigger: push to master (only) | Concurrency: never cancelled
-
-```
-     ┌──────────────────┐
-     │ push to master    │
-     └────────┬─────────┘
-              │
-     ┌────────▼──────────────────┐
-     │ release-please            │
-     │ analyze conventional      │
-     │ commits                   │
-     └────────┬──────────────────┘
-              │
-         ┌────┴────────────────┐
-         │                     │
-    no release           release created
-         │                     │
-         ▼                     ▼
-  ┌──────────────┐    ┌───────────────────────┐
-  │ create/update│    │ release.yml            │
-  │ release PR   │    │ prerelease = false     │
-  └──────────────┘    └───────────┬───────────┘
-                                  │
-                     ┌────────────▼────────────┐
-                     │ Build                   │
-                     │ 5 platforms + DEB + RPM  │
-                     └────────────┬────────────┘
-                                  │
-                     ┌────────────▼────────────┐
-                     │ GitHub Release           │
-                     │ (stable, "Latest" badge) │
-                     └──┬─────────┬─────────┬──┘
-                        │         │         │
-                        ▼         ▼         ▼
-                    Discord   Homebrew   latest
-                    notify    tap update  tag
-```
-
-## Manual release (release.yml)
-
-Trigger: workflow_dispatch
-
-```
-     ┌────────────────────────┐
-     │ workflow_dispatch       │
-     │ inputs: tag, prerelease │
-     └───────────┬────────────┘
-                 │
-     ┌───────────▼────────────┐
-     │ Full build pipeline     │
-     │ 5 platforms + DEB + RPM │
-     └───────────┬────────────┘
-                 │
-          ┌──────┴──────┐
-          │             │
-   prerelease=false  prerelease=true
-          │             │
-          ▼             ▼
-     Discord        pre-release
-     Homebrew       badge only
-     latest tag
-```
+Only the Apache-2.0 edition (`rtk-oss-<target>`) is built, for x86_64 and
+aarch64 Linux (musl), x86_64 and aarch64 macOS, and x86_64 Windows with a
+static C runtime. The tag is `fork-v` and the version `rtk --version` prints,
+without its `+pascalsletter` metadata: `fork-v1.1.0` for
+`rtk 1.1.0+pascalsletter`. Nothing is published until a maintainer publishes
+the draft.
