@@ -146,13 +146,16 @@ fn cc_economics_npx_fallback_names_an_exact_ccusage_release() {
                 .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit())),
         "{package} is not an exact release"
     );
+    // rtk builds this file in (`include_str!`), so the fork always has it. Upstream
+    // has none: there the exact release above is the whole check, so an upstream
+    // that pins ccusage its own way passes, and the proof reports the fix.
     let pin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("src/analytics/ccusage-pin/package.json");
-    let pin: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(pin).expect("read the ccusage pin"))
-            .expect("the ccusage pin is JSON");
-    assert_eq!(
-        version, pin["dependencies"]["ccusage"],
-        "{package} is not the pinned release"
-    );
+    if let Ok(pin) = std::fs::read_to_string(pin) {
+        let pin: serde_json::Value = serde_json::from_str(&pin).expect("the ccusage pin is JSON");
+        assert_eq!(
+            version, pin["dependencies"]["ccusage"],
+            "{package} is not the pinned release"
+        );
+    }
 }
