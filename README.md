@@ -36,28 +36,28 @@ Run `rtk init -g` to set up Claude Code; add `--copilot` for GitHub Copilot in V
 
 ## What PascalsLetter changes
 
-Each change has a regression test, except `grep_max_results`.
+CI runs [`scripts/fork-proof.sh`](scripts/fork-proof.sh) weekly and on every pull request. It checks the Upstream column: each row's tests must pass here and fail on upstream RTK, so the job fails once upstream fixes the bug too. It runs on Linux, so the 3 rows whose bug shows only on Windows or macOS are not proved; one of them, the `rtk-proxy` health check, has no test yet.
 
-| Area | Change |
-| --- | --- |
-| Windows arguments | Arguments passed through MSYS keep their exact text: `#\[ignore`, `*.rs`, `{a,b}`, `~` and `don't` are no longer rewritten ([rtk-ai/rtk#4737](https://github.com/rtk-ai/rtk/issues/4737)). |
-| `cargo test` | Compiler warnings on a passing run are shown, and the summary ends `[N compiler warnings]`; they were dropped, and with exit 0 no copy was kept. Ported from [CryptoKrad/rtk](https://github.com/CryptoKrad/rtk/commit/b95acce4841b2ece7f068cce596490ffc7a59739) (Apache-2.0; [rtk-ai/rtk#2877](https://github.com/rtk-ai/rtk/pull/2877)). |
-| `rtk rg` on Windows | A pathless `rtk rg foo` with no piped or redirected stdin keeps every filename, following ripgrep's own stdin rule. |
-| `grep` and `rg` | Output is capped only when that saves at least a third or is the only form under `[limits] agent_output_max_chars`. Long lines are clipped around the match, located in the engine's own pattern dialect. `grep_max_results` is honoured, and a partial `[limits]` table no longer drops the whole config. |
-| `git diff` | Shown verbatim up to `agent_output_max_chars`. Above it, a compacted diff or show ends with `[full output: rtk recall <hash>]`, or `[full diff: rtk git diff --no-compact]` when recall cannot store it. |
-| Progress output | Filters see what a terminal shows: a lone `\r` or `\b` redraw is collapsed before they parse, so a progress bar reads as its last state. Raw output, the tee and `rtk recall` keep the exact bytes. Adapted from [ftlpickleball/rtk](https://github.com/ftlpickleball/rtk/commit/d98ffa47fc17e2a22d0e067efea4d78190ace882) (Apache-2.0), which reworks [rtk-ai/rtk#2581](https://github.com/rtk-ai/rtk/pull/2581) by YOMXXX. |
-| `rtk read` | Exact line ranges, and a missing-file error worded as `cat` words it. |
-| `gh api` | GitHub API `*_url` links are dropped, with the whole response kept for `rtk recall`. Anything left unfiltered is written back byte for byte, and `--jq` and `--template` are untouched. |
-| `yadm` | Removed from the `git` rewrite rule, which would run git on the current project instead of yadm's dotfiles repository. It goes through `rtk yadm`, and `rtk discover` lists it as unhandled, as it does `jq` and other commands with only a TOML filter. From [kylehgc/rtk](https://github.com/kylehgc/rtk/commit/1d672725f8cf9d43da32212310dd7abb5bca814d) by RawNuke (Apache-2.0); see [rtk-ai/rtk#3408](https://github.com/rtk-ai/rtk/issues/3408). |
-| PHP tool paths | A tool path the shell expands or that holds shell syntax, such as `$ROOT/vendor/bin/phpunit` or `~/x/vendor/bin/pint`, is no longer cut down to the bare tool, which ran the current project's copy instead of the one the path names. Found by the `rewrite` fuzz target. |
-| Unusual whitespace | A command holding whitespace Bash does not split words at, such as a vertical tab or a no-break space, runs as written. The rewriter split there, which could turn `>&2` into a redirect of another descriptor. Found by the `rewrite` fuzz target. |
-| `rtk-proxy` key lending | The relayed provider key is lent only to a keyless request carrying the `x-rtk-proxy` header (which `rtk <task>` sends) with a `localhost` or IP `Host`, so a web page, including a DNS-rebound one, cannot spend it. |
-| `rtk-proxy` health check | A server on the proxy port that answers and hangs up early reads as not the proxy. On macOS the check, which the session-start hook also runs, could panic inside ureq instead ([rtk-ai/rtk#4912](https://github.com/rtk-ai/rtk/issues/4912)). |
-| `rtk gain` | The summary, per-command and daily, weekly and monthly tables count an oversised row at a fixed 7,500-token cap, and the headline figure is net. |
-| `rtk session` | Ends with Bash's share of all tool output in recent sessions, the denominator `rtk gain` lacks, and says what the figure leaves out. |
-| `rtk cc-economics` | Without a global ccusage, the `npx` fallback runs the exact ccusage release pinned in `src/analytics/ccusage-pin/package.json`, which Dependabot bumps, instead of whatever npm serves as latest. |
+| Area | Upstream | Change |
+| --- | --- | --- |
+| Windows arguments | Not proved: Windows only | Arguments passed through MSYS keep their exact text: `#\[ignore`, `*.rs`, `{a,b}`, `~` and `don't` are no longer rewritten ([rtk-ai/rtk#4737](https://github.com/rtk-ai/rtk/issues/4737)). |
+| `cargo test` | Not in upstream | Compiler warnings on a passing run are shown, and the summary ends `[N compiler warnings]`; they were dropped, and with exit 0 no copy was kept. Ported from [CryptoKrad/rtk](https://github.com/CryptoKrad/rtk/commit/b95acce4841b2ece7f068cce596490ffc7a59739) (Apache-2.0; [rtk-ai/rtk#2877](https://github.com/rtk-ai/rtk/pull/2877)). |
+| `rtk rg` on Windows | Not proved: Windows only | A pathless `rtk rg foo` with no piped or redirected stdin keeps every filename, following ripgrep's own stdin rule. |
+| `grep` and `rg` | Not in upstream | Output is capped only when that saves at least a third or is the only form under `[limits] agent_output_max_chars`. Long lines are clipped around the match, located in the engine's own pattern dialect. `grep_max_results` is honoured, and a partial `[limits]` table no longer drops the whole config. |
+| `git diff` | Not in upstream | Shown verbatim up to `agent_output_max_chars`. Above it, a compacted diff or show ends with `[full output: rtk recall <hash>]`, or `[full diff: rtk git diff --no-compact]` when recall cannot store it. |
+| Progress output | Not in upstream | Filters see what a terminal shows: a lone `\r` or `\b` redraw is collapsed before they parse, so a progress bar reads as its last state. Raw output, the tee and `rtk recall` keep the exact bytes. Adapted from [ftlpickleball/rtk](https://github.com/ftlpickleball/rtk/commit/d98ffa47fc17e2a22d0e067efea4d78190ace882) (Apache-2.0), which reworks [rtk-ai/rtk#2581](https://github.com/rtk-ai/rtk/pull/2581) by YOMXXX. |
+| `rtk read` | Not in upstream | Exact line ranges, and a missing-file error worded as `cat` words it. |
+| `gh api` | Not in upstream | GitHub API `*_url` links are dropped, with the whole response kept for `rtk recall`. Anything left unfiltered is written back byte for byte, and `--jq` and `--template` are untouched. |
+| `yadm` | Not in upstream | Removed from the `git` rewrite rule, which would run git on the current project instead of yadm's dotfiles repository. It goes through `rtk yadm`, and `rtk discover` lists it as unhandled, as it does `jq` and other commands with only a TOML filter. From [kylehgc/rtk](https://github.com/kylehgc/rtk/commit/1d672725f8cf9d43da32212310dd7abb5bca814d) by RawNuke (Apache-2.0); see [rtk-ai/rtk#3408](https://github.com/rtk-ai/rtk/issues/3408). |
+| PHP tool paths | Not in upstream | A tool path the shell expands or that holds shell syntax, such as `$ROOT/vendor/bin/phpunit` or `~/x/vendor/bin/pint`, is no longer cut down to the bare tool, which ran the current project's copy instead of the one the path names. Found by the `rewrite` fuzz target. |
+| Unusual whitespace | Not in upstream | A command holding whitespace Bash does not split words at, such as a vertical tab or a no-break space, runs as written. The rewriter split there, which could turn `>&2` into a redirect of another descriptor. Found by the `rewrite` fuzz target. |
+| `rtk-proxy` key lending | Not in upstream | The relayed provider key is lent only to a keyless request carrying the `x-rtk-proxy` header (which `rtk <task>` sends) with a `localhost` or IP `Host`, so a web page, including a DNS-rebound one, cannot spend it. |
+| `rtk-proxy` health check | Not proved: macOS only | A server on the proxy port that answers and hangs up early reads as not the proxy. On macOS the check, which the session-start hook also runs, could panic inside ureq instead ([rtk-ai/rtk#4912](https://github.com/rtk-ai/rtk/issues/4912)). |
+| `rtk gain` | Not in upstream | The summary, per-command and daily, weekly and monthly tables count an oversized row at a fixed 7,500-token cap, and the headline figure is net. |
+| `rtk session` | Not in upstream | Ends with Bash's share of all tool output in recent sessions, the denominator `rtk gain` lacks, and says what the figure leaves out. |
+| `rtk cc-economics` | Not in upstream | Without a global ccusage, the `npx` fallback runs the exact ccusage release pinned in `src/analytics/ccusage-pin/package.json`, which Dependabot bumps, instead of whatever npm serves as latest. |
 
-Generally useful fixes are offered upstream as draft pull requests, listed in [FORKS.md](https://github.com/yungSNAT/yungSNAT/blob/main/FORKS.md).
+These fixes are not currently offered upstream. Past contributions to RTK are listed in [FORKS.md](https://github.com/yungSNAT/yungSNAT/blob/main/FORKS.md).
 
 ## Inherited from RTK
 
@@ -291,6 +291,8 @@ RTK collects **no command content and no file contents**. Telemetry is anonymous
 PascalsLetter is built on [RTK](https://github.com/rtk-ai/rtk) by rtk-ai, founded by Patrick Szymkowiak, with core contributors Florian Bruniaux, Adrien Eppling, Nicolas Le Cam and Takayuki Maeda. Translations of the upstream README: [Français](README_fr.md), [中文](README_zh.md), [日本語](README_ja.md), [한국어](README_ko.md), [Español](README_es.md) and [Português](README_pt.md).
 
 The banner's lettering and emblem are drawn from Cascadia Mono and Besley glyphs (SIL OFL 1.1).
+
+[`scripts/fork-proof.sh`](scripts/fork-proof.sh) is adapted from [kylehgc/rtk](https://github.com/kylehgc/rtk/blob/6fb87aa9591f03815fe8932b7f241820e2bc9374/scripts/fork-proof.sh) (Apache-2.0).
 
 Report PascalsLetter problems in [this repository's issues](https://github.com/yungSNAT/PascalsLetter/issues). For RTK itself, use [rtk-ai/rtk](https://github.com/rtk-ai/rtk) or its [Discord](https://discord.gg/RySmvNF5kF).
 

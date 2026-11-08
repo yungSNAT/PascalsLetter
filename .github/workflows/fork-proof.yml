@@ -1,0 +1,40 @@
+name: Fork proof
+
+# Each row of README's 'What PascalsLetter changes' needs a test that passes here
+# and fails on upstream RTK. Weekly, this fails once upstream fixes one of them.
+
+on:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+  # Every PR: a change to a row, a test, the code or a dependency can break it.
+  pull_request:
+    branches: [develop]
+
+concurrency:
+  group: fork-proof-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  proof:
+    timeout-minutes: 60
+    name: fork proof
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Fetch upstream RTK
+        run: git fetch --no-tags --depth=1 https://github.com/rtk-ai/rtk.git develop:refs/remotes/upstream/develop
+      - name: Install required search tools
+        run: sudo apt-get update && sudo apt-get install -y ripgrep grep
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - name: Prove each README row against upstream
+        run: |
+          status=0
+          bash scripts/fork-proof.sh > proof.md || status=$?
+          cat proof.md >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
