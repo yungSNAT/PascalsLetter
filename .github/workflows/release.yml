@@ -9,7 +9,8 @@ name: Release
 # Only the Apache-2.0 edition ships until it is settled whether the BUSL-1.1
 # grant in engine/LICENSE covers a binary RTK AI Labs did not build, so
 # rtk-proxy (BUSL-1.1) is not shipped either. Asset names and checksums.txt
-# follow upstream's releases, so install.sh can switch by changing its REPO.
+# follow upstream's `rtk-oss` assets, so install.sh can fetch them once its
+# REPO and its default edition change.
 
 on:
   push:
@@ -164,16 +165,34 @@ jobs:
       id-token: write # sign the provenance attestation
       attestations: write
     steps:
-      - name: Require the tagged commit to be on develop
+      # Checked just before the 2 writes (attestation and draft) so that what
+      # they name is what was built.
+      - name: Require the tag to name the built commit, on develop, with no release yet
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
+          # The tag may have been moved since this run started.
+          ref=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq '.object.type + " " + .object.sha')
+          sha=${ref#* }
+          if [ "${ref%% *}" = tag ]; then
+            sha=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$sha" --jq .object.sha)
+          fi
+          if [ "$sha" != "$GITHUB_SHA" ]; then
+            echo "::error::$TAG now names $sha, not the built commit $GITHUB_SHA"
+            exit 1
+          fi
           status=$(gh api "repos/$GITHUB_REPOSITORY/compare/develop...$GITHUB_SHA" --jq .status)
           case "$status" in
             identical | behind) ;;
             *) echo "::error::$GITHUB_SHA is not on develop (compare status: $status)"; exit 1 ;;
           esac
+          # A rerun must not add a second draft for the same tag.
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::a release for $TAG already exists"
+            exit 1
+          fi
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -190,11 +209,6 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          # A rerun must not add a second draft for the same tag.
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "::error::a release for $TAG already exists"
-            exit 1
-          fi
           gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
             --title "PascalsLetter ${TAG#fork-v}" \
             --notes "The Apache-2.0 edition of rtk (\`rtk-oss\`), built from $TAG. Check an archive against \`checksums.txt\`, and its provenance with \`gh attestation verify <archive> --repo $GITHUB_REPOSITORY\`."

@@ -65,7 +65,8 @@ release.yml (a dry run: build and checksums only)
                   │ tags only
      ┌────────────▼─────────────┐
      │ draft                    │
-     │ tagged commit on develop │
+     │ tag unmoved, on develop  │
+     │ no release for it yet    │
      │ provenance attestation   │
      │ DRAFT GitHub release     │
      └──────────────────────────┘
