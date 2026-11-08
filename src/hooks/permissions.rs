@@ -2241,6 +2241,78 @@ mod tests {
     }
 
     #[test]
+    fn test_allow_reads_the_documented_wildcard_table() {
+        // The 'Wildcard patterns' table in Claude Code's permissions docs, read
+        // 8 November 2026, plus 2 shapes its rules imply: `:*` reads as ` *`, and
+        // a `*` with no space before it matches empty text, as in `ls*`.
+        let table: [(&str, &[&str], &[&str]); 10] = [
+            (
+                "npm run build",
+                &["npm run build"],
+                &["npm run build --watch"],
+            ),
+            (
+                "npm run *",
+                &["npm run build", "npm run test --watch", "npm run"],
+                &["npm install"],
+            ),
+            (
+                "git log * main",
+                &[
+                    "git log --oneline main",
+                    "git log -5 main",
+                    "git log --output=out.txt main",
+                ],
+                &["git log main", "git push origin main"],
+            ),
+            (
+                "git * main",
+                &[
+                    "git merge main",
+                    "git push origin main",
+                    "git -c core.fsmonitor=x diff main",
+                ],
+                &["git log"],
+            ),
+            ("* --version", &["node --version"], &["node -v"]),
+            ("ls *", &["ls -la", "ls"], &["lsof"]),
+            ("ls*", &["ls -la"], &[]),
+            ("* --help *", &["npm --help x"], &["npm --help"]),
+            ("ls:*", &["ls -la", "ls"], &["lsof"]),
+            ("* --help*", &["npm --help", "npm --helpful"], &["npm -h"]),
+        ];
+        let mut wrong = Vec::new();
+        for (rule, matches, misses) in table {
+            let allow = vec![rule.to_string()];
+            let expected = matches
+                .iter()
+                .map(|cmd| (cmd, PermissionVerdict::Allow))
+                .chain(misses.iter().map(|cmd| (cmd, PermissionVerdict::Default)));
+            for (cmd, want) in expected {
+                let got = check_command_with_rules(cmd, &[], &[], &allow);
+                if got != want {
+                    wrong.push(format!("{rule} on {cmd}: {got:?}, want {want:?}"));
+                }
+            }
+        }
+        assert!(wrong.is_empty(), "{wrong:#?}");
+        // 2 rows where the gate is stricter than Claude Code, which matches them:
+        // it doesn't allow them, so Claude Code decides or prompts. The gate asks
+        // about a `bash -c` script, and reads a trailing `*` with no other
+        // wildcard as a whole-word prefix.
+        for (rule, cmd) in [
+            ("* --version", "bash -c 'echo hi' --version"),
+            ("ls*", "lsof"),
+        ] {
+            assert_ne!(
+                check_command_with_rules(cmd, &[], &[], &[rule.to_string()]),
+                PermissionVerdict::Allow,
+                "{rule} on {cmd}"
+            );
+        }
+    }
+
+    #[test]
     fn test_explicit_allow_rule() {
         let allow = vec!["git status".to_string()];
         assert_eq!(
