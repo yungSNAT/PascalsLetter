@@ -674,11 +674,10 @@ pub(crate) enum ShellDialect {
 
 /// True for constructs the permission gate can't decompose, so they must never
 /// be auto-allowed: command/process substitution, quoting the lexer reads
-/// differently from bash, or a real file-target redirect (fd-dup like `2>&1`
-/// and `/dev/null` are exempt).
+/// differently from bash, a heredoc or herestring whatever its delimiter, or a
+/// real file-target redirect (fd-dup like `2>&1` and `/dev/null` are exempt).
 /// Comment text is ignored, as the shell ignores it. Separators and subshells
-/// are handled by [`split_for_permissions`], not
-/// flagged here.
+/// are handled by [`split_for_permissions`], not flagged here.
 #[cfg(test)]
 pub fn contains_unattestable_construct(cmd: &str) -> bool {
     contains_unattestable_construct_in(cmd, ShellDialect::Posix)

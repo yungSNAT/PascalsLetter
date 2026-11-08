@@ -354,8 +354,9 @@ jobs:
 
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
+      # Only output tokens are measured, so a release build would only add time.
       - name: Build rtk
-        run: cargo build --locked --release
+        run: cargo build --locked
 
       - name: Install system tools
         run: sudo apt-get install -y tree ripgrep
@@ -373,6 +374,24 @@ jobs:
 
       - name: Run benchmark
         run: ./scripts/benchmark.sh
+        env:
+          RTK_BIN: target/debug/rtk
+
+  # The one PR job building the shipped profile: LTO problems only show at this link.
+  release:
+    name: release (build)
+    needs: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - run: cargo build --locked --release
 
   # ─── AI Doc Review: develop PRs only ───
 
