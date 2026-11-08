@@ -3290,6 +3290,15 @@ fn run_add(args: &[String], verbose: u8, global_args: &[String]) -> Result<i32> 
         eprintln!("git add executed");
     }
 
+    if args.is_empty() {
+        // It staged nothing, so the summary below would describe changes staged
+        // earlier; pass git's own answer on unchanged.
+        print!("{}", result.stdout);
+        eprint!("{}", result.stderr);
+        timer.track_passthrough("git add", &tracking::passthrough_label("git add"));
+        return Ok(result.exit_code);
+    }
+
     let raw_output = format!("{}\n{}", result.stdout, result.stderr);
 
     if result.success() {
