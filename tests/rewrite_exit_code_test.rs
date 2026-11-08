@@ -235,14 +235,14 @@ fn output_written_to_a_file_is_the_raw_commands() {
     }
 }
 
-/// A bare `git add` (or `git add --`) stages nothing and says so on stderr;
-/// `rtk git add` used to run `git add .` and stage everything (rtk-ai/rtk#3408).
-/// Neither it nor a dry run may report changes staged earlier as if it had
-/// staged them.
+/// A bare `git add` stages nothing and says so on stderr; `rtk git add` used to
+/// run `git add .` and stage everything (rtk-ai/rtk#3408). No call that stages
+/// nothing may report changes staged earlier as if it had staged them.
 #[test]
 fn bare_git_add_stages_nothing_as_git_does() {
     let sb = Sandbox::new();
     std::fs::write(sb.repo().join("u.txt"), "untracked\n").expect("write");
+    std::fs::write(sb.repo().join("empty.lst"), "").expect("write");
     let status = || {
         let out = sb
             .command("git")
@@ -256,7 +256,13 @@ fn bare_git_add_stages_nothing_as_git_does() {
             let ok = sb.command("git").args(["add", "a.txt"]).status();
             assert!(ok.expect("git add a.txt").success());
         }
-        for args in [&[][..], &["--"], &["-n", "u.txt"]] {
+        for args in [
+            &[][..],
+            &["--"],
+            &["-n", "u.txt"],
+            &["-A", "--no-all"],
+            &["--pathspec-from-file", "empty.lst"],
+        ] {
             let before = status();
             let git = sb.command("git").arg("add").args(args).output();
             let git = git.expect("git add");
@@ -288,4 +294,21 @@ fn bare_git_add_stages_nothing_as_git_does() {
             );
         }
     }
+}
+
+/// A call that stages a path keeps rtk's one-line summary.
+#[test]
+fn git_add_with_a_path_keeps_the_summary() {
+    let sb = Sandbox::new();
+    let rtk = common::rtk_command()
+        .current_dir(sb.repo())
+        .env("LC_ALL", "C")
+        .args(["git", "add", "a.txt"])
+        .output()
+        .expect("rtk git add a.txt");
+    assert!(rtk.status.success(), "rtk git add a.txt failed");
+    assert_eq!(
+        String::from_utf8_lossy(&rtk.stdout),
+        "ok 1 file changed, 1 insertion(+)\n"
+    );
 }
