@@ -3273,6 +3273,34 @@ fn run_status(args: &[String], verbose: u8, global_args: &[String]) -> Result<i3
     Ok(0)
 }
 
+/// Whether `git add` with these arguments stages nothing: a dry run, or no
+/// pathspec and no `-A` or `-u` to act on the whole tree. Git then gives its
+/// own answer, whereas rtk's summary of the index would report changes staged
+/// earlier as if this call had staged them. Git's short options for `add` take
+/// no values, so a bundle such as `-nv` can be read letter by letter.
+fn add_stages_nothing(args: &[String]) -> bool {
+    let mut acts = false;
+    let mut after_separator = false;
+    for arg in args {
+        if after_separator || arg == "-" || !arg.starts_with('-') {
+            acts = true; // a pathspec
+        } else if arg == "--" {
+            after_separator = true;
+        } else if let Some(long) = arg.strip_prefix("--") {
+            match long {
+                "dry-run" => return true,
+                "all" | "update" => acts = true,
+                _ => {}
+            }
+        } else if arg.contains('n') {
+            return true;
+        } else {
+            acts |= arg.contains(['A', 'u']);
+        }
+    }
+    !acts
+}
+
 fn run_add(args: &[String], verbose: u8, global_args: &[String]) -> Result<i32> {
     let timer = tracking::TimedExecution::start();
 
@@ -3290,9 +3318,7 @@ fn run_add(args: &[String], verbose: u8, global_args: &[String]) -> Result<i32> 
         eprintln!("git add executed");
     }
 
-    if args.is_empty() {
-        // It staged nothing, so the summary below would describe changes staged
-        // earlier; pass git's own answer on unchanged.
+    if add_stages_nothing(args) {
         print!("{}", result.stdout);
         eprint!("{}", result.stderr);
         timer.track_passthrough("git add", &tracking::passthrough_label("git add"));
@@ -3325,9 +3351,8 @@ fn run_add(args: &[String], verbose: u8, global_args: &[String]) -> Result<i32> 
         if !compact.is_empty() {
             println!("{}", compact);
         } else if !result.stderr.trim().is_empty() {
-            // Nothing staged, but git had something to say about why (`git add --` answers
-            // "Nothing specified, nothing added" with a hint). Printing neither the count nor
-            // git's own explanation leaves the agent unable to tell that from a crash.
+            // Nothing staged, but git had something to say. Printing neither the count nor
+            // git's own message leaves the agent unable to tell that from a crash.
             eprintln!("{}", result.stderr.trim());
         }
 
@@ -4848,6 +4873,43 @@ mod tests {
             })
             .collect();
         assert!(envs.contains(&("LC_ALL".to_string(), "C".to_string())));
+    }
+
+    #[test]
+    fn test_add_stages_nothing() {
+        let stages_nothing = |args: &[&str]| {
+            let args: Vec<String> = args.iter().map(|a| a.to_string()).collect();
+            add_stages_nothing(&args)
+        };
+        // Git answers "Nothing specified, nothing added", or lists what a dry run would add.
+        for args in [
+            &[][..],
+            &["--"],
+            &["-v"],
+            &["-f", "--verbose"],
+            &["--no-all"],
+            &["-n", "."],
+            &["-nv", "a.txt"],
+            &["--dry-run", "-A"],
+        ] {
+            assert!(stages_nothing(args), "{args:?} stages nothing");
+        }
+        // A pathspec, or the whole tree: rtk's summary applies.
+        for args in [
+            &["."][..],
+            &["a.txt"],
+            &["--", "a.txt"],
+            &["--", "-n"],
+            &["-v", "a.txt"],
+            &["-"],
+            &["-A"],
+            &["--all"],
+            &["-u"],
+            &["--update"],
+            &["-vA"],
+        ] {
+            assert!(!stages_nothing(args), "{args:?} can stage");
+        }
     }
 
     #[test]

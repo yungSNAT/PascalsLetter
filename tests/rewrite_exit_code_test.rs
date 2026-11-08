@@ -235,9 +235,10 @@ fn output_written_to_a_file_is_the_raw_commands() {
     }
 }
 
-/// A bare `git add` stages nothing and says so on stderr; `rtk git add` used to
-/// run `git add .` and stage everything (rtk-ai/rtk#3408). It must also not
-/// report changes staged earlier as if it had staged them.
+/// A bare `git add` (or `git add --`) stages nothing and says so on stderr;
+/// `rtk git add` used to run `git add .` and stage everything (rtk-ai/rtk#3408).
+/// Neither it nor a dry run may report changes staged earlier as if it had
+/// staged them.
 #[test]
 fn bare_git_add_stages_nothing_as_git_does() {
     let sb = Sandbox::new();
@@ -255,32 +256,36 @@ fn bare_git_add_stages_nothing_as_git_does() {
             let ok = sb.command("git").args(["add", "a.txt"]).status();
             assert!(ok.expect("git add a.txt").success());
         }
-        let before = status();
-        let git = sb.command("git").arg("add").output().expect("git add");
-        assert_eq!(status(), before, "plain git add changed the index");
+        for args in [&[][..], &["--"], &["-n", "u.txt"]] {
+            let before = status();
+            let git = sb.command("git").arg("add").args(args).output();
+            let git = git.expect("git add");
+            assert_eq!(status(), before, "git add {args:?} changed the index");
 
-        let rtk = common::rtk_command()
-            .current_dir(sb.repo())
-            .env("LC_ALL", "C")
-            .args(["git", "add"])
-            .output()
-            .expect("rtk git add");
-        let case = if staged_earlier {
-            "with a change staged earlier"
-        } else {
-            "with nothing staged"
-        };
-        assert_eq!(status(), before, "rtk git add staged files, {case}");
-        assert_eq!(rtk.status.code(), git.status.code(), "exit code, {case}");
-        assert_eq!(
-            String::from_utf8_lossy(&rtk.stdout),
-            String::from_utf8_lossy(&git.stdout),
-            "stdout, {case}"
-        );
-        assert_eq!(
-            String::from_utf8_lossy(&rtk.stderr).trim(),
-            String::from_utf8_lossy(&git.stderr).trim(),
-            "stderr, {case}"
-        );
+            let rtk = common::rtk_command()
+                .current_dir(sb.repo())
+                .env("LC_ALL", "C")
+                .args(["git", "add"])
+                .args(args)
+                .output()
+                .expect("rtk git add");
+            let case = if staged_earlier {
+                format!("git add {args:?} with a change staged earlier")
+            } else {
+                format!("git add {args:?} with nothing staged")
+            };
+            assert_eq!(status(), before, "rtk staged files: {case}");
+            assert_eq!(rtk.status.code(), git.status.code(), "exit code: {case}");
+            assert_eq!(
+                String::from_utf8_lossy(&rtk.stdout),
+                String::from_utf8_lossy(&git.stdout),
+                "stdout: {case}"
+            );
+            assert_eq!(
+                String::from_utf8_lossy(&rtk.stderr).trim(),
+                String::from_utf8_lossy(&git.stderr).trim(),
+                "stderr: {case}"
+            );
+        }
     }
 }
