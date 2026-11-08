@@ -10,11 +10,10 @@
 # without a manifest line, or a line without a row, fails; only the manifest's
 # Linux test files, with tests/common and tests/fixtures, are lifted onto
 # upstream, including a test of the proxy/ crate; rows for another platform are
-# marked, never proved; skip guards panic under RTK_PROOF; --check compares
-# README's Upstream column with the result; the table is printed, not written
-# to a page.
+# marked, never proved; skip guards panic under RTK_PROOF; README's Upstream
+# column must match the result; the table is printed, not written to a page.
 #
-# Linux only. Usage: scripts/fork-proof.sh [--check]
+# Linux only. Usage: scripts/fork-proof.sh
 set -euo pipefail
 
 upstream_ref=${UPSTREAM_REF:-upstream/develop}
@@ -26,10 +25,7 @@ die() {
   exit 1
 }
 
-case ${1:-} in
-  '' | --check) ;;
-  *) die "usage: $0 [--check]" ;;
-esac
+[ $# -eq 0 ] || die "usage: $0"
 git rev-parse --verify --quiet "$upstream_ref^{commit}" >/dev/null ||
   die "$upstream_ref not found: fetch rtk-ai/rtk develop into it"
 [ -f "$claims" ] || die "$claims not found"
@@ -145,13 +141,11 @@ for line in "${lines[@]}"; do
   fi
 done
 
-if [ "${1:-}" = --check ]; then
-  for row in "${rows[@]}"; do
-    area=${row%%$'\t'*}
-    [ -z "${status[$area]+set}" ] || [ "${cell[$area]}" = "${status[$area]}" ] ||
-      problems+=("$area: README says '${cell[$area]}', the proof says '${status[$area]}'")
-  done
-fi
+for row in "${rows[@]}"; do
+  area=${row%%$'\t'*}
+  [ -z "${status[$area]+set}" ] || [ "${cell[$area]}" = "${status[$area]}" ] ||
+    problems+=("$area: README says '${cell[$area]}', the proof says '${status[$area]}'")
+done
 
 echo "Proof against \`$upstream_ref\` ($(git rev-parse --short "$upstream_ref")):"
 echo

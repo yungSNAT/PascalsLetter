@@ -36,7 +36,7 @@ Run `rtk init -g` to set up Claude Code; add `--copilot` for GitHub Copilot in V
 
 ## What PascalsLetter changes
 
-A weekly CI job runs [`scripts/fork-proof.sh`](scripts/fork-proof.sh), which checks the Upstream column: each row's tests must pass here and fail on upstream RTK, so the job fails once upstream fixes the bug too. It runs on Linux, so the 3 rows whose bug shows only on Windows or macOS are not proved, and the `rtk-proxy` health check has no test.
+A weekly CI job runs [`scripts/fork-proof.sh`](scripts/fork-proof.sh), which checks the Upstream column: each row's tests must pass here and fail on upstream RTK, so the job fails once upstream fixes the bug too. It runs on Linux, so the 3 rows whose bug shows only on Windows or macOS are not proved; one of them, the `rtk-proxy` health check, has no test yet.
 
 | Area | Upstream | Change |
 | --- | --- | --- |
