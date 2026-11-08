@@ -883,8 +883,12 @@ pub(crate) mod tests {
         let lines: Vec<String> = read_lines_lossy(data.as_slice()).collect();
         assert_eq!(lines.len(), 3, "got: {:?}", lines);
         assert_eq!(lines[0], "ERRO A: ascii");
-        assert!(lines[1].starts_with("ERRO B: "), "got: {:?}", lines[1]);
-        assert!(lines[1].contains('\u{FFFD}'), "got: {:?}", lines[1]);
+        // Decoded as the captured path decodes it: U+FFFD on Unix, the console's
+        // code page on Windows (cp850 reads 0xE3 as 'Ò').
+        assert_eq!(
+            lines[1],
+            crate::core::utils::decode_process_output(b"ERRO B: \xE3")
+        );
         assert_eq!(lines[2], "ERRO C: ascii again");
     }
 
