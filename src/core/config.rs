@@ -421,10 +421,29 @@ impl Config {
         Ok(())
     }
 
+    /// Write the default config.toml, refusing to replace one that exists: it holds
+    /// the user's settings, and `rtk config --create` used to reset them silently.
     pub fn create_default() -> Result<PathBuf> {
-        let config = Config::default();
-        config.save()?;
-        get_config_path()
+        use std::io::Write;
+        let path = get_config_path()?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let content = toml::to_string_pretty(&Config::default())?;
+        let mut file = match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
+            Ok(file) => file,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => anyhow::bail!(
+                "{} already exists and was left unchanged; delete it first to recreate the defaults",
+                path.display()
+            ),
+            Err(e) => return Err(e.into()),
+        };
+        file.write_all(content.as_bytes())?;
+        Ok(path)
     }
 }
 
