@@ -3273,25 +3273,51 @@ fn run_status(args: &[String], verbose: u8, global_args: &[String]) -> Result<i3
     Ok(0)
 }
 
+/// Whether rtk's summary fits `git add` with these arguments: the call names
+/// paths or takes the whole tree with `-A` or `-u`, and has no option beyond
+/// `-v` and `-f`. Any other call passes git's own answer on, because one that
+/// stages nothing (`git add --`, a dry run, `-A --no-all`, an empty
+/// `--pathspec-from-file`) would otherwise get a summary of the whole index,
+/// reporting changes staged earlier as if this call had staged them.
+fn add_summary_fits(args: &[String]) -> bool {
+    let mut stages = false;
+    let mut after_separator = false;
+    for arg in args {
+        if after_separator || arg == "-" || !arg.starts_with('-') {
+            stages = true; // a pathspec
+        } else if arg == "--" {
+            after_separator = true;
+        } else if matches!(arg.as_str(), "-A" | "--all" | "-u" | "--update") {
+            stages = true;
+        } else if !matches!(arg.as_str(), "-v" | "--verbose" | "-f" | "--force") {
+            return false;
+        }
+    }
+    stages
+}
+
 fn run_add(args: &[String], verbose: u8, global_args: &[String]) -> Result<i32> {
     let timer = tracking::TimedExecution::start();
 
     let mut cmd = git_cmd(global_args);
     cmd.arg("add");
 
-    // Pass all arguments directly to git (flags like -A, -p, --all, etc.)
-    if args.is_empty() {
-        cmd.arg(".");
-    } else {
-        for arg in args {
-            cmd.arg(arg);
-        }
-    }
+    // Pass every argument to git as typed: a bare `git add` stages nothing, and
+    // rtk must not turn it into `git add .`. Adapted from kylehgc/rtk 1d672725
+    // by RawNuke (Apache-2.0); see rtk-ai/rtk#3408.
+    cmd.args(args);
 
     let result = exec_capture(&mut cmd).context("Failed to run git add")?;
 
     if verbose > 0 {
         eprintln!("git add executed");
+    }
+
+    if !add_summary_fits(args) {
+        print!("{}", result.stdout);
+        eprint!("{}", result.stderr);
+        timer.track_passthrough("git add", &tracking::passthrough_label("git add"));
+        return Ok(result.exit_code);
     }
 
     let raw_output = format!("{}\n{}", result.stdout, result.stderr);
@@ -3320,9 +3346,8 @@ fn run_add(args: &[String], verbose: u8, global_args: &[String]) -> Result<i32> 
         if !compact.is_empty() {
             println!("{}", compact);
         } else if !result.stderr.trim().is_empty() {
-            // Nothing staged, but git had something to say about why (`git add --` answers
-            // "Nothing specified, nothing added" with a hint). Printing neither the count nor
-            // git's own explanation leaves the agent unable to tell that from a crash.
+            // Nothing staged, but git had something to say. Printing neither the count nor
+            // git's own message leaves the agent unable to tell that from a crash.
             eprintln!("{}", result.stderr.trim());
         }
 
@@ -4843,6 +4868,50 @@ mod tests {
             })
             .collect();
         assert!(envs.contains(&("LC_ALL".to_string(), "C".to_string())));
+    }
+
+    #[test]
+    fn test_add_summary_fits() {
+        let fits = |args: &[&str]| {
+            let args: Vec<String> = args.iter().map(|a| a.to_string()).collect();
+            add_summary_fits(&args)
+        };
+        // Paths, or the whole tree: rtk's summary applies.
+        for args in [
+            &["."][..],
+            &["a.txt"],
+            &["--", "a.txt"],
+            &["--", "-n"],
+            &["-v", "a.txt"],
+            &["-f", "--verbose", "a.txt"],
+            &["-"],
+            &["-A"],
+            &["--all"],
+            &["-u"],
+            &["--update"],
+        ] {
+            assert!(fits(args), "{args:?} gets the summary");
+        }
+        // Git answers "Nothing specified, nothing added" or lists what a dry
+        // run would add; other options pass git's answer on whatever they do.
+        for args in [
+            &[][..],
+            &["--"],
+            &["-v"],
+            &["-f", "--verbose"],
+            &["-A", "--no-all"],
+            &["--ignore-removal"],
+            &["--pathspec-from-file", "paths.txt"],
+            &["--pathspec-from-file=paths.txt"],
+            &["-n", "."],
+            &["--dry", "a.txt"],
+            &["-nv", "a.txt"],
+            &["-n", "--no-dry-run", "a.txt"],
+            &["-vA"],
+            &["--chmod=+x", "a.txt"],
+        ] {
+            assert!(!fits(args), "{args:?} passes git's answer on");
+        }
     }
 
     #[test]

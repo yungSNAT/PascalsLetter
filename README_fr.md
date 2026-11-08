@@ -163,7 +163,7 @@ rtk diff file1 file2            # Diff condense (code 0 : identiques, 1 : differ
 rtk git status                  # Status compact
 rtk git log -n 10               # Commits sur une ligne
 rtk git diff                    # Diff condense
-rtk git add                     # -> "ok"
+rtk git add .                   # -> "ok"
 rtk git commit -m "msg"         # -> "ok abc1234"
 rtk git push                    # -> "ok main"
 ```
