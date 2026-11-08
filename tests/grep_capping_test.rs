@@ -6,6 +6,71 @@
 
 mod common;
 
+/// A local run may skip a search case whose engine is missing. CI must not, nor may
+/// `scripts/fork-proof.sh`, where a skipped test would print `ok` and read as proof.
+fn may_skip() -> bool {
+    std::env::var_os("CI").is_none() && std::env::var_os("RTK_PROOF").is_none()
+}
+
+/// `config.toml` for a child rtk: a configuration directory of the test's own, kept
+/// alive with the returned `TempDir`. Linux only, where `XDG_CONFIG_HOME` places it.
+#[cfg(target_os = "linux")]
+fn with_config(cmd: &mut std::process::Command, toml: &str) -> tempfile::TempDir {
+    let config = common::tempdir();
+    std::fs::create_dir(config.path().join("rtk")).expect("test setup");
+    std::fs::write(config.path().join("rtk").join("config.toml"), toml).expect("test setup");
+    cmd.env("XDG_CONFIG_HOME", config.path());
+    config
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn grep_max_results_caps_the_matches_shown() {
+    let dir = tempfile::tempdir().expect("test setup");
+    for f in 0..30 {
+        let line = format!("hit-{f:02} {}\n", "w".repeat(300));
+        std::fs::write(dir.path().join(format!("f{f:02}.txt")), line).expect("test setup");
+    }
+    // Every upstream key, so the table loads there too and only `grep_max_results` differs.
+    let mut cmd = common::rtk_command();
+    let _config = with_config(
+        &mut cmd,
+        "[limits]\ngrep_max_results = 5\ngrep_max_per_file = 25\nstatus_max_files = 15\n\
+         status_max_untracked = 10\npassthrough_max_chars = 2000\n",
+    );
+    let out = cmd
+        .args(["grep", "-r", "hit-", "."])
+        .current_dir(dir.path())
+        .output()
+        .expect("rtk grep");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+
+    let shown = (0..30)
+        .filter(|f| stdout.contains(&format!("hit-{f:02}")))
+        .count();
+    assert_eq!(shown, 5, "{stdout:.600}");
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_partial_limits_table_keeps_the_rest_of_the_config() {
+    let mut cmd = common::rtk_command();
+    let _config = with_config(
+        &mut cmd,
+        "[hooks]\nexclude_commands = [\"git\"]\n\n[limits]\ngrep_max_results = 50\n",
+    );
+    let out = cmd
+        .args(["rewrite", "git status"])
+        .output()
+        .expect("rtk rewrite");
+
+    assert!(
+        out.stdout.is_empty(),
+        "git was excluded, yet rewritten: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+}
+
 #[test]
 fn a_small_overflow_of_the_per_file_cap_prints_every_match_in_full() {
     let dir = tempfile::tempdir().expect("test setup");
@@ -168,8 +233,8 @@ fn assert_every_clip_keeps_in(
     if let Err(error) = probe {
         if error.kind() == std::io::ErrorKind::NotFound {
             assert!(
-                std::env::var_os("CI").is_none(),
-                "CI requires {} on PATH; search coverage must not be skipped",
+                may_skip(),
+                "CI and fork-proof runs require {} on PATH; search coverage must not be skipped",
                 args[0]
             );
             eprintln!("skipped: {} is not installed", args[0]);
@@ -221,8 +286,8 @@ fn a_pcre_lookbehind_keeps_its_match() {
         .is_ok_and(|o| o.status.success());
     if !pcre {
         assert!(
-            std::env::var_os("CI").is_none(),
-            "CI requires ripgrep with PCRE2 support"
+            may_skip(),
+            "CI and fork-proof runs require ripgrep with PCRE2 support"
         );
         return;
     }

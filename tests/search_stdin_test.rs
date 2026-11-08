@@ -13,13 +13,19 @@ fn rtk() -> Command {
 }
 
 /// Each test guards on the engine it actually drives -- guarding an rg test on grep (or the
-/// reverse) turns a missing tool into a silent pass rather than a skip.
+/// reverse) turns a missing tool into a silent pass rather than a skip. `scripts/fork-proof.sh`
+/// takes no skip: there a skipped test would print `ok` and read as proof.
 fn engine_available(engine: &str) -> bool {
-    Command::new(engine)
+    let available = Command::new(engine)
         .arg("--version")
         .output()
         .map(|o| o.status.success())
-        .unwrap_or(false)
+        .unwrap_or(false);
+    assert!(
+        available || std::env::var_os("RTK_PROOF").is_none(),
+        "a fork-proof run requires {engine} on PATH"
+    );
+    available
 }
 
 #[test]

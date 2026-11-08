@@ -1,0 +1,52 @@
+# Proof of each row of README's 'What PascalsLetter changes' table, run by
+# scripts/fork-proof.sh. One line per proving test, tab-separated:
+#   area      the README row's first cell, verbatim
+#   platform  linux, windows, macos or none; only linux tests run today
+#   target    the test file; proxy/tests/... runs in the proxy crate
+#   test      a test that passes here and fails on upstream RTK
+# A row without a test for Linux has `-` for target and test, and a reason.
+# Tests that also pass on upstream are guards, not proof, and stay out.
+Windows arguments	windows	-	-	# MSYS quoting runs only on Windows; its tests are unit tests
+`rtk rg` on Windows	windows	tests/search_stdin_test.rs	rg_shows_filenames_when_stdin_is_not_a_pipe	# the stdin misreading shows only on Windows
+`rtk-proxy` health check	macos	-	-	# the ureq panic shows only on macOS; no test yet
+`grep` and `rg`	linux	tests/grep_capping_test.rs	grep_max_results_caps_the_matches_shown
+`grep` and `rg`	linux	tests/grep_capping_test.rs	a_partial_limits_table_keeps_the_rest_of_the_config
+`grep` and `rg`	linux	tests/grep_capping_test.rs	a_small_overflow_of_the_per_file_cap_prints_every_match_in_full
+`grep` and `rg`	linux	tests/grep_capping_test.rs	grouped_output_is_kept_when_only_it_fits_the_agent_cap
+`grep` and `rg`	linux	tests/grep_capping_test.rs	an_rg_config_cannot_make_the_locator_choose_a_unicode_decoy
+`grep` and `rg`	linux	tests/grep_capping_test.rs	a_case_sensitive_clip_skips_a_differently_cased_lookalike
+`grep` and `rg`	linux	tests/grep_capping_test.rs	a_pcre_lookbehind_keeps_its_match
+`grep` and `rg`	linux	tests/grep_capping_test.rs	a_smart_case_clip_keeps_an_escaped_uppercase_match
+`grep` and `rg`	linux	tests/grep_capping_test.rs	a_whole_word_clip_keeps_the_standalone_word
+`grep` and `rg`	linux	tests/grep_capping_test.rs	a_mid_pattern_bre_caret_keeps_its_match
+`grep` and `rg`	linux	tests/grep_capping_test.rs	an_anchor_is_not_matched_after_trimming
+`grep` and `rg`	linux	tests/grep_capping_test.rs	a_c_locale_space_class_keeps_its_match
+`grep` and `rg`	linux	tests/grep_capping_test.rs	a_utf8_negated_class_keeps_its_match
+`grep` and `rg`	linux	tests/grep_capping_test.rs	a_whole_line_match_keeps_the_line
+`grep` and `rg`	linux	tests/grep_capping_test.rs	a_very_long_unlocated_line_is_cut_and_says_so
+`grep` and `rg`	linux	tests/grep_capping_test.rs	a_match_longer_than_the_window_keeps_its_end
+`rtk read`	linux	tests/read_range_test.rs	ranges_preserve_selected_bytes_for_files_and_stdin
+`rtk read`	linux	tests/read_range_test.rs	ranges_default_to_the_first_line_and_number_original_lines
+`rtk read`	linux	tests/read_range_test.rs	ranges_apply_to_each_file_and_read_stdin_once
+`rtk read`	linux	tests/read_range_test.rs	ranges_reject_ambiguous_or_invalid_arguments
+`rtk read`	linux	tests/read_range_test.rs	invalid_ranges_with_root_options_still_report_usage_errors
+`rtk read`	linux	tests/read_range_test.rs	zero_count_still_reports_a_missing_file
+`rtk read`	linux	tests/read_range_test.rs	range_stdin_returns_before_the_writer_closes
+`rtk read`	linux	tests/read_range_test.rs	range_errors_do_not_prevent_later_files_from_being_read
+`rtk read`	linux	tests/read_range_test.rs	range_accounting_counts_selected_bytes_without_decoding_them
+`rtk read`	linux	tests/read_range_test.rs	ranges_honour_file_policy_even_for_zero_count
+`rtk read`	linux	tests/read_range_test.rs	ranges_are_evaluated_as_partial_reads_by_policy
+`gh api`	linux	tests/gh_api_test.rs	links_are_dropped_and_the_whole_response_is_recallable
+`gh api`	linux	tests/gh_api_test.rs	links_stay_when_the_recall_store_cannot_be_written
+`git diff`	linux	tests/guard_integration_test.rs	git_diff_is_shown_whole_below_the_full_diff_budget
+`git diff`	linux	tests/guard_integration_test.rs	git_diff_over_the_full_diff_budget_is_still_compacted
+`git diff`	linux	tests/guard_integration_test.rs	a_truncated_git_show_recalls_the_whole_commit
+`rtk-proxy` key lending	linux	proxy/tests/functional.rs	the_relayed_key_is_lent_only_to_a_local_worker
+`rtk session`	linux	tests/session_tool_output_test.rs	share_counts_every_tool_in_both_content_forms_and_sessions_without_bash
+`cargo test`	linux	tests/fork_output_test.rs	cargo_test_keeps_compiler_warnings_on_a_passing_run
+Progress output	linux	tests/fork_output_test.rs	a_progress_redraw_reaches_the_filter_as_its_last_state
+`rtk gain`	linux	tests/fork_output_test.rs	gain_counts_an_oversized_row_at_the_cap_and_nets_a_worse_one
+`rtk cc-economics`	linux	tests/fork_output_test.rs	cc_economics_npx_fallback_names_an_exact_ccusage_release
+`yadm`	linux	tests/fork_rewrite_test.rs	yadm_goes_through_rtk_yadm_not_rtk_git
+PHP tool paths	linux	tests/fork_rewrite_test.rs	a_php_tool_path_the_shell_expands_keeps_the_path
+Unusual whitespace	linux	tests/fork_rewrite_test.rs	whitespace_bash_does_not_split_at_is_not_rewritten
