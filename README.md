@@ -34,6 +34,51 @@ PascalsLetter and upstream RTK both install `rtk`, so uninstall any Homebrew, wi
 
 Run `rtk init -g` to set up Claude Code; add `--copilot` for GitHub Copilot in VS Code. [Inherited from RTK](#inherited-from-rtk) covers the commands and other agents.
 
+### When it helps
+
+rtk changes only what your agent's shell tool returns, and does most for test runs, `git` and search ([What RTK Does](#what-rtk-does)). Output from Claude Code's Read, Grep and Glob tools never reaches the hook, and agents set up through a rules file (Windsurf, Cline, Kilo Code and Kimi AI) use rtk only when they type `rtk` themselves. `rtk session` ends with Bash's share of all tool output in your last 10 Claude Code sessions, which is the most rtk can reduce. Less output is not a smaller bill: see [How Savings Work](#how-savings-work).
+
+When you need a command's exact output, run it through `rtk bypass` ([Escape hatches](#escape-hatches)), or list it under `[hooks] exclude_commands` in `config.toml` so the hook never rewrites it. Output that ends `[full output: rtk recall <hash>]` can be read back in full with that command.
+
+### Set it beside your agent's output limit
+
+Each agent cuts a command's output at its own limit, and rtk keeps a copy of that limit: `agent_output_max_chars` in the `[limits]` table of `config.toml`, 30,000 characters by default. A `git diff` up to that size is shown whole and a larger one is compacted with an `rtk recall` line. `grep` and `rg` output is grouped by file when that saves a third, or when only the grouped form fits under the limit.
+
+Set it to your agent's limit or a little under. rtk counts the characters a command prints, whilst an agent may count bytes or tokens and add stderr or its own headers. If rtk's figure is the larger, a diff between the 2 sizes reaches the agent whole and the agent cuts it, losing the compact form and its recall line: Claude Code, for example, hands over a file path and a 2,000-character preview instead. If you raise your agent's limit, raise rtk's with it.
+
+| Agent | Setting | Default |
+| --- | --- | --- |
+| [Claude Code](https://code.claude.com/docs/en/settings-reference#bashoutputmaxchars) | `bashOutputMaxChars` in `settings.json` | 30,000 characters |
+| [Codex](https://developers.openai.com/codex/config-reference) | `tool_output_token_limit` in `~/.codex/config.toml` | set per model: 10,000 tokens, about 40,000 bytes |
+| [Gemini CLI](https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/configuration.md) | `tools.truncateToolOutputThreshold` in `~/.gemini/settings.json` | 40,000 characters |
+| [OpenCode](https://opencode.ai/config.json) | `tool_output.max_bytes` in `opencode.json` | 51,200 bytes |
+| [Hermes](https://hermes-agent.nousresearch.com/docs/user-guide/configuration) | `tool_output.max_bytes` in `~/.hermes/config.yaml` | 50,000 characters |
+| [Mistral Vibe](https://github.com/mistralai/mistral-vibe/blob/main/vibe/core/tools/builtins/bash.py) | `max_output_bytes` under `[tools.bash]` in Vibe's `config.toml` | 16,000 bytes |
+
+Checked on 8 November 2026; agents change these between releases. Vibe's figure comes from its source code, as its documentation does not list the key. No documented setting was found for the other agents rtk supports.
+
+rtk's default fits every agent above at its default except Mistral Vibe. For Vibe, or after lowering your agent's limit, set it in rtk's `config.toml`; `rtk config` prints the file's path and the values in force. Edit the file by hand: `rtk config --create` replaces an existing one with defaults.
+
+```toml
+[limits]
+agent_output_max_chars = 15000
+```
+
+### Check that rewriting happened
+
+Restart your agent after `rtk init`, ask it to run `git status`, then run:
+
+```bash
+rtk gain --history        # ends with the last 10 commands rtk ran, newest first
+rtk init --show           # the hooks rtk installed for Claude Code, OpenCode and Cursor
+rtk init --show --codex
+rtk discover              # Claude Code: commands rtk handles that ran without it
+```
+
+If the hook rewrote the command, `rtk gain --history` lists `rtk git status` under Recent Commands, with the time, a marker for the size of the cut, the share removed and the estimated tokens saved. `rtk discover` reads Claude Code's session logs and the hook's record of each decision: 'Already using RTK' counts the commands rtk handled, and a command under 'MISSED SAVINGS' ran without it, which usually means the hook was not active in that session.
+
+`rtk session` cannot confirm the hook: its Adoption column counts every command rtk could handle, rewritten or not.
+
 ## What PascalsLetter changes
 
 CI runs [`scripts/fork-proof.sh`](scripts/fork-proof.sh) weekly and on every pull request. It checks the Upstream column: each row's tests must pass here and fail on upstream RTK, so the job fails once upstream fixes the bug too. It runs on Linux, so the 3 rows whose bug shows only on Windows or macOS are not proved; one of them, the `rtk-proxy` health check, has no test yet.
