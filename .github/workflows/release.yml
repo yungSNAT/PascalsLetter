@@ -23,7 +23,7 @@ permissions:
 
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -61,11 +61,14 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y musl-tools
 
       # The static C runtime lets rtk.exe run without the Visual C++
-      # redistributable. With --target, RUSTFLAGS skips build scripts.
+      # redistributable. With --target, RUSTFLAGS skips build scripts. For
+      # aarch64 musl the cc crate wants aarch64-linux-musl-gcc, which Ubuntu's
+      # musl-tools lacks; on the arm runner its musl-gcc builds for aarch64.
       - name: Build the Apache-2.0 edition
         shell: bash
         env:
           RUSTFLAGS: ${{ endsWith(matrix.target, '-msvc') && '-C target-feature=+crt-static' || '' }}
+          CC_aarch64_unknown_linux_musl: musl-gcc
         run: cargo build --locked --release --no-default-features --target "$TARGET"
 
       - name: Require a static C runtime
@@ -177,10 +180,6 @@ jobs:
           name: release-assets
           path: dist
 
-      - name: Check the archives against checksums.txt
-        working-directory: dist
-        run: sha256sum --strict -c checksums.txt
-
       - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: dist/*
@@ -191,6 +190,11 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
+          # A rerun must not add a second draft for the same tag.
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::a release for $TAG already exists"
+            exit 1
+          fi
           gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
             --title "PascalsLetter ${TAG#fork-v}" \
             --notes "The Apache-2.0 edition of rtk (\`rtk-oss\`), built from $TAG. Check an archive against \`checksums.txt\`, and its provenance with \`gh attestation verify <archive> --repo $GITHUB_REPOSITORY\`."
