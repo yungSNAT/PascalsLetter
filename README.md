@@ -36,7 +36,7 @@ Run `rtk init -g` to set up Claude Code; add `--copilot` for GitHub Copilot in V
 
 ### When it helps
 
-rtk changes only what your agent's shell tool returns, and does most for test runs, `git` and search ([What RTK Does](#what-rtk-does)). Output from Claude Code's Read, Grep and Glob tools never reaches the hook, and agents set up through a rules file (Windsurf, Cline, Kilo Code and Kimi AI) use rtk only when they type `rtk` themselves. `rtk session` ends with Bash's share of all tool output in your last 10 Claude Code sessions, which is the most rtk can reduce. Less output is not a smaller bill: see [How Savings Work](#how-savings-work).
+rtk changes only what your agent's shell tool returns, and does most for test runs, `git` and search ([What RTK Does](#what-rtk-does)). Output from Claude Code's Read, Grep and Glob tools never reaches the hook, and agents set up through a rules file (Windsurf, Cline, Kilo Code and Kimi AI) use rtk only when they type `rtk` themselves. `rtk session` reports Bash's share of all tool output in your last 10 Claude Code sessions, which is the most rtk can reduce. Less output is not a smaller bill: see [How Savings Work](#how-savings-work).
 
 When you need a command's exact output, run it through `rtk bypass` ([Escape hatches](#escape-hatches)), or list it under `[hooks] exclude_commands` in `config.toml` so the hook never rewrites it. Output that ends `[full output: rtk recall <hash>]` can be read back in full with that command.
 
@@ -57,7 +57,7 @@ Set it to your agent's limit or a little under. rtk counts the characters a comm
 
 Checked on 8 November 2026; agents change these between releases. Vibe's figure comes from its source code, as its documentation does not list the key. No documented setting was found for the other agents rtk supports.
 
-rtk's default fits every agent above at its default except Mistral Vibe. For Vibe, or after lowering your agent's limit, set it in rtk's `config.toml`; `rtk config` prints the file's path and the values in force. Edit the file by hand: `rtk config --create` replaces an existing one with defaults.
+For mostly ASCII output, rtk's default fits every agent above at its default except Mistral Vibe; other scripts take more than one byte per character. For Vibe, or after lowering your agent's limit, set it in rtk's `config.toml`; `rtk config` prints the file's path and the values in force. Edit the file by hand: `rtk config --create` replaces an existing one with defaults.
 
 ```toml
 [limits]
