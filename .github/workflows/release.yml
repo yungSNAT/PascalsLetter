@@ -168,6 +168,7 @@ jobs:
       # Checked just before the 2 writes (attestation and draft) so that what
       # they name is what was built.
       - name: Require the tag to name the built commit, on develop, with no release yet
+        id: guard
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
@@ -176,6 +177,7 @@ jobs:
           # The tag may have been moved since this run started.
           ref=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq '.object.type + " " + .object.sha')
           sha=${ref#* }
+          echo "tag-object=$sha" >> "$GITHUB_OUTPUT"
           if [ "${ref%% *}" = tag ]; then
             sha=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$sha" --jq .object.sha)
           fi
@@ -188,8 +190,10 @@ jobs:
             identical | behind) ;;
             *) echo "::error::$GITHUB_SHA is not on develop (compare status: $status)"; exit 1 ;;
           esac
-          # A rerun must not add a second draft for the same tag.
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          # A rerun must not add a second draft for the same tag. The list
+          # includes drafts, and a failed lookup stops the job.
+          tags=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[].tag_name')
+          if grep -qxF -- "$TAG" <<< "$tags"; then
             echo "::error::a release for $TAG already exists"
             exit 1
           fi
@@ -203,12 +207,28 @@ jobs:
         with:
           subject-path: dist/*
 
+      # The tag can still move between the check and the draft. A move before
+      # the draft stops it; a move whilst it is made fails the run, so the
+      # draft is not published as is. A ruleset blocking updates to fork-v*
+      # tags would prevent the move itself.
       - name: Create the draft release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
+          TAG_OBJECT: ${{ steps.guard.outputs.tag-object }}
         run: |
           set -euo pipefail
+          unmoved() {
+            [ "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq .object.sha)" = "$TAG_OBJECT" ]
+          }
+          if ! unmoved; then
+            echo "::error::$TAG moved after the check; no draft was made"
+            exit 1
+          fi
           gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
             --title "PascalsLetter ${TAG#fork-v}" \
             --notes "The Apache-2.0 edition of rtk (\`rtk-oss\`), built from $TAG. Check an archive against \`checksums.txt\`, and its provenance with \`gh attestation verify <archive> --repo $GITHUB_REPOSITORY\`."
+          if ! unmoved; then
+            echo "::error::$TAG moved whilst its draft was made; delete the draft, which may name another commit"
+            exit 1
+          fi
