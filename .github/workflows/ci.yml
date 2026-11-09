@@ -3,10 +3,16 @@ name: CI
 on:
   pull_request:
     branches: [develop, master]
+  # Each develop commit gets a result, and only develop saves the Rust caches,
+  # which every pull request then restores. A pull request's own entries could
+  # be restored only by its reruns, and they filled the 10 GB cache limit.
+  push:
+    branches: [develop]
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Only pull request runs are cancelled, so each push to develop keeps its result.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -20,6 +26,7 @@ jobs:
   check-test-presence:
     timeout-minutes: 30
     name: test presence
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -57,6 +64,8 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref == 'refs/heads/develop' }}
         # `proxy/` is not a workspace member (it would break
         # `cargo install --git`), so it gets its own job below. Here
         # --workspace covers `rtk` + `engine`; a bare `cargo clippy` would
@@ -74,6 +83,8 @@ jobs:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref == 'refs/heads/develop' }}
       - run: cargo doc --no-deps
 
   # ─── Parallel gates (all need code to compile) ───
@@ -95,6 +106,8 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref == 'refs/heads/develop' }}
       - run: cargo fmt --manifest-path proxy/Cargo.toml --all --check
       - run: cargo clippy --manifest-path proxy/Cargo.toml --all-targets
       - run: cargo test --manifest-path proxy/Cargo.toml
@@ -118,6 +131,8 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref == 'refs/heads/develop' }}
       - run: cargo clippy --no-default-features --all-targets
       - run: cargo test --no-default-features
       # Match the crate-name column, not the whole line: the checkout path
@@ -182,6 +197,8 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref == 'refs/heads/develop' }}
       # The fish-script wrap is skipped without a resolvable `fish`, so without
       # this step `tests/fish_wrap_test.rs` asserts only the disabled path and
       # the feature's own code never runs on any runner. Windows has no wrap to
@@ -210,6 +227,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref == 'refs/heads/develop' }}
 
       - name: Install the pinned cargo-audit
         uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
@@ -233,7 +252,9 @@ jobs:
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
 
+      # The diff steps review a pull request's changes; a push to develop was reviewed as one.
       - name: Critical files check
+        if: github.event_name == 'pull_request'
         run: |
           echo "### Critical Files Modified" >> $GITHUB_STEP_SUMMARY
           CRITICAL=$(git diff --name-only origin/master...HEAD | grep -E "(runner|summary|tracking|init|pnpm_cmd|container)\.rs|Cargo\.toml|workflows/.*\.yml" || true)
@@ -254,6 +275,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
 
       - name: Dangerous patterns scan
+        if: github.event_name == 'pull_request'
         run: |
           echo "### Dangerous Code Patterns" >> $GITHUB_STEP_SUMMARY
           PATTERNS=$(git diff origin/master...HEAD | grep -E "Command::new\(\"sh\"|Command::new\(\"bash\"|\.env\(\"LD_PRELOAD|\.env\(\"PATH|reqwest::|std::net::|TcpStream|UdpSocket|unsafe \{|\.unwrap\(\) |panic!\(|todo!\(|unimplemented!\(" || true)
@@ -276,6 +298,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
 
       - name: New dependencies check
+        if: github.event_name == 'pull_request'
         run: |
           echo "### Dependencies Changes" >> $GITHUB_STEP_SUMMARY
           if git diff origin/master...HEAD Cargo.toml | grep -E "^\+.*=" | grep -v "^\+\+\+" > new_deps.txt; then
@@ -325,6 +348,8 @@ jobs:
   semgrep:
     timeout-minutes: 30
     name: semgrep security scan
+    # It scans only what a pull request changes since its base.
+    if: github.event_name == 'pull_request'
     needs: clippy
     runs-on: ubuntu-latest
     container:
@@ -353,6 +378,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref == 'refs/heads/develop' }}
 
       # Only output tokens are measured, so a release build would only add time.
       - name: Build rtk
@@ -390,6 +417,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref == 'refs/heads/develop' }}
 
       - run: cargo build --locked --release
 

@@ -1,13 +1,16 @@
 # CI/CD Flows
 
-This fork runs pull request checks in `ci.yml`, coverage after pushes to
-`develop` or manual dispatch, and draft releases in `release.yml`. Upstream's
+This fork runs pull request checks in `ci.yml`, which also runs on each push to
+`develop` and saves the Rust caches pull requests restore, coverage after pushes
+to `develop` or manual dispatch, and draft releases in `release.yml`. Upstream's
 `cd.yml`, `next-release.yml`, `release.yml` and `stale.yml` workflows are
 removed; this `release.yml` is the fork's own.
 
 ## PR Quality Gates (ci.yml)
 
-Trigger: pull_request to develop or master
+Trigger: pull_request to develop or master | push to develop (without test
+presence, semgrep and the security scan's diff steps, which review a pull
+request's changes)
 
 ```
                           ┌──────────────────┐
