@@ -75,6 +75,7 @@ fn isolate_environment_in(cmd: &mut Command, root: &Path) {
     // wants a variable sets it on the command afterwards.
     cmd.env_clear();
     cmd.envs(kept_from_parent());
+    pin_profile(cmd);
     // The git a child runs sees the same repository and configuration as the
     // raw git a test compares it with. The locale is left to the test: one
     // comparing the child's output with a native tool pins both or neither.
@@ -175,10 +176,7 @@ fn remove_at_exit(dir: &Path) {
 /// `VOLTA_HOME` are the developer's own directories, where those managers write
 /// their bookkeeping and logs, and where volta, or proto set to auto-install,
 /// installs a version a project asks for: the price of a child running the
-/// developer's toolchains at all. Under `cargo llvm-cov`, an instrumented rtk
-/// writes its profile where `LLVM_PROFILE_FILE` names, in the target directory;
-/// without it, the child writes `default_*.profraw` into its working directory,
-/// often the test's repository, and its coverage is lost.
+/// developer's toolchains at all.
 const KEPT: &[&str] = &[
     "PATH",
     "LD_LIBRARY_PATH",
@@ -211,8 +209,30 @@ const KEPT: &[&str] = &[
     "RUSTUP_TOOLCHAIN",
     "PROTO_HOME",
     "VOLTA_HOME",
-    "LLVM_PROFILE_FILE",
 ];
+
+/// Route instrumented children to the report's raw profile directory when
+/// running under `cargo llvm-cov`. Cargo puts the test executable in
+/// `<target>/llvm-cov-target/[<triple>/]<profile>/deps/`. The coverage tool
+/// merges the `.profraw` files directly in `llvm-cov-target`.
+///
+/// Pin the path ourselves: the inherited value could name a developer file,
+/// and leaving it unset makes LLVM write into the child's working repository.
+fn pin_profile(cmd: &mut Command) {
+    static COVERAGE_TARGET: LazyLock<Option<PathBuf>> = LazyLock::new(|| {
+        let exe = std::env::current_exe().ok()?;
+        exe.ancestors()
+            .skip(3)
+            .take(2)
+            .find(|dir| {
+                dir.ends_with("llvm-cov-target")
+                    && !dir.as_os_str().as_encoded_bytes().contains(&b'%')
+            })
+            .map(Path::to_path_buf)
+    });
+    let dir = COVERAGE_TARGET.as_deref().unwrap_or_else(scratch_dir);
+    cmd.env("LLVM_PROFILE_FILE", dir.join("rtk-child-%p-%m.profraw"));
+}
 
 /// What a Windows child keeps besides: the system and program directories its
 /// DLLs and tools resolve from, on every architecture, and the drive they sit

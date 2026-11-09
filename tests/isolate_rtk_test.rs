@@ -131,3 +131,44 @@ fn a_tool_rtk_runs_inherits_nothing_isolation_drops() {
     cmd.arg("proxy").args(PRINT_ENVIRONMENT);
     assert_isolated(cmd);
 }
+
+#[test]
+fn a_spawned_rtk_ignores_arbitrary_profile_paths() {
+    let repo = common::temp_git_repo();
+    let outside = common::tempdir();
+    let relative = Path::new("croft-manor.profraw");
+    let external = outside.path().join("croft-manor.profraw");
+    let mut leaks = Vec::new();
+
+    for profile in [relative, external.as_path()] {
+        let mut cmd = temp_env::with_var("LLVM_PROFILE_FILE", Some(profile), common::rtk_command);
+        let output = cmd
+            .current_dir(repo.path())
+            .arg("--version")
+            .output()
+            .expect("spawn rtk");
+        assert!(output.status.success(), "{:?}", output.stderr);
+        let inherited = cmd
+            .get_envs()
+            .any(|(name, value)| name == "LLVM_PROFILE_FILE" && value == Some(profile.as_os_str()));
+        let written = repo.path().join(profile).exists();
+        if inherited || written {
+            leaks.push((profile, inherited, written));
+        }
+    }
+    assert!(
+        leaks.is_empty(),
+        "profile path, inherited, written: {leaks:?}"
+    );
+    assert!(
+        repo.path()
+            .read_dir()
+            .expect("read test repository")
+            .all(|entry| !entry
+                .expect("repository entry")
+                .path()
+                .extension()
+                .is_some_and(|ext| ext == "profraw")),
+        "an instrumented child wrote a profile in its working repository"
+    );
+}
