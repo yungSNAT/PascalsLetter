@@ -328,6 +328,11 @@ pub(crate) fn decide_for_agent(
 /// `WorktreeCreate` hook places elsewhere is not detected, and git there is
 /// still rewritten. The rest of a chain is still rewritten:
 /// `git status && cargo build` → `git status && rtk cargo build`.
+///
+/// The guard also refuses `rtk` with any git-named word among its operands,
+/// such as `rtk grep -n git README.md` or a quoted `"git push"` (rtk-ai/rtk#4591),
+/// so a rewrite that would put one there is dropped and the whole command
+/// deferred (see [`puts_git_after_rtk`]).
 pub(crate) fn decide_for_agent_at(
     cmd: &str,
     verdict: PermissionVerdict,
@@ -363,10 +368,11 @@ fn decide_for_agent_at_with_attestation(
     cwd: Option<&str>,
 ) -> HookDecision {
     let (mut excluded, transparent_prefixes) = crate::core::config::hook_rewrite_params();
-    if cwd.is_some_and(in_claude_worktree) {
+    let worktree = cwd.is_some_and(in_claude_worktree);
+    if worktree {
         excluded.push("git".to_string());
     }
-    suppress_identity(
+    let decision = suppress_identity(
         cmd,
         decide_with_attestation(
             cmd,
@@ -376,7 +382,50 @@ fn decide_for_agent_at_with_attestation(
             attest,
             crate::discover::fish_script::try_wrap,
         ),
-    )
+    );
+    match decision {
+        HookDecision::AllowRewrite(ref rewritten) | HookDecision::AskRewrite(ref rewritten, _)
+            if worktree && puts_git_after_rtk(rewritten) =>
+        {
+            HookDecision::Defer
+        }
+        other => other,
+    }
+}
+
+/// Whether a command segment that runs `rtk` also holds a word Claude Code's
+/// worktree guard reads as git: `git`, `git.exe`, `git.real` or `git-<name>`,
+/// alone or as a path component or a word inside a quoted operand
+/// (`^git(?:\.exe|\.real|-[a-z][\w-]*)?$` in Claude Code 2.1.301, rtk-ai/rtk#4591).
+/// Both comment readings of the command are checked, and the test is
+/// deliberately broader than the guard: a false match only leaves a command
+/// uncompressed.
+fn puts_git_after_rtk(rewritten: &str) -> bool {
+    crate::discover::lexer::gate_segments(rewritten)
+        .into_iter()
+        .any(|segment| {
+            segment_words(segment).any(|w| w == "rtk") && segment_words(segment).any(is_git_name)
+        })
+}
+
+fn segment_words(segment: &str) -> impl Iterator<Item = &str> {
+    segment
+        .split(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-')))
+        .filter(|w| !w.is_empty())
+}
+
+fn is_git_name(word: &str) -> bool {
+    let word = word.to_ascii_lowercase();
+    match word.strip_prefix("git") {
+        Some("" | ".exe" | ".real") => true,
+        Some(rest) => rest.strip_prefix('-').is_some_and(|name| {
+            name.starts_with(|c: char| c.is_ascii_lowercase())
+                && name
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
+        }),
+        None => false,
+    }
 }
 
 /// Whether `cwd` is inside a worktree Claude Code manages
@@ -649,6 +698,64 @@ mod tests {
             ),
             HookDecision::AllowRewrite("rtk git status".into())
         );
+    }
+
+    /// Claude Code's worktree guard refuses `rtk` with a git-named word among
+    /// its operands (rtk-ai/rtk#4591), so in a managed worktree such a rewrite
+    /// is dropped; elsewhere, and without such a word, it stands.
+    #[test]
+    fn claude_worktree_defers_a_rewrite_that_puts_git_after_rtk() {
+        let wt = Some("/repo/.claude/worktrees/feat-x");
+        let decide = |cmd: &str, cwd: Option<&str>| {
+            decide_for_agent_at(cmd, PermissionVerdict::Allow, DenyRules::Unattested, cwd)
+        };
+        for cmd in [
+            "grep -n git README.md",
+            "rg -c git README.md",
+            r#"grep -c "git push" README.md"#,
+            "cat src/git/mod.rs",
+            "cargo build && grep -n git-lfs README.md",
+        ] {
+            assert_eq!(decide(cmd, wt), HookDecision::Defer, "{cmd}");
+            assert!(
+                matches!(decide(cmd, Some("/repo")), HookDecision::AllowRewrite(_)),
+                "{cmd} is rewritten outside a worktree"
+            );
+        }
+        assert_eq!(
+            decide("cat .gitignore", wt),
+            HookDecision::AllowRewrite("rtk read .gitignore".into())
+        );
+        assert_eq!(
+            decide("git status && grep -n TODO README.md", wt),
+            HookDecision::AllowRewrite("git status && rtk grep -n TODO README.md".into())
+        );
+    }
+
+    #[test]
+    fn git_names_match_the_worktree_guard() {
+        for word in [
+            "git",
+            "GIT",
+            "git.exe",
+            "git.real",
+            "git-lfs",
+            "git-upload-pack",
+        ] {
+            assert!(is_git_name(word), "{word}");
+        }
+        for word in [
+            ".git",
+            ".gitignore",
+            "github",
+            "gitk",
+            "git-",
+            "git-1",
+            "--git-dir",
+            "digit",
+        ] {
+            assert!(!is_git_name(word), "{word}");
+        }
     }
 
     /// The worktree exclusion is added to the user's `exclude_commands`, not

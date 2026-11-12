@@ -103,8 +103,9 @@ CI runs [`scripts/fork-proof.sh`](scripts/fork-proof.sh) weekly and on every pul
 | `rtk session` | Not in upstream | Ends with Bash's share of all tool output in recent sessions, the denominator `rtk gain` lacks, and says what the figure leaves out. |
 | `rtk cc-economics` | Not in upstream | Without a global ccusage, the `npx` fallback runs the exact ccusage release pinned in `src/analytics/ccusage-pin/package.json`, which Dependabot bumps, instead of whatever npm serves as latest. |
 | `rtk config --create` | Not in upstream | Leaves an existing `config.toml` unchanged and exits 1. It replaced the file with defaults, losing the user's settings. |
+| Claude Code worktrees | Not in upstream | In a worktree where Claude Code isolates a session, a command whose rewrite would put a git-named word after `rtk`, such as `grep -n git README.md` or a quoted `"git push"`, runs as written. Claude Code refused the rewritten command ([rtk-ai/rtk#4591](https://github.com/rtk-ai/rtk/issues/4591)). |
 
-These fixes are not currently offered upstream. Past contributions to RTK are listed in [FORKS.md](https://github.com/yungSNAT/yungSNAT/blob/main/FORKS.md).
+These fixes are not currently offered upstream. None is in a class upstream's [CONTRIBUTING.md](CONTRIBUTING.md) leaves to RTK Pro (secret redaction, PII masking or blocking commands), so each could be. Past contributions to RTK are listed in [FORKS.md](https://github.com/yungSNAT/yungSNAT/blob/main/FORKS.md).
 
 ## Inherited from RTK
 
