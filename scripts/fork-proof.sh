@@ -69,14 +69,15 @@ targets=$(for line in "${lines[@]}"; do
   [ "$platform" != linux ] || echo "$target"
 done | sort -u)
 
-# `<target> <test> ok|FAILED` for each test cargo reports, run in $1. Cargo's own
-# output goes to stderr, so a compile error stays visible.
+# `<target> <test> ok|FAILED` for each test cargo reports, run in $1 with any
+# further arguments passed to cargo. Cargo's own output goes to stderr, so a
+# compile error stays visible.
 run_tests() {
   local target crate
   for target in $targets; do
     crate=.
     case $target in */tests/*) crate=${target%%/tests/*} ;; esac
-    (cd "$1" && cargo test --locked --manifest-path "$crate/Cargo.toml" \
+    (cd "$1" && cargo test "${@:2}" --manifest-path "$crate/Cargo.toml" \
       --test "$(basename "$target" .rs)" 2>&1 || true) |
       awk -v t="$target" '{ print > "/dev/stderr" }
         /^test [^ ]+ \.\.\. (ok|FAILED)$/ { print t, $2, $4 }'
@@ -84,7 +85,7 @@ run_tests() {
 }
 
 echo "==> fork tests" >&2
-here=$(run_tests .)
+here=$(run_tests . --locked)
 
 # Under target/, which git ignores. Upstream builds in a target directory of its
 # own beside the worktree, never over the fork's binaries, and kept for the next run.
@@ -101,6 +102,9 @@ for path in $targets tests/common tests/fixtures; do
   cp -R "$path" "$upstream/$(dirname "$path")/"
 done
 echo "==> the same tests on $upstream_ref" >&2
+# Not --locked: a lockfile upstream left behind its manifest (proxy/Cargo.lock
+# on 12 November 2026) would stop the proof compiling there, which reads as a
+# missing test rather than a result.
 there=$(CARGO_TARGET_DIR=$PWD/target/fork-proof/target run_tests "$upstream")
 
 result() {
