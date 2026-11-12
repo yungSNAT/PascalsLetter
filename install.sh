@@ -1,23 +1,16 @@
 #!/usr/bin/env sh
-# rtk installer - https://github.com/rtk-ai/rtk
-# Usage: curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh
+# PascalsLetter installer - https://github.com/yungSNAT/PascalsLetter
+# Usage: curl -fsSL https://raw.githubusercontent.com/yungSNAT/PascalsLetter/develop/install.sh | sh
 
 set -e
 
-# PascalsLetter has no releases yet, so this script still downloads upstream's.
-echo "Note: this installs upstream RTK, not PascalsLetter. For PascalsLetter: cargo install --git https://github.com/yungSNAT/PascalsLetter rtk --locked" >&2
-
-REPO="rtk-ai/rtk"
+REPO="yungSNAT/PascalsLetter"
 BINARY_NAME="rtk"
-# RTK_EDITION=oss installs the Apache-2.0 edition: the same `rtk` binary built
-# without the BUSL-1.1 engine. Only the asset name changes -- the installed
-# binary is always `rtk`, so hook commands already in an agent's settings keep
-# working across editions.
-if [ "${RTK_EDITION:-}" = "oss" ]; then
-    ASSET_PREFIX="rtk-oss"
-else
-    ASSET_PREFIX="rtk"
-fi
+# PascalsLetter releases only the Apache-2.0 edition: the `rtk` binary built
+# without the BUSL-1.1 engine, in assets named `rtk-oss-<target>`. The
+# installed binary is still `rtk`, so hook commands already in an agent's
+# settings keep working.
+ASSET_PREFIX="rtk-oss"
 INSTALL_DIR="${RTK_INSTALL_DIR:-$HOME/.local/bin}"
 
 # Colors
@@ -76,7 +69,7 @@ get_latest_version() {
     fi
 
     if [ -z "$VERSION" ]; then
-        error "Failed to get latest version (GitHub API may be rate-limited; set RTK_VERSION=vX.Y.Z to pin)"
+        error "Failed to get latest version (GitHub API may be rate-limited; set RTK_VERSION=fork-vX.Y.Z to pin)"
     fi
 }
 

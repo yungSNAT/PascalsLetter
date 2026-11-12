@@ -1,8 +1,8 @@
 # RTK Installation Guide - For AI Coding Assistants
 
-> **PascalsLetter builds from source.** This guide comes from upstream RTK, and PascalsLetter has no prebuilt binaries yet.
-> Install it with `cargo install --git https://github.com/yungSNAT/PascalsLetter rtk --locked`.
-> The curl, Homebrew and winget routes below install upstream RTK, without PascalsLetter's changes.
+> **This guide comes from upstream RTK.** PascalsLetter's releases hold only the Apache-2.0 edition (`rtk-oss`); `install.sh` below installs it on Linux and macOS.
+> For the full edition, run `cargo install --git https://github.com/yungSNAT/PascalsLetter rtk --locked`.
+> The Homebrew and winget routes below install upstream RTK, without PascalsLetter's changes.
 
 ## ⚠️ Name Collision Warning
 
@@ -48,7 +48,7 @@ cargo uninstall rtk
 ### Quick Install (Linux/macOS)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/master/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/yungSNAT/PascalsLetter/develop/install.sh | sh
 ```
 
 After installation, **verify you have the correct rtk**:
@@ -81,13 +81,13 @@ rewrite system and every command filter, under Apache-2.0 alone. Pick this if
 your policy does not allow a source-available licence in the build.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | RTK_EDITION=oss sh
+curl -fsSL https://raw.githubusercontent.com/yungSNAT/PascalsLetter/develop/install.sh | sh
 brew install rtk-ai/tap/rtk-oss
 cargo install --git https://github.com/yungSNAT/PascalsLetter rtk --locked --no-default-features
 ```
 
-Release assets are named `rtk-oss-<target>`, plus `rtk-oss_amd64.deb`,
-`rtk-oss_arm64.deb`, `rtk-oss.x86_64.rpm` and `rtk-oss.aarch64.rpm`. It does not include `rtk pipeline`, PostToolUse
+PascalsLetter's release assets are `rtk-oss-<target>` archives for 5 targets
+and `checksums.txt`. It does not include `rtk pipeline`, PostToolUse
 compression, or delegation tasks.
 
 ## Project Initialization

@@ -9,8 +9,7 @@ name: Release
 # Only the Apache-2.0 edition ships until it is settled whether the BUSL-1.1
 # grant in engine/LICENSE covers a binary RTK AI Labs did not build, so
 # rtk-proxy (BUSL-1.1) is not shipped either. Asset names and checksums.txt
-# follow upstream's `rtk-oss` assets, so install.sh can fetch them once its
-# REPO and its default edition change.
+# follow upstream's `rtk-oss` assets, which install.sh fetches.
 
 on:
   push:
