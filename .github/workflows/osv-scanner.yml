@@ -2,8 +2,8 @@ name: OSV-Scanner
 
 # Checks every dependency lockfile in the repository against the OSV database
 # with OSV-Scanner's reusable workflows, which need no account or token. The
-# full scan runs weekly, on pushes to develop that change a lockfile and on
-# demand, and fails on any known vulnerability; a pull request fails only on
+# full scan runs weekly, on pushes to develop that change a lockfile or an
+# osv-scanner.toml and on demand, and fails on any known vulnerability; a pull request fails only on
 # vulnerabilities it adds. Results go to the Security tab.
 on:
   schedule:
@@ -17,6 +17,7 @@ on:
       - "**/requirements*.txt"
       - ".github/ci/benchmark-requirements.txt"
       - ".github/workflows/osv-scanner.yml"
+      - "**/osv-scanner.toml"
   pull_request:
     paths:
       - "**/Cargo.lock"
@@ -24,6 +25,7 @@ on:
       - "**/requirements*.txt"
       - ".github/ci/benchmark-requirements.txt"
       - ".github/workflows/osv-scanner.yml"
+      - "**/osv-scanner.toml"
 
 permissions:
   contents: read

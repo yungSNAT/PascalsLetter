@@ -4,7 +4,7 @@ proxy/target/
 # proxy/Cargo.lock IS committed: `proxy/` is its own workspace root (not a
 # member of the root one, which would break `cargo install --git`), and a
 # binary crate's lockfile belongs in the repository so a release is
-# reproducible. It also pins libsqlite3-sys, which must match the root's.
+# reproducible. It also pins libsqlite3-sys to what icm-store links.
 .cargo-cross/
 
 # Environment & Secrets
