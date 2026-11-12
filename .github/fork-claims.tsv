@@ -50,6 +50,8 @@ Progress output	linux	tests/fork_output_test.rs	a_progress_redraw_reaches_the_fi
 `yadm`	linux	tests/fork_rewrite_test.rs	yadm_goes_through_rtk_yadm_not_rtk_git
 `git add`	linux	tests/rewrite_exit_code_test.rs	bare_git_add_stages_nothing_as_git_does
 `git add` summary	linux	tests/rewrite_exit_code_test.rs	git_add_reports_only_what_it_staged
+`rtk init -g`	linux	tests/init_claude_declined_test.rs	a_declined_settings_patch_is_not_reported_as_registered
+Permission gate	linux	tests/permission_gate_test.rs	deny_rules_see_commands_after_a_comment_quote_and_a_zsh_disown
 PHP tool paths	linux	tests/fork_rewrite_test.rs	a_php_tool_path_the_shell_expands_keeps_the_path
 Unusual whitespace	linux	tests/fork_rewrite_test.rs	whitespace_bash_does_not_split_at_is_not_rewritten
 Claude Code worktrees	linux	tests/claude_worktree_hook_test.rs	claude_worktree_leaves_a_git_operand_unrewritten

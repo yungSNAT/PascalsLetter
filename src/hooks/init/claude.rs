@@ -673,7 +673,7 @@ pub(super) fn run_default_mode(
 
     // 4. Print success message (skip in dry-run)
     if !dry_run {
-        println!("\nRTK hook registered (global).\n");
+        println!("\nRTK for Claude Code (global):\n");
         println!("  Command:   {}", CLAUDE_HOOK_COMMAND);
         println!(
             "  RTK.md:    {} (awareness: {})",
@@ -718,9 +718,11 @@ pub(super) fn run_default_mode(
     if !dry_run {
         match patch_result {
             PatchResult::Patched => {
-                // Already printed by patch_settings_json_command
+                // patch_settings_json_command printed what it wrote
+                println!("\nRTK hook registered (global).");
             }
             PatchResult::AlreadyPresent => {
+                println!("\nRTK hook registered (global).");
                 println!("\n  settings.json: hook already present");
                 if opencode_plugin.is_some() {
                     println!("  Restart Claude Code and OpenCode. Test with: git status");
@@ -730,6 +732,7 @@ pub(super) fn run_default_mode(
             }
             PatchResult::Declined | PatchResult::Skipped => {
                 // Manual instructions already printed
+                println!("RTK hook not registered: settings.json was not patched.");
             }
             PatchResult::WouldPatch => {
                 // Cannot happen outside dry_run
@@ -908,7 +911,7 @@ pub(super) fn run_hook_only_mode(
     migrate_old_hook_script(ctx);
 
     if !dry_run {
-        println!("\nRTK hook registered (hook-only mode).\n");
+        println!("\nRTK for Claude Code (hook-only mode):\n");
         println!("  Command: {}", CLAUDE_HOOK_COMMAND);
         if let Some(path) = opencode_plugin {
             println!("  OpenCode: {}", path.display());
@@ -940,9 +943,11 @@ pub(super) fn run_hook_only_mode(
     if !dry_run {
         match patch_result {
             PatchResult::Patched => {
-                // Already printed by patch_settings_json_command
+                // patch_settings_json_command printed what it wrote
+                println!("\nRTK hook registered (hook-only mode).");
             }
             PatchResult::AlreadyPresent => {
+                println!("\nRTK hook registered (hook-only mode).");
                 println!("\n  settings.json: hook already present");
                 if opencode_plugin.is_some() {
                     println!("  Restart Claude Code and OpenCode. Test with: git status");
@@ -952,6 +957,7 @@ pub(super) fn run_hook_only_mode(
             }
             PatchResult::Declined | PatchResult::Skipped => {
                 // Manual instructions already printed
+                println!("RTK hook not registered: settings.json was not patched.");
             }
             PatchResult::WouldPatch => {
                 // Cannot happen outside dry_run
