@@ -383,9 +383,24 @@ fn decide_for_agent_at_with_attestation(
             crate::discover::fish_script::try_wrap,
         ),
     );
+    if worktree {
+        withhold_git_rewrite(decision)
+    } else {
+        decision
+    }
+}
+
+/// In a Claude Code managed worktree, a rewrite the worktree guard would refuse
+/// becomes [`HookDecision::Defer`]: the command runs as written, under Claude
+/// Code's own permission rules. That covers a hook-owned ask too. It exists
+/// only because the fish wrap hides the script inside one quoted argument the
+/// host cannot check; withdrawn, the wrap hides nothing, and asking with the
+/// original command would hand back a script the host cannot parse. `Defer`
+/// is what such a script got before the wrap existed. `Deny` passes through.
+fn withhold_git_rewrite(decision: HookDecision) -> HookDecision {
     match decision {
         HookDecision::AllowRewrite(ref rewritten) | HookDecision::AskRewrite(ref rewritten, _)
-            if worktree && puts_git_after_rtk(rewritten) =>
+            if puts_git_after_rtk(rewritten) =>
         {
             HookDecision::Defer
         }
@@ -402,12 +417,14 @@ fn decide_for_agent_at_with_attestation(
 /// The test is deliberately broader than the guard (any letter case, `.` as a
 /// separator): a false match only leaves a command uncompressed.
 fn puts_git_after_rtk(rewritten: &str) -> bool {
-    use crate::discover::lexer::{shell_split, split_for_wrappers, split_for_wrappers_as_code};
+    use crate::discover::lexer::{
+        shell_split_as_passed, split_for_wrappers, split_for_wrappers_as_code,
+    };
     split_for_wrappers_as_code(rewritten)
         .into_iter()
         .chain(split_for_wrappers(rewritten))
         .any(|segment| {
-            let text = format!("{segment} {}", shell_split(segment).join(" "));
+            let text = format!("{segment} {}", shell_split_as_passed(segment).join(" "));
             let mut words = text
                 .split(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '_' | '-')))
                 .filter(|w| !w.is_empty());
@@ -739,6 +756,7 @@ mod tests {
             r#"rtk grep -rn "uses git." docs"#,
             r"rtk read C:\Git\cmd\git.exe",
             "rtk grep -n git-lfs README.md",
+            r"rtk grep $'g\x69t' README.md",
             "cargo build && rtk grep -n git README.md",
         ] {
             assert!(puts_git_after_rtk(cmd), "{cmd}");
@@ -753,6 +771,23 @@ mod tests {
         ] {
             assert!(!puts_git_after_rtk(cmd), "{cmd}");
         }
+    }
+
+    /// A withdrawn fish wrap defers rather than keeping its hook-owned ask, and a
+    /// deny or a rewrite without a git word is untouched.
+    #[test]
+    fn withholding_a_git_rewrite_defers_a_hook_owned_ask_and_keeps_the_rest() {
+        let wrapped = "rtk run --shell fish -c 'git status; and rtk ls'".to_string();
+        assert_eq!(
+            withhold_git_rewrite(HookDecision::AskRewrite(wrapped, AskOwner::Hook)),
+            HookDecision::Defer
+        );
+        assert_eq!(withhold_git_rewrite(HookDecision::Deny), HookDecision::Deny);
+        let plain = HookDecision::AskRewrite("rtk ls src".into(), AskOwner::Hook);
+        assert_eq!(
+            withhold_git_rewrite(plain),
+            HookDecision::AskRewrite("rtk ls src".into(), AskOwner::Hook)
+        );
     }
 
     /// The worktree exclusion is added to the user's `exclude_commands`, not
