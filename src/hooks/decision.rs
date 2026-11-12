@@ -394,38 +394,33 @@ fn decide_for_agent_at_with_attestation(
 }
 
 /// Whether a command segment that runs `rtk` also holds a word Claude Code's
-/// worktree guard reads as git: `git`, `git.exe`, `git.real` or `git-<name>`,
-/// alone or as a path component or a word inside a quoted operand
-/// (`^git(?:\.exe|\.real|-[a-z][\w-]*)?$` in Claude Code 2.1.301, rtk-ai/rtk#4591).
-/// Both comment readings of the command are checked, and the test is
-/// deliberately broader than the guard: a false match only leaves a command
-/// uncompressed.
+/// worktree guard reads as git: `git` or `git-<name>`, alone, as a path
+/// component or inside a quoted operand (the guard's pattern in Claude Code
+/// 2.1.301 is `^git(?:\.exe|\.real|-[a-z][\w-]*)?$`, rtk-ai/rtk#4591). Segments
+/// keep their redirects, both comment readings are checked, and words are read
+/// both as written and as the shell passes them, quotes and escapes resolved.
+/// The test is deliberately broader than the guard (any letter case, `.` as a
+/// separator): a false match only leaves a command uncompressed.
 fn puts_git_after_rtk(rewritten: &str) -> bool {
-    crate::discover::lexer::gate_segments(rewritten)
+    use crate::discover::lexer::{shell_split, split_for_wrappers, split_for_wrappers_as_code};
+    split_for_wrappers_as_code(rewritten)
         .into_iter()
+        .chain(split_for_wrappers(rewritten))
         .any(|segment| {
-            segment_words(segment).any(|w| w == "rtk") && segment_words(segment).any(is_git_name)
+            let text = format!("{segment} {}", shell_split(segment).join(" "));
+            let mut words = text
+                .split(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '_' | '-')))
+                .filter(|w| !w.is_empty());
+            words.clone().any(|w| w == "rtk") && words.any(is_git_name)
         })
-}
-
-fn segment_words(segment: &str) -> impl Iterator<Item = &str> {
-    segment
-        .split(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-')))
-        .filter(|w| !w.is_empty())
 }
 
 fn is_git_name(word: &str) -> bool {
     let word = word.to_ascii_lowercase();
-    match word.strip_prefix("git") {
-        Some("" | ".exe" | ".real") => true,
-        Some(rest) => rest.strip_prefix('-').is_some_and(|name| {
-            name.starts_with(|c: char| c.is_ascii_lowercase())
-                && name
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
-        }),
-        None => false,
-    }
+    word == "git"
+        || word
+            .strip_prefix("git-")
+            .is_some_and(|name| name.starts_with(|c: char| c.is_ascii_lowercase()))
 }
 
 /// Whether `cwd` is inside a worktree Claude Code manages
@@ -733,28 +728,30 @@ mod tests {
     }
 
     #[test]
-    fn git_names_match_the_worktree_guard() {
-        for word in [
-            "git",
-            "GIT",
-            "git.exe",
-            "git.real",
-            "git-lfs",
-            "git-upload-pack",
+    fn git_words_after_rtk_are_read_as_the_shell_passes_them() {
+        for cmd in [
+            "rtk grep -n git README.md",
+            r#"rtk grep -c "git push" README.md"#,
+            "rtk grep -rn TODO 2>/dev/null src/git/",
+            "rtk grep -n x 2>&1 git-notes.md",
+            "rtk grep g'i't README.md",
+            r"rtk grep g\it README.md",
+            r#"rtk grep -rn "uses git." docs"#,
+            r"rtk read C:\Git\cmd\git.exe",
+            "rtk grep -n git-lfs README.md",
+            "cargo build && rtk grep -n git README.md",
         ] {
-            assert!(is_git_name(word), "{word}");
+            assert!(puts_git_after_rtk(cmd), "{cmd}");
         }
-        for word in [
-            ".git",
-            ".gitignore",
-            "github",
-            "gitk",
-            "git-",
-            "git-1",
-            "--git-dir",
-            "digit",
+        for cmd in [
+            "git status && rtk cargo build",
+            "rtk read .gitignore",
+            "rtk grep -n github README.md",
+            "rtk grep -n digit README.md",
+            "rtk grep -n git- README.md",
+            "git log -1",
         ] {
-            assert!(!is_git_name(word), "{word}");
+            assert!(!puts_git_after_rtk(cmd), "{cmd}");
         }
     }
 

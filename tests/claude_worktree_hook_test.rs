@@ -56,11 +56,12 @@ fn claude_worktree_leaves_a_git_operand_unrewritten() {
     let worktree = repo.path().join(".claude/worktrees/feat-x");
     std::fs::create_dir_all(&worktree).expect("mkdir worktree");
     for command in ["grep -n git README.md", r#"grep -c "git push" README.md"#] {
-        assert_eq!(hook(command, &worktree), None, "{command}");
+        // Outside a worktree first, so a broken hook fails here, not below.
         assert_eq!(
             hook(command, repo.path()).as_deref(),
             Some(format!("rtk {command}").as_str()),
             "{command} outside a worktree"
         );
+        assert_eq!(hook(command, &worktree), None, "{command}");
     }
 }
