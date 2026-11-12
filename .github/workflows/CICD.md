@@ -78,6 +78,6 @@ release.yml (a dry run: build and checksums only)
 Only the Apache-2.0 edition (`rtk-oss-<target>`) is built, for x86_64 and
 aarch64 Linux (musl), x86_64 and aarch64 macOS, and x86_64 Windows with a
 static C runtime. The tag is `fork-v` followed by the version `rtk --version`
-prints, less its `+pascalsletter` metadata: `fork-v1.1.0` for
-`rtk 1.1.0+pascalsletter`. Nothing is published until a maintainer publishes
+prints, less its `+pascalsletter` metadata: `fork-v1.2.0` for
+`rtk 1.2.0+pascalsletter`. Nothing is published until a maintainer publishes
 the draft.

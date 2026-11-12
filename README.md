@@ -17,7 +17,7 @@
 
 </div>
 
-PascalsLetter is yungSNAT's distribution of [RTK](https://github.com/rtk-ai/rtk), the Rust Token Killer. RTK filters and compresses command output before it reaches your coding agent's context: one Rust binary, more than 100 supported commands. PascalsLetter is based on upstream RTK as of 7 November 2026 and adds fixes where compression lost or mangled output an agent needed, several of them on Windows. It installs a binary named `rtk`, so hooks, agent configuration and every `rtk` command work unchanged.
+PascalsLetter is yungSNAT's distribution of [RTK](https://github.com/rtk-ai/rtk), the Rust Token Killer. RTK filters and compresses command output before it reaches your coding agent's context: one Rust binary, more than 100 supported commands. PascalsLetter is based on upstream RTK as of 12 November 2026 and adds fixes where compression lost or mangled output an agent needed, several of them on Windows. It installs a binary named `rtk`, so hooks, agent configuration and every `rtk` command work unchanged.
 
 ## Install
 
@@ -25,7 +25,7 @@ PascalsLetter has no prebuilt binaries. Build it from source with Rust:
 
 ```bash
 cargo install --git https://github.com/yungSNAT/PascalsLetter rtk --locked
-rtk --version   # rtk 1.1.0+pascalsletter
+rtk --version   # rtk 1.2.0+pascalsletter
 ```
 
 PascalsLetter and upstream RTK both install `rtk`, so uninstall any Homebrew, winget or `install.sh` copy of RTK first. Add `--no-default-features` for the Apache-2.0 edition (upstream calls it `rtk-oss`), which leaves out the BUSL-1.1 compression engine and still installs `rtk`. Then set up your agent with `rtk init` as in [Quick Start](#quick-start). The `rtk-proxy` daemon is a separate package that this command does not install; build it with `cargo build --release --manifest-path proxy/Cargo.toml`.
@@ -81,7 +81,7 @@ If the hook rewrote the command, `rtk gain --history` lists `rtk git status` und
 
 ## What PascalsLetter changes
 
-CI runs [`scripts/fork-proof.sh`](scripts/fork-proof.sh) weekly and on every pull request. It checks the Upstream column: each row's tests must pass here and fail on upstream RTK, so the job fails once upstream fixes the bug too. It runs on Linux, so the 3 rows whose bug shows only on Windows or macOS are not proved; one of them, the `rtk-proxy` health check, has no test yet.
+CI runs [`scripts/fork-proof.sh`](scripts/fork-proof.sh) weekly and on every pull request. It checks the Upstream column: each row's tests must pass here and fail on upstream RTK, so the job fails once upstream fixes the bug too. It runs on Linux, so the 2 rows whose bug shows only on Windows are not proved.
 
 | Area | Upstream | Change |
 | --- | --- | --- |
@@ -99,7 +99,6 @@ CI runs [`scripts/fork-proof.sh`](scripts/fork-proof.sh) weekly and on every pul
 | PHP tool paths | Not in upstream | A tool path the shell expands or that holds shell syntax, such as `$ROOT/vendor/bin/phpunit` or `~/x/vendor/bin/pint`, is no longer cut down to the bare tool, which ran the current project's copy instead of the one the path names. Found by the `rewrite` fuzz target. |
 | Unusual whitespace | Not in upstream | A command holding whitespace Bash does not split words at, such as a vertical tab or a no-break space, runs as written. The rewriter split there, which could turn `>&2` into a redirect of another descriptor. Found by the `rewrite` fuzz target. |
 | `rtk-proxy` key lending | Not in upstream | The relayed provider key is lent only to a keyless request carrying the `x-rtk-proxy` header (which `rtk <task>` sends) with a `localhost` or IP `Host`, so a web page, including a DNS-rebound one, cannot spend it. |
-| `rtk-proxy` health check | Not proved: macOS only | A server on the proxy port that answers and hangs up early reads as not the proxy. On macOS the check, which the session-start hook also runs, could panic inside ureq instead ([rtk-ai/rtk#4912](https://github.com/rtk-ai/rtk/issues/4912)). |
 | `rtk gain` | Not in upstream | The summary, per-command and daily, weekly and monthly tables count an oversized row at a fixed 7,500-token cap, and the headline figure is net. |
 | `rtk session` | Not in upstream | Ends with Bash's share of all tool output in recent sessions, the denominator `rtk gain` lacks, and says what the figure leaves out. |
 | `rtk cc-economics` | Not in upstream | Without a global ccusage, the `npx` fallback runs the exact ccusage release pinned in `src/analytics/ccusage-pin/package.json`, which Dependabot bumps, instead of whatever npm serves as latest. |

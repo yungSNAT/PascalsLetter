@@ -8,7 +8,6 @@
 # Tests that also pass on upstream are guards, not proof, and stay out.
 Windows arguments	windows	-	-	# MSYS quoting runs only on Windows; its tests are unit tests
 `rtk rg` on Windows	windows	tests/search_stdin_test.rs	rg_shows_filenames_when_stdin_is_not_a_pipe	# the stdin misreading shows only on Windows
-`rtk-proxy` health check	macos	-	-	# the ureq panic shows only on macOS; no test yet
 `grep` and `rg`	linux	tests/grep_capping_test.rs	grep_max_results_caps_the_matches_shown
 `grep` and `rg`	linux	tests/grep_capping_test.rs	a_partial_limits_table_keeps_the_rest_of_the_config
 `grep` and `rg`	linux	tests/grep_capping_test.rs	a_small_overflow_of_the_per_file_cap_prints_every_match_in_full
