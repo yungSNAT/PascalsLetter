@@ -328,6 +328,11 @@ pub(crate) fn decide_for_agent(
 /// `WorktreeCreate` hook places elsewhere is not detected, and git there is
 /// still rewritten. The rest of a chain is still rewritten:
 /// `git status && cargo build` → `git status && rtk cargo build`.
+///
+/// The guard also refuses `rtk` with any git-named word among its operands,
+/// such as `rtk grep -n git README.md` or a quoted `"git push"` (rtk-ai/rtk#4591),
+/// so a rewrite that would put one there is dropped and the whole command
+/// deferred (see [`puts_git_after_rtk`]).
 pub(crate) fn decide_for_agent_at(
     cmd: &str,
     verdict: PermissionVerdict,
@@ -363,10 +368,11 @@ fn decide_for_agent_at_with_attestation(
     cwd: Option<&str>,
 ) -> HookDecision {
     let (mut excluded, transparent_prefixes) = crate::core::config::hook_rewrite_params();
-    if cwd.is_some_and(in_claude_worktree) {
+    let worktree = cwd.is_some_and(in_claude_worktree);
+    if worktree {
         excluded.push("git".to_string());
     }
-    suppress_identity(
+    let decision = suppress_identity(
         cmd,
         decide_with_attestation(
             cmd,
@@ -376,7 +382,62 @@ fn decide_for_agent_at_with_attestation(
             attest,
             crate::discover::fish_script::try_wrap,
         ),
-    )
+    );
+    if worktree {
+        withhold_git_rewrite(decision)
+    } else {
+        decision
+    }
+}
+
+/// In a Claude Code managed worktree, a rewrite the worktree guard would refuse
+/// becomes [`HookDecision::Defer`]: the command runs as written, under Claude
+/// Code's own permission rules. That covers a hook-owned ask too. It exists
+/// only because the fish wrap hides the script inside one quoted argument the
+/// host cannot check; withdrawn, the wrap hides nothing, and asking with the
+/// original command would hand back a script the host cannot parse. `Defer`
+/// is what such a script got before the wrap existed. `Deny` passes through.
+fn withhold_git_rewrite(decision: HookDecision) -> HookDecision {
+    match decision {
+        HookDecision::AllowRewrite(ref rewritten) | HookDecision::AskRewrite(ref rewritten, _)
+            if puts_git_after_rtk(rewritten) =>
+        {
+            HookDecision::Defer
+        }
+        other => other,
+    }
+}
+
+/// Whether a command segment that runs `rtk` also holds a word Claude Code's
+/// worktree guard reads as git: `git` or `git-<name>`, alone, as a path
+/// component or inside a quoted operand (the guard's pattern in Claude Code
+/// 2.1.301 is `^git(?:\.exe|\.real|-[a-z][\w-]*)?$`, rtk-ai/rtk#4591). Segments
+/// keep their redirects, both comment readings are checked, and words are read
+/// both as written and as the shell passes them, quotes and escapes resolved.
+/// The test is deliberately broader than the guard (any letter case, `.` as a
+/// separator): a false match only leaves a command uncompressed.
+fn puts_git_after_rtk(rewritten: &str) -> bool {
+    use crate::discover::lexer::{
+        shell_split_as_passed, split_for_wrappers, split_for_wrappers_as_code,
+    };
+    split_for_wrappers_as_code(rewritten)
+        .into_iter()
+        .chain(split_for_wrappers(rewritten))
+        .any(|segment| {
+            let text = format!("{segment} {}", shell_split_as_passed(segment).join(" "));
+            let mut words = text
+                .split(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '_' | '-')))
+                .filter(|w| !w.is_empty());
+            words.clone().any(|w| w == "rtk") && words.any(is_git_name)
+        })
+}
+
+fn is_git_name(word: &str) -> bool {
+    let word = word.to_ascii_lowercase();
+    word == "git"
+        || word
+            .strip_prefix("git-")
+            .is_some_and(|name| name.starts_with(|c: char| c.is_ascii_lowercase()))
 }
 
 /// Whether `cwd` is inside a worktree Claude Code manages
@@ -648,6 +709,84 @@ mod tests {
                 Some("/repo")
             ),
             HookDecision::AllowRewrite("rtk git status".into())
+        );
+    }
+
+    /// Claude Code's worktree guard refuses `rtk` with a git-named word among
+    /// its operands (rtk-ai/rtk#4591), so in a managed worktree such a rewrite
+    /// is dropped; elsewhere, and without such a word, it stands.
+    #[test]
+    fn claude_worktree_defers_a_rewrite_that_puts_git_after_rtk() {
+        let wt = Some("/repo/.claude/worktrees/feat-x");
+        let decide = |cmd: &str, cwd: Option<&str>| {
+            decide_for_agent_at(cmd, PermissionVerdict::Allow, DenyRules::Unattested, cwd)
+        };
+        for cmd in [
+            "grep -n git README.md",
+            "rg -c git README.md",
+            r#"grep -c "git push" README.md"#,
+            "cat src/git/mod.rs",
+            "cargo build && grep -n git-lfs README.md",
+        ] {
+            assert_eq!(decide(cmd, wt), HookDecision::Defer, "{cmd}");
+            assert!(
+                matches!(decide(cmd, Some("/repo")), HookDecision::AllowRewrite(_)),
+                "{cmd} is rewritten outside a worktree"
+            );
+        }
+        assert_eq!(
+            decide("cat .gitignore", wt),
+            HookDecision::AllowRewrite("rtk read .gitignore".into())
+        );
+        assert_eq!(
+            decide("git status && grep -n TODO README.md", wt),
+            HookDecision::AllowRewrite("git status && rtk grep -n TODO README.md".into())
+        );
+    }
+
+    #[test]
+    fn git_words_after_rtk_are_read_as_the_shell_passes_them() {
+        for cmd in [
+            "rtk grep -n git README.md",
+            r#"rtk grep -c "git push" README.md"#,
+            "rtk grep -rn TODO 2>/dev/null src/git/",
+            "rtk grep -n x 2>&1 git-notes.md",
+            "rtk grep g'i't README.md",
+            r"rtk grep g\it README.md",
+            r#"rtk grep -rn "uses git." docs"#,
+            r"rtk read C:\Git\cmd\git.exe",
+            "rtk grep -n git-lfs README.md",
+            r"rtk grep $'g\x69t' README.md",
+            "cargo build && rtk grep -n git README.md",
+        ] {
+            assert!(puts_git_after_rtk(cmd), "{cmd}");
+        }
+        for cmd in [
+            "git status && rtk cargo build",
+            "rtk read .gitignore",
+            "rtk grep -n github README.md",
+            "rtk grep -n digit README.md",
+            "rtk grep -n git- README.md",
+            "git log -1",
+        ] {
+            assert!(!puts_git_after_rtk(cmd), "{cmd}");
+        }
+    }
+
+    /// A withdrawn fish wrap defers rather than keeping its hook-owned ask, and a
+    /// deny or a rewrite without a git word is untouched.
+    #[test]
+    fn withholding_a_git_rewrite_defers_a_hook_owned_ask_and_keeps_the_rest() {
+        let wrapped = "rtk run --shell fish -c 'git status; and rtk ls'".to_string();
+        assert_eq!(
+            withhold_git_rewrite(HookDecision::AskRewrite(wrapped, AskOwner::Hook)),
+            HookDecision::Defer
+        );
+        assert_eq!(withhold_git_rewrite(HookDecision::Deny), HookDecision::Deny);
+        let plain = HookDecision::AskRewrite("rtk ls src".into(), AskOwner::Hook);
+        assert_eq!(
+            withhold_git_rewrite(plain),
+            HookDecision::AskRewrite("rtk ls src".into(), AskOwner::Hook)
         );
     }
 
