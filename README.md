@@ -27,6 +27,12 @@ On Linux or macOS, install the latest [release](https://github.com/yungSNAT/Pasc
 curl -fsSL https://raw.githubusercontent.com/yungSNAT/PascalsLetter/develop/install.sh | sh
 ```
 
+On Windows, in PowerShell 5.1 or 7, `install.ps1` does the same for the current user, without administrator rights, and leaves PATH unchanged:
+
+```powershell
+irm https://raw.githubusercontent.com/yungSNAT/PascalsLetter/develop/install.ps1 | iex
+```
+
 Releases hold the Apache-2.0 edition (upstream calls it `rtk-oss`), which leaves out the BUSL-1.1 compression engine; Windows users can download its zip from the same page. For the full edition, build from source with Rust:
 
 ```bash
