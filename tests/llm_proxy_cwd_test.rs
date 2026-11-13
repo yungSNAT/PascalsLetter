@@ -13,8 +13,10 @@ use std::process::Command;
 mod common;
 
 /// A copy of rtk beside a stand-in `rtk-proxy` running `script` (rtk looks for
-/// the daemon next to its own executable), isolated and started from a project
-/// holding a `rtk-proxy.toml`. Keep the 2 directories alive.
+/// the daemon next to its own executable), isolated with a home in that
+/// directory, so each test's state directory and daemon log are its own, and
+/// started from a project holding a `rtk-proxy.toml`. Keep the 2 directories
+/// alive.
 fn rtk_beside_stand_in(script: &str) -> (Command, tempfile::TempDir, tempfile::TempDir) {
     let built = PathBuf::from(common::rtk_command().get_program());
     let dir = common::tempdir();
@@ -26,7 +28,7 @@ fn rtk_beside_stand_in(script: &str) -> (Command, tempfile::TempDir, tempfile::T
         .expect("chmod rtk-proxy");
 
     let mut cmd = Command::new(&rtk);
-    common::isolate_rtk(&mut cmd);
+    common::isolate_rtk_in(&mut cmd, &dir.path().join("home"));
     let project = common::tempdir();
     std::fs::write(
         project.path().join("rtk-proxy.toml"),
