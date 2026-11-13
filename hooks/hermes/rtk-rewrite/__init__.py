@@ -14,6 +14,7 @@ import sys
 ACCEPTED_REWRITE_RETURN_CODES = {0, 3}
 EXPECTED_PASSTHROUGH_RETURN_CODES = {1, 2}
 DEFAULT_REWRITE_TIMEOUT = 5
+DEFAULT_REWRITE_BACKENDS = "local"
 _rtk_available = None
 _rtk_missing_warned = False
 
@@ -48,6 +49,21 @@ def _rewrite_timeout():
     return timeout if math.isfinite(timeout) and timeout > 0 else DEFAULT_REWRITE_TIMEOUT
 
 
+def _terminal_backend():
+    """The backend Hermes runs this terminal call on, read as Hermes reads it."""
+    try:
+        from tools.terminal_scope import terminal_env
+    except ImportError:  # Hermes releases before per-profile terminal scopes
+        return os.environ.get("TERMINAL_ENV", "local")
+    return terminal_env("TERMINAL_ENV", "local")
+
+
+def _rewrite_backends():
+    """Backends whose machine has rtk: RTK_HERMES_BACKENDS, comma-separated."""
+    value = os.environ.get("RTK_HERMES_BACKENDS", "").strip() or DEFAULT_REWRITE_BACKENDS
+    return {backend.strip().lower() for backend in value.split(",") if backend.strip()}
+
+
 def _pre_tool_call(tool_name=None, args=None, **_kwargs):
     """Update the shared payload without overriding other hooks' directives."""
     try:
@@ -56,6 +72,10 @@ def _pre_tool_call(tool_name=None, args=None, **_kwargs):
 
         command = args.get("command")
         if not isinstance(command, str) or not command.strip():
+            return
+
+        # A Docker, SSH or other sandbox runs the command where rtk may be missing.
+        if _terminal_backend().strip().lower() not in _rewrite_backends():
             return
 
         try:

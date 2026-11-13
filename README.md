@@ -27,7 +27,7 @@ On Linux or macOS, install the latest [release](https://github.com/yungSNAT/Pasc
 curl -fsSL https://raw.githubusercontent.com/yungSNAT/PascalsLetter/develop/install.sh | sh
 ```
 
-Releases hold the Apache-2.0 edition (upstream calls it `rtk-oss`), which leaves out the BUSL-1.1 compression engine; Windows users can download its zip from the same page. For the full edition, build from source with Rust:
+Releases hold the Apache-2.0 edition (upstream calls it `rtk-oss`), which leaves out the BUSL-1.1 compression engine; Windows users can download its zip from the same page. For the full edition, or for a change marked 'in `develop`' under [What PascalsLetter changes](#what-pascalsletter-changes), build from source with Rust:
 
 ```bash
 cargo install --git https://github.com/yungSNAT/PascalsLetter rtk --locked
@@ -104,13 +104,15 @@ CI runs [`scripts/fork-proof.sh`](scripts/fork-proof.sh) weekly and on every pul
 | `git add` summary | Not in upstream | rtk's one-line `git add` summary counts only what that call staged. It counted every change staged since the last commit, so re-adding a staged file looked like new work. |
 | PHP tool paths | Not in upstream | A tool path the shell expands or that holds shell syntax, such as `$ROOT/vendor/bin/phpunit` or `~/x/vendor/bin/pint`, is no longer cut down to the bare tool, which ran the current project's copy instead of the one the path names. Found by the `rewrite` fuzz target. |
 | Unusual whitespace | Not in upstream | A command holding whitespace Bash does not split words at, such as a vertical tab or a no-break space, runs as written. The rewriter split there, which could turn `>&2` into a redirect of another descriptor. Found by the `rewrite` fuzz target. |
+| Hermes backends | Not in upstream | The Hermes plugin rewrites commands only on the terminal backends `RTK_HERMES_BACKENDS` names, `local` by default, so a Docker, SSH or other remote backend without `rtk` runs the command as written. It rewrote on every backend, and the command failed where `rtk` was missing. In `develop`; not yet in a release. |
 | `rtk-proxy` key lending | Not in upstream | The relayed provider key is lent only to a keyless request carrying the `x-rtk-proxy` header (which `rtk <task>` sends) with a `localhost` or IP `Host`, so a web page, including a DNS-rebound one, cannot spend it. |
 | `rtk-proxy` start directory | Not in upstream | `rtk llm-proxy start`, and the commands that start the daemon for you, start it in rtk's `llm-proxy` configuration directory instead of the shell's. The daemon reads `./rtk-proxy.toml`, so one in a cloned project could set the upstream the relayed provider key is sent to. In `develop`; not yet in a release. |
 | `rtk gain` | Not in upstream | The summary, per-command and daily, weekly and monthly tables count an oversized row at a fixed 7,500-token cap, and the headline figure is net. |
 | `rtk session` | Not in upstream | Ends with Bash's share of all tool output in recent sessions, the denominator `rtk gain` lacks, and says what the figure leaves out. |
 | `rtk cc-economics` | Not in upstream | Without a global ccusage, the `npx` fallback runs the exact ccusage release pinned in `src/analytics/ccusage-pin/package.json`, which Dependabot bumps, instead of whatever npm serves as latest. |
 | `rtk config --create` | Not in upstream | Leaves an existing `config.toml` unchanged and exits 1. It replaced the file with defaults, losing the user's settings. |
-| Claude Code worktrees | Not in upstream | In a worktree where Claude Code isolates a session, a command whose rewrite would put a git-named word after `rtk`, such as `grep -n git README.md` or a quoted `"git push"`, runs as written. Claude Code refused the rewritten command ([rtk-ai/rtk#4591](https://github.com/rtk-ai/rtk/issues/4591)). |
+| Claude Code worktrees | Not in upstream | In a worktree where Claude Code isolates a session, a command whose rewrite would put a git-named word after `rtk`, such as `grep -n git README.md` or a quoted `"git push"`, runs as written. Claude Code refused the rewritten command ([rtk-ai/rtk#4591](https://github.com/rtk-ai/rtk/issues/4591)). In `develop`; not yet in a release. |
+| `rtk llm-proxy` without the daemon | Not in upstream | Says to build `rtk-proxy` from source, which PascalsLetter's releases leave out, instead of pointing to a release archive of it. In `develop`; not yet in a release. |
 
 These fixes are not currently offered upstream. None falls under the examples upstream's [CONTRIBUTING.md](CONTRIBUTING.md) gives of RTK Pro features it will not accept: secret redaction, PII masking and blocking dangerous commands. Past contributions to RTK are listed in [FORKS.md](https://github.com/yungSNAT/yungSNAT/blob/main/FORKS.md).
 
@@ -154,6 +156,7 @@ The token counts RTK reports are estimated as `bytes / 4`: RTK ships no tokenize
 > Full explanation: [How RTK Savings Work](docs/guide/resources/savings-explained.md)
 
 **In PascalsLetter's own words:** `rtk gain` estimates the bytes removed from the commands RTK filtered; it is not a measure of billed tokens. [JetBrains' billed trial](https://blog.jetbrains.com/ai/2026/07/rtk-claude-code-token-savings/) of RTK v0.43.0 (claude-sonnet-5 in Claude Code, 86 SkillsBench tasks, 20 July 2026) found tasks cost 7.6% more at low reasoning effort (p = 0.004) and the same at high effort, with quality unchanged in both, whilst `rtk gain` reported 96.2 million tokens saved. Claude Code's Read and Grep tools bypass the Bash hook, so much of what an agent reads is never filtered. PascalsLetter's fixes target output that RTK lost or mangled; their effect on billed cost has not been measured.
+
 ### Quick Start
 
 ```bash
@@ -233,6 +236,7 @@ RTK supports 18 AI coding tools. Each integration rewrites shell commands to `rt
 | **Trae (global)** | `rtk init -g --agent trae` | `~/.trae/hooks.json`, plus `~/.trae-cn/hooks.json` when that directory exists |
 
 For per-agent setup details, override controls, and graceful degradation, see the [Supported Agents guide](docs/guide/getting-started/supported-agents.md). The Hermes plugin source and tests live in `hooks/hermes/`; installed Hermes runtime files still live under `~/.hermes/plugins/rtk-rewrite/`.
+
 ### What RTK Covers
 
 100+ commands across Git, GitHub CLI, Cargo/Rust, JavaScript (npm, pnpm, vitest, jest, tsc, Next.js, Playwright, Prisma), Python (ruff, pytest, mypy, pip), Go (go test, golangci-lint), Ruby, .NET, JVM (Gradle, Maven), PHP, Docker, Kubernetes, AWS, Terraform, and the file/search builtins.

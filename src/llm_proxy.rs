@@ -517,10 +517,10 @@ fn locate_binary() -> Result<PathBuf> {
     }
     anyhow::bail!(
         "{PROXY_BIN} not found.\n\
-         The daemon ships as its own release archive (rtk-proxy-<target>), not \
-         inside the rtk one -- it is licensed separately. Download it and put it \
-         next to `rtk`, or in a source checkout build it with\n  \
-         cargo build --release --manifest-path proxy/Cargo.toml\nLooked in:\n{}",
+         PascalsLetter publishes no release archive of the daemon, which is \
+         licensed separately. Build it in a source checkout with\n  \
+         cargo build --release --manifest-path proxy/Cargo.toml\n\
+         and put it next to `rtk` or on PATH.\nLooked in:\n{}",
         candidates
             .iter()
             .map(|p| format!("  {}", p.display()))

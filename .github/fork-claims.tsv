@@ -53,4 +53,6 @@ Progress output	linux	tests/fork_output_test.rs	a_progress_redraw_reaches_the_fi
 `git add` summary	linux	tests/rewrite_exit_code_test.rs	git_add_reports_only_what_it_staged
 PHP tool paths	linux	tests/fork_rewrite_test.rs	a_php_tool_path_the_shell_expands_keeps_the_path
 Unusual whitespace	linux	tests/fork_rewrite_test.rs	whitespace_bash_does_not_split_at_is_not_rewritten
+Hermes backends	linux	tests/hermes_backend_test.rs	a_command_on_a_remote_backend_runs_as_written
 Claude Code worktrees	linux	tests/claude_worktree_hook_test.rs	claude_worktree_leaves_a_git_operand_unrewritten
+`rtk llm-proxy` without the daemon	linux	tests/llm_proxy_missing_test.rs	a_missing_daemon_points_to_the_source_build_not_a_release_archive

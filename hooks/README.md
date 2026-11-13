@@ -306,7 +306,7 @@ if (tool === "bash" || tool === "shell") {
 
 ### Hermes (Python Plugin)
 
-Mutates `args["command"]` in place and returns no directive, so on Hermes v2026.8.16 (0.20.2) and later another plugin's `modify` directive that sets `command` replaces the rewrite. The adapter uses a 5-second default rewrite timeout, configurable through `RTK_HERMES_TIMEOUT` (see [timeout limits](hermes/README.md#how-it-works)). Simplified success path:
+Mutates `args["command"]` in place and returns no directive, so on Hermes v2026.8.16 (0.20.2) and later another plugin's `modify` directive that sets `command` replaces the rewrite. The adapter uses a 5-second default rewrite timeout, configurable through `RTK_HERMES_TIMEOUT` (see [timeout limits](hermes/README.md#how-it-works)). It rewrites only on the terminal backends in `RTK_HERMES_BACKENDS`, `local` by default, so a Docker or SSH backend without `rtk` runs the command as written. Simplified success path:
 
 ```python
 result = subprocess.run(

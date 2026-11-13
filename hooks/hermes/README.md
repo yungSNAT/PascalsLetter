@@ -18,6 +18,8 @@ All rewrite rules stay in Rust inside `rtk rewrite`. When RTK adds or changes co
 
 The rewrite subprocess has no standard input and defaults to a 5-second timeout. Set `RTK_HERMES_TIMEOUT` to a positive, finite number of seconds (for example, `RTK_HERMES_TIMEOUT=10`) to override it. Missing, malformed, non-positive, or non-finite values fall back to 5 seconds. This controls the rewrite step only, not the terminal command's own timeout. From v2026.8.27 (Hermes 0.20.6), keep it below Hermes' `plugins.hook_callback_timeout` (30 seconds by default): the host may block the tool call if its callback limit is reached. Earlier releases have no host callback limit. Extremely large values may exceed the platform subprocess timeout limit and cause a warning with no rewrite.
 
+Hermes can run terminal commands elsewhere, through its `docker`, `ssh`, `modal` and other backends, where `rtk` may not be installed. The plugin rewrites only on the backends named in `RTK_HERMES_BACKENDS`, comma-separated, which defaults to `local`; on any other backend the command runs as written. Set `RTK_HERMES_BACKENDS=local,docker` when your Docker image has `rtk`. The backend is the one Hermes uses for the call, from `terminal.backend` in its configuration or `TERMINAL_ENV`.
+
 ## Fail-open behavior
 
 The plugin itself does not request blocking. On rewrite failures it leaves the original command unchanged and returns no directive. From v2026.8.27 (Hermes 0.20.6), Hermes can still block execution if its own callback timeout is reached.
@@ -27,6 +29,7 @@ If rtk is not available in PATH when Hermes loads the plugin, the plugin prints 
 - `rtk` is missing from `PATH`
 - `rtk rewrite` exits with an error
 - Hermes sends a non-terminal tool call
+- The terminal backend is not in `RTK_HERMES_BACKENDS`
 - The tool payload has no string `command`
 - The plugin raises an unexpected exception
 
