@@ -3275,10 +3275,11 @@ fn run_status(args: &[String], verbose: u8, global_args: &[String]) -> Result<i3
 
 /// Whether rtk's summary fits `git add` with these arguments: the call names
 /// paths or takes the whole tree with `-A` or `-u`, and has no option beyond
-/// `-v` and `-f`. Any other call passes git's own answer on, because one that
-/// stages nothing (`git add --`, a dry run, `-A --no-all`, an empty
+/// `-f`. Any other call passes git's own answer on, because one that stages
+/// nothing (`git add --`, a dry run, `-A --no-all`, an empty
 /// `--pathspec-from-file`) would otherwise get a summary of the whole index,
-/// reporting changes staged earlier as if this call had staged them.
+/// reporting changes staged earlier as if this call had staged them, and `-v`
+/// asks for git's list of the files it added, which the summary drops.
 fn add_summary_fits(args: &[String]) -> bool {
     let mut stages = false;
     let mut after_separator = false;
@@ -3289,7 +3290,7 @@ fn add_summary_fits(args: &[String]) -> bool {
             after_separator = true;
         } else if matches!(arg.as_str(), "-A" | "--all" | "-u" | "--update") {
             stages = true;
-        } else if !matches!(arg.as_str(), "-v" | "--verbose" | "-f" | "--force") {
+        } else if !matches!(arg.as_str(), "-f" | "--force") {
             return false;
         }
     }
@@ -3354,9 +3355,10 @@ fn run_add(args: &[String], verbose: u8, global_args: &[String]) -> Result<i32> 
 
         if !compact.is_empty() {
             println!("{}", compact);
-        } else if !result.stderr.trim().is_empty() {
-            // Nothing staged, but git had something to say. Printing neither the count nor
-            // git's own message leaves the agent unable to tell that from a crash.
+        }
+        // Git's warnings, such as a line-ending conversion, hold even when the add
+        // worked; with nothing staged, they are all that tells it from a crash.
+        if !result.stderr.trim().is_empty() {
             eprintln!("{}", result.stderr.trim());
         }
 
@@ -4901,8 +4903,7 @@ mod tests {
             &["a.txt"],
             &["--", "a.txt"],
             &["--", "-n"],
-            &["-v", "a.txt"],
-            &["-f", "--verbose", "a.txt"],
+            &["-f", "a.txt"],
             &["-"],
             &["-A"],
             &["--all"],
@@ -4918,6 +4919,8 @@ mod tests {
             &["--"],
             &["-v"],
             &["-f", "--verbose"],
+            &["-v", "a.txt"],
+            &["-f", "--verbose", "a.txt"],
             &["-A", "--no-all"],
             &["--ignore-removal"],
             &["--pathspec-from-file", "paths.txt"],
