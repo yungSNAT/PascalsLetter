@@ -874,19 +874,23 @@ pub fn run(
     // only the grouped form fits what the agent sees: the faithful one would lose its tail,
     // and with it the files and overflow lines the grouped form keeps. Otherwise, and whenever
     // nothing was capped, the faithful baseline is printed, so RTK never exceeds the real
-    // command. The form is measured without its recovery hints, so nothing is saved for a
-    // form that is not printed, and the choice does not depend on where the hints point.
+    // command.
     let budget = crate::core::config::limits().agent_output_max_chars;
-    let (measured, capped) = grouped(false);
-    let (grouped_chars, plain_chars) = (measured.chars().count(), plain.chars().count());
-    let output = if capped
-        && (grouped_chars * 3 <= plain_chars * 2
-            || (grouped_chars <= budget && plain_chars > budget))
-    {
-        grouped(true).0
-    } else {
-        plain
+    let plain_chars = plain.chars().count();
+    let wins = |grouped: &str| {
+        let grouped_chars = grouped.chars().count();
+        grouped_chars * 3 <= plain_chars * 2 || (grouped_chars <= budget && plain_chars > budget)
     };
+    // Hints only lengthen the form, so one that loses without them loses with them, and its
+    // hidden matches are never saved. One that wins is saved and judged again with its hints,
+    // whose length is known only then.
+    // shortcut: a form whose hints tip it over leaves its saved copies unused; bounding the
+    // hint length before saving (tee path, recall hash) would close that.
+    let (measured, capped) = grouped(false);
+    let output = (capped && wins(&measured))
+        .then(|| grouped(true).0)
+        .filter(|hinted| wins(hinted))
+        .unwrap_or(plain);
 
     print!("{}", output);
     timer.track(&real_cmd, &rtk_label, &raw_output, &output);

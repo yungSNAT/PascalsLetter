@@ -139,6 +139,13 @@ fn only_a_printed_capped_form_saves_hidden_matches() {
         .map(|i| format!("match {i} {}\n", "z".repeat(300)))
         .collect();
     std::fs::write(dir.path().join("big.txt"), big).expect("test setup");
+    // 210 files of one match each: 10 past the cap of 200 results, too few to print the
+    // capped form, which would save them as skipped files.
+    let many = dir.path().join("many");
+    std::fs::create_dir(&many).expect("test setup");
+    for f in 0..210 {
+        std::fs::write(many.join(format!("m{f:03}.txt")), "### one\n").expect("test setup");
+    }
 
     for mode in ["tee", "sqlite"] {
         let store = common::tempdir();
@@ -165,11 +172,55 @@ fn only_a_printed_capped_form_saves_hidden_matches() {
         assert!(!stdout.contains("more in"), "{mode}: capped form printed");
         assert_eq!(saved(), 0, "{mode}: saved matches no output hid");
 
+        let stdout = grep(&["-r", "^### ", "many"]);
+        assert!(
+            !stdout.contains("more files"),
+            "{mode}: capped form printed"
+        );
+        assert_eq!(saved(), 0, "{mode}: saved files no output skipped");
+
         // The same store does receive what a printed capped form hides.
         let stdout = grep(&["match", "big.txt"]);
         assert!(stdout.starts_with("400 matches in 1 files:"), "{mode}");
         assert!(saved() > 0, "{mode}: the capped form saved nothing");
     }
+}
+
+/// The capped form is chosen by its length without recovery hints, but printed with them, and
+/// a long tee path can make that hint longer than everything the cap saved. The printed form
+/// must still save a third of grep's own output, or grep's own output is printed.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_long_recovery_hint_cannot_make_the_capped_form_cost_more() {
+    let dir = tempfile::tempdir().expect("test setup");
+    // 100 short matches in one file: capped to 25, a saving of about two thirds before the hint.
+    let body: String = (0..100).map(|i| format!("needle {i:02}\n")).collect();
+    std::fs::write(dir.path().join("f.txt"), body).expect("test setup");
+    let store = common::tempdir();
+    let tee = (0..4).fold(store.path().to_path_buf(), |path, _| {
+        path.join("d".repeat(200))
+    });
+    std::fs::create_dir_all(&tee).expect("test setup");
+
+    let native = common::native_command("grep")
+        .args(["needle", "f.txt"])
+        .current_dir(dir.path())
+        .output()
+        .expect("grep");
+    let mut cmd = common::rtk_command();
+    let _config = with_config(&mut cmd, "[retriever]\nmode = \"tee\"\n");
+    let out = cmd
+        .env("RTK_TEE_DIR", &tee)
+        .args(["grep", "needle", "f.txt"])
+        .current_dir(dir.path())
+        .output()
+        .expect("rtk grep");
+
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&native.stdout),
+        "the capped form was printed although its hint outweighed the saving"
+    );
 }
 
 #[test]
