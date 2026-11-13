@@ -3,10 +3,11 @@
 #   pwsh -NoProfile -File scripts/test-install.ps1         # PowerShell 7
 #
 # Each case runs the installer in a child of the same PowerShell, with the
-# network replaced by a fixture release, and checks its exit code, its message
-# and whether rtk.exe was installed. Each guard in install.ps1 has a case that
-# fails when that guard alone is removed. The fixture rtk.exe is a copy of
-# Windows' curl.exe, a program that answers --version.
+# network replaced by a fixture release, and checks its exit code, its message,
+# whether rtk.exe was installed and that its temporary files are gone. Each
+# guard in install.ps1 has a case that fails when that guard alone is removed,
+# except Set-StrictMode, which only turns a slip in the script into an error.
+# The fixture rtk.exe is a copy of Windows' curl.exe, which answers --version.
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -39,13 +40,17 @@ function New-Release([string]$Name, [string]$Program = $program, [string]$Entry 
 }
 
 # Runs the installer against $Release (or a failing network) with RTK_VERSION
-# set to $Version (unset if empty), and returns its exit code, output, install
-# directory and the URLs it asked for.
-function Invoke-Installer([string]$Name, [string]$Release, [string]$Version = 'fork-v0.0.0-test', [switch]$FailDownload) {
-    $installDir = Join-Path $work "$Name-bin"
+# set to $Version (unset if empty) and RTK_INSTALL_DIR to $InstallDir (default
+# "$Name-bin"), after the PowerShell in $Prelude. Returns its exit code, output,
+# install directory, the URLs it asked for and the temporary files it left.
+function Invoke-Installer([string]$Name, [string]$Release, [string]$Version = 'fork-v0.0.0-test',
+    [string]$InstallDir = '', [string]$Prelude = '', [switch]$FailDownload) {
+    if (-not $InstallDir) { $InstallDir = Join-Path $work "$Name-bin" }
     $urls = Join-Path $work "$Name-urls.txt"
+    $temp = Join-Path $work "$Name-temp"
+    New-Item -ItemType Directory -Path $temp | Out-Null
     $download = if ($FailDownload) {
-        "throw 'download failed (curl exit 22)'"
+        "throw 'download failed (404)'"
     } else {
         "Copy-Item -LiteralPath (Join-Path '$Release' (Split-Path `$Url -Leaf)) -Destination `$OutFile"
     }
@@ -57,16 +62,21 @@ function Get-RtkDownload([string]`$Url, [string]`$OutFile) {
     Add-Content -LiteralPath '$urls' -Value `$Url
     $download
 }
+`$env:TMP = '$temp'; `$env:TEMP = '$temp'
+$Prelude
 Install-Rtk
 "@
     if ($Version) { $env:RTK_VERSION = $Version } else { Remove-Item Env:RTK_VERSION -ErrorAction SilentlyContinue }
-    $env:RTK_INSTALL_DIR = $installDir
+    $env:RTK_INSTALL_DIR = $InstallDir
     $exit = Invoke-Child $case $Name
+    $dir = if ([IO.Path]::IsPathRooted($InstallDir)) { $InstallDir } else { $null }
     @{
         Exit = $exit
-        Dir = $installDir
+        Dir = $dir
         Urls = @(if (Test-Path -LiteralPath $urls) { Get-Content -LiteralPath $urls })
         Log = Get-Content -LiteralPath (Join-Path $work "$Name.log") -Raw
+        Left = @(Get-ChildItem -LiteralPath $temp -Force) +
+            @(if ($dir -and (Test-Path -LiteralPath $dir)) { Get-ChildItem -LiteralPath $dir -Filter '*.tmp' -Force })
     }
 }
 
@@ -87,10 +97,23 @@ function Assert-Says([string]$Name, $Result, [string]$Text) {
     Assert ($Result.Log -and $Result.Log.Contains($Text)) "${Name}: output lacks '$Text' (see $work\$Name.log)"
 }
 
+function Assert-Clean([string]$Name, $Result) {
+    Assert ($Result.Left.Count -eq 0) "${Name}: left $($Result.Left -join ', ')"
+}
+
 function Assert-Refused([string]$Name, $Result, [string]$Text) {
     Assert ($Result.Exit -ne 0) "${Name}: exit code $($Result.Exit), expected non-zero"
     Assert (-not (Test-Path -LiteralPath (Join-Path $Result.Dir 'rtk.exe'))) "${Name}: rtk.exe was installed"
+    Assert-Clean $Name $Result
     if ($Text) { Assert-Says $Name $Result $Text }
+}
+
+function Assert-Installed([string]$Name, $Result, [string]$Dir) {
+    Assert ($Result.Exit -eq 0) "${Name}: exit code $($Result.Exit), expected 0 (see $work\$Name.log)"
+    $installed = Join-Path $Dir 'rtk.exe'
+    Assert ((Test-Path -LiteralPath $installed) -and
+        (Get-FileHash -LiteralPath $installed).Hash -eq (Get-FileHash -LiteralPath $program).Hash) "${Name}: rtk.exe not installed as packed in $Dir"
+    Assert-Clean $Name $Result
 }
 
 try {
@@ -98,10 +121,7 @@ try {
     # releases only, and runs it once with --version.
     $good = New-Release 'good'
     $r = Invoke-Installer 'good' $good
-    Assert ($r.Exit -eq 0) "good: exit code $($r.Exit), expected 0 (see $work\good.log)"
-    $installed = Join-Path $r.Dir 'rtk.exe'
-    Assert ((Test-Path -LiteralPath $installed) -and
-        (Get-FileHash -LiteralPath $installed).Hash -eq (Get-FileHash -LiteralPath $program).Hash) 'good: rtk.exe not installed as packed'
+    Assert-Installed 'good' $r $r.Dir
     Assert (-not (Test-Path -LiteralPath (Join-Path $r.Dir 'LICENSE'))) 'good: an entry other than rtk.exe was written'
     Assert-Says 'good' $r 'Verification: curl '
     Assert ($r.Urls.Count -eq 2) "good: $($r.Urls.Count) downloads, expected 2"
@@ -111,16 +131,38 @@ try {
 
     # Without RTK_VERSION, both files come from the latest release, with no API call.
     $r = Invoke-Installer 'latest' $good -Version ''
-    Assert ($r.Exit -eq 0) "latest: exit code $($r.Exit), expected 0"
+    Assert-Installed 'latest' $r $r.Dir
     Assert ($r.Urls.Count -eq 2) "latest: $($r.Urls.Count) downloads, expected 2"
     foreach ($url in $r.Urls) {
         Assert ($url.StartsWith('https://github.com/yungSNAT/PascalsLetter/releases/latest/download/')) "latest: downloaded $url"
+    }
+
+    # A relative RTK_INSTALL_DIR is taken from the current file-system folder,
+    # also from another provider's location, where nothing is created.
+    $cwd = Join-Path $work 'relative-cwd'
+    New-Item -ItemType Directory -Path $cwd | Out-Null
+    $r = Invoke-Installer 'relative' $good -InstallDir 'rel-bin' -Prelude "Set-Location -LiteralPath '$cwd'"
+    Assert-Installed 'relative' $r (Join-Path $cwd 'rel-bin')
+    Assert-Says 'relative' $r "Installed rtk.exe to $cwd\rel-bin\rtk.exe"
+    $cwd = Join-Path $work 'registry-cwd'
+    New-Item -ItemType Directory -Path $cwd | Out-Null
+    $key = 'rtk-install-test-' + [guid]::NewGuid()
+    $r = Invoke-Installer 'registry' $good -InstallDir $key -Prelude "Set-Location -LiteralPath '$cwd'; Set-Location HKCU:\"
+    Assert-Installed 'registry' $r (Join-Path $cwd $key)
+    if (Test-Path -LiteralPath "HKCU:\$key") {
+        Assert $false "registry: HKCU:\$key was created (now removed)"
+        Remove-Item -LiteralPath "HKCU:\$key" -Recurse
     }
 
     # A malformed tag is refused before any download.
     $r = Invoke-Installer 'tag' $good -Version 'not a tag'
     Assert-Refused 'tag' $r 'Not a release tag'
     Assert ($r.Urls.Count -eq 0) "tag: $($r.Urls.Count) downloads, expected none"
+
+    # An architecture without a release build is refused before any download.
+    $r = Invoke-Installer 'arch' $good -Prelude "`$env:PROCESSOR_ARCHITECTURE = 'x86'; Remove-Item Env:PROCESSOR_ARCHITEW6432 -ErrorAction SilentlyContinue"
+    Assert-Refused 'arch' $r 'Unsupported architecture: x86'
+    Assert ($r.Urls.Count -eq 0) "arch: $($r.Urls.Count) downloads, expected none"
 
     # An altered archive is refused.
     $tampered = New-Release 'tampered'
@@ -151,12 +193,16 @@ try {
     # An HTTP failure is refused.
     Assert-Refused 'http' (Invoke-Installer 'http' $good -FailDownload) 'download failed'
 
-    # A binary that does not run here fails the install, as in install.sh.
+    # A binary that does not start, or exits non-zero on --version (findstr
+    # exits 2), fails the install, as in install.sh.
     $text = Join-Path $work 'not-a-program.txt'
     [IO.File]::WriteAllText($text, 'not a program')
-    $r = Invoke-Installer 'norun' (New-Release 'norun' -Program $text)
-    Assert ($r.Exit -ne 0) "norun: exit code $($r.Exit), expected non-zero"
-    Assert-Says 'norun' $r 'does not run on this system'
+    foreach ($case in @(@('norun', $text), @('badexit', (Join-Path $env:SystemRoot 'System32\findstr.exe')))) {
+        $r = Invoke-Installer $case[0] (New-Release $case[0] -Program $case[1])
+        Assert ($r.Exit -ne 0) "$($case[0]): exit code $($r.Exit), expected non-zero"
+        Assert-Says $case[0] $r 'does not run on this system'
+        Assert-Clean $case[0] $r
+    }
 
     # An rtk.exe in use is left in place, and the user is told why.
     $busyDir = Join-Path $work 'busy-bin'
@@ -168,6 +214,34 @@ try {
     Assert ($r.Exit -ne 0) "busy: exit code $($r.Exit), expected non-zero"
     Assert ([IO.File]::ReadAllText($old) -eq 'old rtk') 'busy: the existing rtk.exe was changed'
     Assert-Says 'busy' $r 'is in use; close it and run again'
+    Assert-Clean 'busy' $r
+
+    # The real download refuses a file that reached it through a redirect to
+    # plain HTTP, in the response shapes of Windows PowerShell 5.1 and PowerShell 7.
+    $redirect = Join-Path $work 'redirect.ps1'
+    Set-Content -LiteralPath $redirect -Value @"
+`$RtkInstallTestDefineOnly = `$true
+. '$installer'
+Set-StrictMode -Version Latest
+function Invoke-WebRequest([string]`$Uri, [string]`$OutFile, [switch]`$UseBasicParsing, [switch]`$PassThru) {
+    Set-Content -LiteralPath `$OutFile -Value 'body'
+    `$final = [uri]`$script:final
+    if (`$script:shape -eq '5.1') { [pscustomobject]@{ BaseResponse = [pscustomobject]@{ ResponseUri = `$final } } }
+    else { [pscustomobject]@{ BaseResponse = [pscustomobject]@{ RequestMessage = [pscustomobject]@{ RequestUri = `$final } } } }
+}
+foreach (`$script:shape in '5.1', '7') {
+    foreach (`$script:final in 'https://objects.example/x', 'http://objects.example/x') {
+        try { Get-RtkDownload 'https://github.com/x' '$work\redirect.out'; "redirect: `$shape `$final ok" }
+        catch { "redirect: `$shape `$final threw `$(`$_.Exception.Message)" }
+    }
+}
+"@
+    $null = Invoke-Child $redirect 'redirect'
+    $r = @{ Log = Get-Content -LiteralPath (Join-Path $work 'redirect.log') -Raw }
+    foreach ($shape in '5.1', '7') {
+        Assert-Says 'redirect' $r "redirect: $shape https://objects.example/x ok"
+        Assert-Says 'redirect' $r "redirect: $shape http://objects.example/x threw https://github.com/x was redirected to http://objects.example/x, which is not HTTPS"
+    }
 
     # Through `irm | iex` in a dot-sourced script, the installer runs (here it
     # stops at the tag) and leaves the caller's variables and TLS setting alone.
@@ -199,4 +273,4 @@ if ($failures.Count -gt 0) {
     exit 1
 }
 Remove-Item -LiteralPath $work -Recurse -Force
-Write-Host "install.ps1: all 13 cases passed ($($PSVersionTable.PSEdition) $($PSVersionTable.PSVersion))" -ForegroundColor Green
+Write-Host "install.ps1: all 18 cases passed ($($PSVersionTable.PSEdition) $($PSVersionTable.PSVersion))" -ForegroundColor Green

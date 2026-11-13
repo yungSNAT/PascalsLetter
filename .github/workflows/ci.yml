@@ -227,6 +227,13 @@ jobs:
       - name: PowerShell 7
         shell: pwsh
         run: ./scripts/test-install.ps1
+      # The published release, installed on this clean runner by both routes.
+      - name: Live install, Windows PowerShell 5.1
+        shell: powershell
+        run: ./scripts/test-install-live.ps1
+      - name: Live install, PowerShell 7
+        shell: pwsh
+        run: ./scripts/test-install-live.ps1
 
   security:
     timeout-minutes: 30

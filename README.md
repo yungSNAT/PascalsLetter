@@ -27,7 +27,7 @@ On Linux or macOS, install the latest [release](https://github.com/yungSNAT/Pasc
 curl -fsSL https://raw.githubusercontent.com/yungSNAT/PascalsLetter/develop/install.sh | sh
 ```
 
-On Windows, in PowerShell 5.1 or 7, `install.ps1` installs the same release for the current user, without administrator rights. It always checks the checksum (`install.sh` lets `RTK_SKIP_CHECKSUM=1` skip it) and leaves PATH unchanged:
+On Windows, in PowerShell 5.1 or 7, `install.ps1` installs the same release for the current user, without administrator rights, and leaves PATH unchanged. It downloads through the system proxy settings, refuses a download redirected away from HTTPS, and always checks the archive's SHA-256 against the release's `checksums.txt` (`install.sh` lets `RTK_SKIP_CHECKSUM=1` skip it). As with `install.sh`, the checksum comes from the same release, so it catches a corrupted or partial download, not a release changed by someone able to publish one:
 
 ```powershell
 irm https://raw.githubusercontent.com/yungSNAT/PascalsLetter/develop/install.ps1 | iex
