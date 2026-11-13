@@ -1022,12 +1022,11 @@ rtk json -                     # From stdin
 ### `rtk env` -- Environment variables
 
 ```bash
-rtk env                    # All variables (sensitive ones masked)
-rtk env -f AWS             # Filter by name
-rtk env --show-all         # Include sensitive values
+rtk env                    # PATH, language, cloud, tool and common shell variables, grouped
+rtk env -f AWS             # Every variable whose name contains AWS (any case)
 ```
 
-Sensitive variables (tokens, secrets, passwords) are masked by default: `AWS_SECRET_ACCESS_KEY=***`.
+A value over 100 characters is cut to its first 50, followed by its length. Nothing is masked: values, including tokens and secrets, are printed as they are.
 
 ---
 

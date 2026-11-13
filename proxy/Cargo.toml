@@ -1,7 +1,7 @@
 # Its own workspace root, on purpose. `proxy/` is deliberately NOT a member of
 # the root workspace: two binary-bearing packages break `cargo install --git`,
-# the command every README prints. The cost is a second lockfile, which means
-# the rusqlite pin below is held by hand in both -- see the note there.
+# the command every README prints. The cost is a second lockfile, with the
+# rusqlite pin below held by hand -- see the note there.
 [workspace]
 
 [package]
@@ -63,7 +63,9 @@ async-trait = "0.1"
 regex = "1"
 # The usage store. Pinned to what icm-store links (both bundle libsqlite3-sys,
 # and two versions of a `links = "sqlite3"` crate cannot coexist in one
-# dependency graph) -- which is also why the root `rtk` crate tracks this pin.
+# dependency graph). That holds libsqlite3-sys at 0.32, which
+# RUSTSEC-2026-0459 affects; osv-scanner.toml here says why it is ignored and
+# when to revisit. The root `rtk` crate does not track this pin.
 rusqlite = { version = "0.34", features = ["bundled"] }
 # User-level config/log dir resolution for `rtk-proxy service` (launchd /
 # systemd --user / Task Scheduler). Same version pin as the root rtk crate.
