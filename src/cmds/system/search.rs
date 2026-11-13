@@ -855,15 +855,75 @@ pub fn run(
     let per_file = config::limits().grep_max_per_file;
     let mut files: Vec<_> = by_file.iter().collect();
     files.sort_by_key(|(f, _)| *f);
+    let grouped = |save_hidden| {
+        let (body, shown, skipped_files) = grouped_body(
+            &files,
+            show_file,
+            show_line,
+            has_context,
+            per_file,
+            max_results,
+            save_hidden,
+        );
+        let header = format!("{} matches in {} files:\n\n", total_matches, by_file.len());
+        (header + &body, shown < total_matches || skipped_files > 0)
+    };
 
+    // Capping hides matches and clips lines, which the agent pays back with a re-run, so the
+    // grouped form must buy a real saving: at least a third of the faithful output. Unless
+    // only the grouped form fits what the agent sees: the faithful one would lose its tail,
+    // and with it the files and overflow lines the grouped form keeps. Otherwise, and whenever
+    // nothing was capped, the faithful baseline is printed, so RTK never exceeds the real
+    // command.
+    let budget = crate::core::config::limits().agent_output_max_chars;
+    let plain_chars = plain.chars().count();
+    let wins = |grouped: &str| {
+        let grouped_chars = grouped.chars().count();
+        grouped_chars * 3 <= plain_chars * 2 || (grouped_chars <= budget && plain_chars > budget)
+    };
+    // Hints only lengthen the form, so one that loses without them loses with them, and its
+    // hidden matches are never saved. One that wins is saved and judged again with its hints,
+    // whose length is known only then.
+    // shortcut: a form whose hints tip it over leaves its saved copies unused; bounding the
+    // hint length before saving (tee path, recall hash) would close that.
+    let (measured, capped) = grouped(false);
+    let output = (capped && wins(&measured))
+        .then(|| grouped(true).0)
+        .filter(|hinted| wins(hinted))
+        .unwrap_or(plain);
+
+    print!("{}", output);
+    timer.track(&real_cmd, &rtk_label, &raw_output, &output);
+
+    Ok(exit_code)
+}
+
+/// Matches for one file: `(line number, is a match rather than context, cleaned content)`.
+type FileEntries = Vec<(usize, bool, String)>;
+
+/// The grouped form's body, with how many lines it shows and how many files it skips: each
+/// file's first matches, up to `per_file` each and `max_results` in all, then a line for each
+/// file with more and one for the files past the cap. With `save_hidden`, the hidden matches are
+/// saved for recovery and each of those lines says where; without it nothing is saved.
+fn grouped_body(
+    files: &[(&String, &FileEntries)],
+    show_file: bool,
+    show_line: bool,
+    has_context: bool,
+    per_file: usize,
+    max_results: usize,
+    save_hidden: bool,
+) -> (String, usize, usize) {
     let mut body = String::new();
     let mut shown = 0;
     let mut skipped_files = 0;
     let mut skipped_block = String::new();
-    for (idx, (file, entries)) in files.into_iter().enumerate() {
+    for (idx, (file, entries)) in files.iter().enumerate() {
         if shown >= max_results {
             skipped_files += 1;
-            skipped_block.push_str(&match_block(file, entries));
+            if save_hidden {
+                skipped_block.push_str(&match_block(file, entries));
+            }
             continue;
         }
 
@@ -899,12 +959,16 @@ pub fn run(
         }
         // Tee the file's full matches (real path) so the tail hint recovers them
         // openably, skipping the lines already shown.
-        let full_block = match_block(file, entries);
-        match crate::core::tee::force_tee_tail_hint(
-            &full_block,
-            &grep_slug(idx, file),
-            file_shown + 1,
-        ) {
+        let hint = save_hidden
+            .then(|| {
+                crate::core::tee::force_tee_tail_hint(
+                    &match_block(file, entries),
+                    &grep_slug(idx, file),
+                    file_shown + 1,
+                )
+            })
+            .flatten();
+        match hint {
             Some(hint) => body.push_str(&format!(
                 "  +{} more in {} {}\n",
                 remaining, file_display, hint
@@ -914,45 +978,14 @@ pub fn run(
     }
 
     if skipped_files > 0 {
-        let hint = crate::core::tee::force_tee_tail_hint(&skipped_block, "grep_skipped", 1)
+        let hint = save_hidden
+            .then(|| crate::core::tee::force_tee_tail_hint(&skipped_block, "grep_skipped", 1))
+            .flatten()
             .map(|h| format!(" {}", h))
             .unwrap_or_default();
         body.push_str(&format!("+{} more files{}\n", skipped_files, hint));
     }
-
-    // Switch to the grouped form only when capping actually shrank the output;
-    // otherwise emit the faithful baseline, so RTK never exceeds the real command.
-    let capped = shown < total_matches || skipped_files > 0;
-    let rtk_output = if capped {
-        format!(
-            "{} matches in {} files:\n\n{}",
-            total_matches,
-            by_file.len(),
-            body
-        )
-    } else {
-        body
-    };
-
-    // Capping hides matches and clips lines, which the agent pays back with a re-run, so the
-    // grouped form must buy a real saving: at least a third of the faithful output. Unless
-    // only the grouped form fits what the agent sees: the faithful one would lose its tail,
-    // and with it the files and overflow hints the grouped form keeps.
-    let budget = crate::core::config::limits().agent_output_max_chars;
-    let (grouped_chars, plain_chars) = (rtk_output.chars().count(), plain.chars().count());
-    let output = if capped
-        && (grouped_chars * 3 <= plain_chars * 2
-            || (grouped_chars <= budget && plain_chars > budget))
-    {
-        rtk_output
-    } else {
-        plain
-    };
-
-    print!("{}", output);
-    timer.track(&real_cmd, &rtk_label, &raw_output, &output);
-
-    Ok(exit_code)
+    (body, shown, skipped_files)
 }
 
 /// Parses a single rg/grep match or context line of the form `file\0line_number[:-]content`.
