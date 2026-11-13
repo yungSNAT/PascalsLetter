@@ -880,7 +880,7 @@ fn forward_raw(subcmd: &str, extra: &[String]) -> Result<()> {
 fn proxy_command(bin: &Path, dir: &Path, reads_config: bool) -> Result<Command> {
     let mut cmd = Command::new(bin);
     cmd.current_dir(dir);
-    if let Some(config) = std::env::var_os("RTK_PROXY_CONFIG")
+    if let Some(config) = crate::core::user_dirs::env_path("RTK_PROXY_CONFIG")
         .filter(|c| reads_config && !c.is_empty() && Path::new(c).is_relative())
     {
         cmd.env("RTK_PROXY_CONFIG", absolute_config(&config)?);
