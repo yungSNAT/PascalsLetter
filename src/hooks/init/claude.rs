@@ -325,7 +325,7 @@ fn patch_settings_json_command(
             "  {}: the pipeline requires no hook events — file untouched",
             settings_path.display()
         );
-        return Ok(PatchResult::AlreadyPresent);
+        return Ok(PatchResult::Skipped);
     }
     if missing.is_empty() && !matcher_stale {
         if verbose > 0 {

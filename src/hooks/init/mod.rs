@@ -139,7 +139,7 @@ pub enum PatchResult {
     Patched,        // Hook was added successfully
     AlreadyPresent, // Hook was already in settings.json
     Declined,       // User declined when prompted
-    Skipped,        // --no-patch flag used
+    Skipped,        // --no-patch flag used, or no hook event to register
     WouldPatch,     // Dry-run: hook would have been added
 }
 
