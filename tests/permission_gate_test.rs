@@ -49,3 +49,11 @@ fn deny_rules_see_commands_after_a_comment_quote_and_a_zsh_disown() {
         );
     }
 }
+
+#[test]
+fn a_deny_rule_sees_a_command_its_prefix_reaches_over_a_continued_line() {
+    assert_eq!(
+        rewrite_exit("env \\\n  FOO=1 ls -la", &["ls -la:*"], &["*"]),
+        Some(2)
+    );
+}

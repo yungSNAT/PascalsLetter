@@ -3574,6 +3574,17 @@ mod tests {
                 "{cmd:?}"
             );
         }
+        // Inside single quotes `\<newline>` is text the shell keeps, so the
+        // argument is not `foobar`.
+        assert_eq!(
+            check_command_with_rules(
+                "ls -la 'foo\\\nbar'",
+                &["ls -la foobar:*".to_string()],
+                &[],
+                &allow
+            ),
+            PermissionVerdict::Allow
+        );
     }
 
     #[test]
