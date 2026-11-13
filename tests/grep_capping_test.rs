@@ -121,6 +121,57 @@ fn a_large_overflow_is_still_capped() {
     );
 }
 
+/// The capped form saves the matches it hides for recovery. When grep's own output is printed
+/// instead, nothing is hidden, so nothing may be saved: no tee file and no stored copy, in
+/// either recovery mode.
+#[cfg(target_os = "linux")]
+#[test]
+fn only_a_printed_capped_form_saves_hidden_matches() {
+    let dir = tempfile::tempdir().expect("test setup");
+    // 30 matches in one file: over the per-file cap of 25, but too small a saving to print
+    // the capped form (`a_small_overflow_of_the_per_file_cap_prints_every_match_in_full`).
+    let small: String = (0..30)
+        .map(|i| format!("### heading {i:02} {}\n", "detail ".repeat(20)))
+        .collect();
+    std::fs::write(dir.path().join("small.md"), small).expect("test setup");
+    // 400 long matches: the capped form is printed (`a_large_overflow_is_still_capped`).
+    let big: String = (0..400)
+        .map(|i| format!("match {i} {}\n", "z".repeat(300)))
+        .collect();
+    std::fs::write(dir.path().join("big.txt"), big).expect("test setup");
+
+    for mode in ["tee", "sqlite"] {
+        let store = common::tempdir();
+        let grep = |args: &[&str]| {
+            let mut cmd = common::rtk_command();
+            let _config = with_config(&mut cmd, &format!("[retriever]\nmode = {mode:?}\n"));
+            let out = cmd
+                .env("RTK_TEE_DIR", store.path().join("tee"))
+                .env("RTK_RECALL_DB", store.path().join("recall.db"))
+                .arg("grep")
+                .args(args)
+                .current_dir(dir.path())
+                .output()
+                .expect("rtk grep");
+            String::from_utf8_lossy(&out.stdout).into_owned()
+        };
+        let saved = || {
+            std::fs::read_dir(store.path())
+                .expect("store directory")
+                .count()
+        };
+
+        let stdout = grep(&["-n", "^### ", "small.md"]);
+        assert!(!stdout.contains("more in"), "{mode}: capped form printed");
+        assert_eq!(saved(), 0, "{mode}: saved matches no output hid");
+
+        // The same store does receive what a printed capped form hides.
+        let stdout = grep(&["match", "big.txt"]);
+        assert!(stdout.starts_with("400 matches in 1 files:"), "{mode}");
+        assert!(saved() > 0, "{mode}: the capped form saved nothing");
+    }
+}
+
 #[test]
 fn a_fixed_string_clip_keeps_the_literal_not_a_regex_lookalike() {
     let dir = tempfile::tempdir().expect("test setup");
