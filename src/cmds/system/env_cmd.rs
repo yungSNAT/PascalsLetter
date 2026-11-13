@@ -33,11 +33,11 @@ pub fn run(filter: Option<&str>, verbose: u8) -> Result<()> {
             continue;
         }
 
-        let display_value = if value.len() > 100 {
-            let preview: String = value.chars().take(50).collect();
-            format!("{}... ({} chars)", preview, value.chars().count())
-        } else {
+        // PATH is split into entries before anything is shortened.
+        let display_value = if key == "PATH" {
             value.clone()
+        } else {
+            shorten(value)
         };
 
         let entry = (key.clone(), display_value);
@@ -61,16 +61,7 @@ pub fn run(filter: Option<&str>, verbose: u8) -> Result<()> {
         let _ = writeln!(body, "PATH Variables:");
         for (k, v) in &path_vars {
             if k == "PATH" {
-                // Split PATH for readability
-                let paths: Vec<&str> = v.split(':').collect();
-                let _ = writeln!(body, "  PATH ({} entries):", paths.len());
-                const MAX_PATH_ENTRIES: usize = CAP_WARNINGS;
-                for p in paths.iter().take(MAX_PATH_ENTRIES) {
-                    let _ = writeln!(body, "    {}", p);
-                }
-                if paths.len() > MAX_PATH_ENTRIES {
-                    let _ = writeln!(body, "    ... +{} more", paths.len() - MAX_PATH_ENTRIES);
-                }
+                write_path(&mut body, v);
             } else {
                 let _ = writeln!(body, "  {}={}", k, v);
             }
@@ -127,6 +118,30 @@ pub fn run(filter: Option<&str>, verbose: u8) -> Result<()> {
     print!("{}", shown_body);
     timer.track("env", "rtk env", &raw, shown_body);
     Ok(())
+}
+
+/// A value over 100 bytes, cut to its first 50 characters and its length.
+fn shorten(value: &str) -> String {
+    if value.len() > 100 {
+        let preview: String = value.chars().take(50).collect();
+        format!("{}... ({} chars)", preview, value.chars().count())
+    } else {
+        value.to_string()
+    }
+}
+
+/// PATH one entry per line, split on the platform's separator (`:`, or `;` on
+/// Windows, whose entries hold drive colons).
+fn write_path(body: &mut String, value: &str) {
+    let paths: Vec<_> = env::split_paths(value).collect();
+    let _ = writeln!(body, "  PATH ({} entries):", paths.len());
+    const MAX_PATH_ENTRIES: usize = CAP_WARNINGS;
+    for p in paths.iter().take(MAX_PATH_ENTRIES) {
+        let _ = writeln!(body, "    {}", shorten(&p.to_string_lossy()));
+    }
+    if paths.len() > MAX_PATH_ENTRIES {
+        let _ = writeln!(body, "    ... +{} more", paths.len() - MAX_PATH_ENTRIES);
+    }
 }
 
 fn is_lang_var(key: &str) -> bool {
@@ -232,5 +247,28 @@ mod tests {
     fn test_is_interesting_var_negative() {
         assert!(!is_interesting_var("RANDOM_VAR"));
         assert!(!is_interesting_var("MY_CUSTOM_VAR"));
+    }
+
+    #[test]
+    fn a_long_path_is_split_before_it_is_shortened() {
+        let entries: Vec<String> = (0..8).map(|i| format!("/opt/tool-{i}/bin")).collect();
+        let path = env::join_paths(&entries).unwrap().into_string().unwrap();
+        assert!(path.len() > 100, "the value must be long enough to be cut");
+        let mut body = String::new();
+        write_path(&mut body, &path);
+        assert!(body.contains("PATH (8 entries):"), "{body}");
+        for entry in &entries {
+            assert!(body.contains(&format!("    {entry}\n")), "{entry}: {body}");
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_windows_path_keeps_its_drive_letters() {
+        let mut body = String::new();
+        write_path(&mut body, r"C:\Program Files\Git\bin;C:\Windows\system32");
+        assert!(body.contains("PATH (2 entries):"), "{body}");
+        assert!(body.contains("    C:\\Program Files\\Git\\bin\n"), "{body}");
+        assert!(body.contains("    C:\\Windows\\system32\n"), "{body}");
     }
 }
