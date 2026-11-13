@@ -805,9 +805,9 @@ pub(crate) fn ensure_running(bind: &str) -> Result<Option<DaemonPaths>> {
     let dir = state_dir()?;
     let log_path = dir.join("rtk-proxy.log");
     let db_path = dir.join("rtk-proxy.db");
-    // CCR's cache. Passed explicitly for the same reason as the usage DB: the
-    // daemon's default is cwd-relative, and it inherits the cwd of whatever
-    // shell ran `rtk llm-proxy start`.
+    // CCR's cache. Like the usage DB, passed explicitly: the variables pin
+    // both databases to this state directory, where the daemon also runs
+    // (below), over its defaults and any configuration file.
     let icm_db_path = dir.join("rtk-proxy-memory.db");
     let log_file = std::fs::File::create(&log_path)
         .with_context(|| format!("creating {}", log_path.display()))?;
