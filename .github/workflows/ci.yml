@@ -213,6 +213,28 @@ jobs:
         # its own job, since it is not a member.
       - run: cargo test --all
 
+  install-ps1:
+    timeout-minutes: 10
+    name: install.ps1
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Windows PowerShell 5.1
+        shell: powershell
+        run: ./scripts/test-install.ps1
+      - name: PowerShell 7
+        shell: pwsh
+        run: ./scripts/test-install.ps1
+      # The published release, installed on this clean runner by both routes.
+      - name: Live install, Windows PowerShell 5.1
+        shell: powershell
+        run: ./scripts/test-install-live.ps1
+      - name: Live install, PowerShell 7
+        shell: pwsh
+        run: ./scripts/test-install-live.ps1
+
   security:
     timeout-minutes: 30
     name: Security Scan
