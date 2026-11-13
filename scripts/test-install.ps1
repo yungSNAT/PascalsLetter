@@ -4,7 +4,8 @@
 #
 # Each case runs the installer in a child of the same PowerShell, with the
 # network replaced by a fixture release, and checks its exit code, its message,
-# whether rtk.exe was installed and that its temporary files are gone. Each
+# whether rtk.exe was installed and that its temporary files are gone. The
+# 'download' case runs the real download against local servers instead. Each
 # guard in install.ps1 has a case that fails when that guard alone is removed,
 # except Set-StrictMode, which only turns a slip in the script into an error.
 # The fixture rtk.exe is a copy of Windows' curl.exe, which answers --version.
@@ -83,9 +84,9 @@ Install-Rtk
 # Runs a script in a child PowerShell, its output to $Name.log, and returns the
 # exit code. Windows PowerShell 5.1 turns a child's stderr into errors, which
 # 'Stop' would throw, so this scope continues instead.
-function Invoke-Child([string]$Script, [string]$Name) {
+function Invoke-Child([string]$Script, [string]$Name, [string[]]$Arguments = @()) {
     $ErrorActionPreference = 'Continue'
-    & $shell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $Script *> (Join-Path $work "$Name.log")
+    & $shell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $Script @Arguments *> (Join-Path $work "$Name.log")
     $LASTEXITCODE
 }
 
@@ -216,32 +217,134 @@ try {
     Assert-Says 'busy' $r 'is in use; close it and run again'
     Assert-Clean 'busy' $r
 
-    # The real download refuses a file that reached it through a redirect to
-    # plain HTTP, in the response shapes of Windows PowerShell 5.1 and PowerShell 7.
-    $redirect = Join-Path $work 'redirect.ps1'
-    Set-Content -LiteralPath $redirect -Value @"
-`$RtkInstallTestDefineOnly = `$true
-. '$installer'
-Set-StrictMode -Version Latest
-function Invoke-WebRequest([string]`$Uri, [string]`$OutFile, [switch]`$UseBasicParsing, [switch]`$PassThru) {
-    Set-Content -LiteralPath `$OutFile -Value 'body'
-    `$final = [uri]`$script:final
-    if (`$script:shape -eq '5.1') { [pscustomobject]@{ BaseResponse = [pscustomobject]@{ ResponseUri = `$final } } }
-    else { [pscustomobject]@{ BaseResponse = [pscustomobject]@{ RequestMessage = [pscustomobject]@{ RequestUri = `$final } } } }
+    # An existing rtk.exe not in use is replaced by the verified one.
+    $replaceDir = Join-Path $work 'replace-bin'
+    New-Item -ItemType Directory -Path $replaceDir | Out-Null
+    [IO.File]::WriteAllText((Join-Path $replaceDir 'rtk.exe'), 'old rtk')
+    $r = Invoke-Installer 'replace' $good
+    Assert-Installed 'replace' $r $replaceDir
+    Assert-Says 'replace' $r 'Replaced the existing'
+
+    # The real download, against local HTTPS and HTTP servers on the loopback
+    # address, follows redirects between HTTPS addresses only, and refuses one to
+    # HTTP before sending it any request, also when HTTP would lead back to HTTPS.
+    # The server's certificate is made for this test and trusted only by the
+    # child that downloads; no certificate store is touched.
+    $server = Join-Path $work 'server.ps1'
+    Set-Content -LiteralPath $server -Value @'
+param([string]$Dir)
+$ErrorActionPreference = 'Stop'
+$rsa = [Security.Cryptography.RSACng]::new(2048)
+$csr = [Security.Cryptography.X509Certificates.CertificateRequest]::new('CN=127.0.0.1', $rsa,
+    [Security.Cryptography.HashAlgorithmName]::SHA256, [Security.Cryptography.RSASignaturePadding]::Pkcs1)
+$now = [DateTimeOffset]::UtcNow
+# Schannel needs the key in a key container: this import makes a temporary one,
+# which Dispose deletes.
+$cert = [Security.Cryptography.X509Certificates.X509Certificate2]::new(
+    $csr.CreateSelfSigned($now.AddMinutes(-5), $now.AddHours(1)).Export('Pfx'), [string]$null, 'UserKeySet')
+$tls = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
+$plain = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
+$tls.Start(); $plain.Start()
+$s = "https://127.0.0.1:$($tls.LocalEndpoint.Port)"
+$h = "http://127.0.0.1:$($plain.LocalEndpoint.Port)"
+$redirects = @{
+    '/to-http' = "$h/plain"; '/chain' = "$h/back"; '/back' = "$s/file"
+    '/hop' = "$s/hop2"; '/hop2' = '/file'; '/loop' = '/loop'
 }
-foreach (`$script:shape in '5.1', '7') {
-    foreach (`$script:final in 'https://objects.example/x', 'http://objects.example/x') {
-        try { Get-RtkDownload 'https://github.com/x' '$work\redirect.out'; "redirect: `$shape `$final ok" }
-        catch { "redirect: `$shape `$final threw `$(`$_.Exception.Message)" }
+[IO.File]::WriteAllText("$Dir\ready.tmp", "$s $h $($cert.Thumbprint)")
+Move-Item -LiteralPath "$Dir\ready.tmp" -Destination "$Dir\ready"
+$deadline = [DateTime]::UtcNow.AddMinutes(3)
+try {
+    while (-not (Test-Path -LiteralPath "$Dir\stop") -and [DateTime]::UtcNow -lt $deadline) {
+        foreach ($listener in $tls, $plain) {
+            if (-not $listener.Pending()) { continue }
+            $client = $listener.AcceptTcpClient()
+            try {
+                $stream = $client.GetStream()
+                $scheme = 'http'
+                if ($listener -eq $tls) {
+                    $stream = [Net.Security.SslStream]::new($stream)
+                    $stream.AuthenticateAsServer($cert, $false, 'Tls12', $false)
+                    $scheme = 'https'
+                }
+                $reader = [IO.StreamReader]::new($stream)
+                $path = ($reader.ReadLine() -split ' ')[1]
+                while ($reader.ReadLine()) {}
+                Add-Content -LiteralPath "$Dir\requests.log" -Value "$scheme $path"
+                $head, $body = if ($redirects.ContainsKey($path)) { "302 Found`r`nLocation: $($redirects[$path])", '' }
+                    elseif ($path -eq '/file') { '200 OK', 'release body' }
+                    elseif ($scheme -eq 'http') { '200 OK', 'plain http body' }
+                    else { '404 Not Found', '' }
+                $bytes = [Text.Encoding]::ASCII.GetBytes("HTTP/1.1 $head`r`nContent-Length: $($body.Length)`r`nConnection: close`r`n`r`n$body")
+                $stream.Write($bytes, 0, $bytes.Length)
+                $stream.Flush()
+            } catch {
+                Add-Content -LiteralPath "$Dir\server-errors.log" -Value "$_"
+            } finally {
+                $client.Close()
+            }
+        }
+        Start-Sleep -Milliseconds 20
+    }
+} finally {
+    $tls.Stop(); $plain.Stop(); $cert.Dispose()
+}
+'@
+    $download = Join-Path $work 'download.ps1'
+    Set-Content -LiteralPath $download -Value @'
+param([string]$Installer, [string]$Dir, [string]$Server, [string]$Thumbprint)
+$RtkInstallTestDefineOnly = $true
+. $Installer
+Set-StrictMode -Version Latest
+# A scriptblock has no runspace on the thread that checks the certificate, so
+# the check is compiled.
+Add-Type -TypeDefinition @"
+public static class RtkTestTrust {
+    public static string Thumbprint;
+    public static bool Check(object sender, System.Security.Cryptography.X509Certificates.X509Certificate certificate,
+        System.Security.Cryptography.X509Certificates.X509Chain chain, System.Net.Security.SslPolicyErrors errors) {
+        return certificate != null && certificate.GetCertHashString() == Thumbprint;
     }
 }
 "@
-    $null = Invoke-Child $redirect 'redirect'
-    $r = @{ Log = Get-Content -LiteralPath (Join-Path $work 'redirect.log') -Raw }
-    foreach ($shape in '5.1', '7') {
-        Assert-Says 'redirect' $r "redirect: $shape https://objects.example/x ok"
-        Assert-Says 'redirect' $r "redirect: $shape http://objects.example/x threw https://github.com/x was redirected to http://objects.example/x, which is not HTTPS"
+[RtkTestTrust]::Thumbprint = $Thumbprint
+[Net.ServicePointManager]::ServerCertificateValidationCallback =
+    [Delegate]::CreateDelegate([Net.Security.RemoteCertificateValidationCallback], [RtkTestTrust].GetMethod('Check'))
+foreach ($case in 'hop', 'to-http', 'chain', 'loop', 'missing') {
+    $out = Join-Path $Dir "download-$case.out"
+    try { Get-RtkDownload "$Server/$case" $out; "download: $case ok $(Get-Content -LiteralPath $out -Raw)" }
+    catch { "download: $case threw $($_.Exception.Message)" }
+    "download: $case file $(Test-Path -LiteralPath $out)"
+}
+'@
+    $serverProcess = Start-Process -FilePath $shell -PassThru -NoNewWindow `
+        -ArgumentList @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', "`"$server`"", "`"$work`"") `
+        -RedirectStandardOutput (Join-Path $work 'server.out') -RedirectStandardError (Join-Path $work 'server.err')
+    try {
+        $ready = Join-Path $work 'ready'
+        $wait = [Diagnostics.Stopwatch]::StartNew()
+        while (-not (Test-Path -LiteralPath $ready) -and -not $serverProcess.HasExited -and $wait.Elapsed.TotalSeconds -lt 60) {
+            Start-Sleep -Milliseconds 100
+        }
+        if (-not (Test-Path -LiteralPath $ready)) { throw "the test server did not start (see $work\server.err)" }
+        $s, $h, $thumbprint = (Get-Content -LiteralPath $ready -Raw).Split(' ')
+        $null = Invoke-Child $download 'download' @($installer, $work, $s, $thumbprint)
+    } finally {
+        New-Item -ItemType File -Path (Join-Path $work 'stop') | Out-Null
+        if (-not $serverProcess.WaitForExit(10000)) { $serverProcess.Kill() }
     }
+    $r = @{ Log = Get-Content -LiteralPath (Join-Path $work 'download.log') -Raw }
+    $requests = @(if (Test-Path -LiteralPath (Join-Path $work 'requests.log')) { Get-Content -LiteralPath (Join-Path $work 'requests.log') })
+    Assert-Says 'download' $r 'download: hop ok release body'
+    Assert-Says 'download' $r "download: to-http threw $s/to-http was redirected to $h/plain, which is not HTTPS"
+    Assert-Says 'download' $r "download: chain threw $s/chain was redirected to $h/back, which is not HTTPS"
+    Assert-Says 'download' $r "download: loop threw $s/loop was redirected more than 10 times"
+    Assert-Says 'download' $r 'download: missing threw'
+    foreach ($case in 'to-http', 'chain', 'loop', 'missing') { Assert-Says 'download' $r "download: $case file False" }
+    $sent = @($requests | Where-Object { $_ -like 'http *' })
+    Assert ($sent.Count -eq 0) "download: plain HTTP requests reached the server: $($sent -join ', ')"
+    Assert (($requests -join ',') -eq 'https /hop,https /hop2,https /file,https /to-http,https /chain,' + ((1..11 | ForEach-Object { 'https /loop' }) -join ',') + ',https /missing') "download: requests were $($requests -join ', ')"
+    Assert (-not (Test-Path -LiteralPath (Join-Path $work 'server-errors.log'))) "download: the test server failed (see $work\server-errors.log)"
 
     # Through `irm | iex` in a dot-sourced script, the installer runs (here it
     # stops at the tag) and leaves the caller's variables and TLS setting alone.
@@ -273,4 +376,4 @@ if ($failures.Count -gt 0) {
     exit 1
 }
 Remove-Item -LiteralPath $work -Recurse -Force
-Write-Host "install.ps1: all 18 cases passed ($($PSVersionTable.PSEdition) $($PSVersionTable.PSVersion))" -ForegroundColor Green
+Write-Host "install.ps1: all 19 cases passed ($($PSVersionTable.PSEdition) $($PSVersionTable.PSVersion))" -ForegroundColor Green

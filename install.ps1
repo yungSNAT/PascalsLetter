@@ -10,21 +10,39 @@
 # RTK_INSTALL_DIR  install directory (default: $HOME\.local\bin, as install.sh)
 
 # Downloads $Url to $OutFile through the system proxy settings, or throws.
-# Kept separate so the tests can stand in for the network.
+# Windows PowerShell 5.1 follows a redirect from HTTPS to HTTP, so redirects
+# are followed here, each only after its address is checked: no request is
+# sent over plain HTTP. Kept separate so the tests can stand in for the network.
 function Get-RtkDownload([string]$Url, [string]$OutFile) {
-    $response = Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing -PassThru
-    # PowerShell 7 refuses a redirect from HTTPS to HTTP, but Windows PowerShell
-    # 5.1 follows one, so check where the file came from in both.
-    $base = $response.BaseResponse
-    $final = if ($base.PSObject.Properties['ResponseUri']) { $base.ResponseUri } else { $base.RequestMessage.RequestUri }
-    if ($final.Scheme -ne 'https') {
-        throw "$Url was redirected to $final, which is not HTTPS - refusing to install"
+    $uri = [uri]$Url
+    for ($redirects = 0; ; $redirects++) {
+        if ($uri.Scheme -ne 'https') {
+            throw "$Url was redirected to $uri, which is not HTTPS - refusing to install"
+        }
+        # WebRequest uses the system proxy settings in both editions. With
+        # redirects off it returns a 3xx response and throws on 4xx and 5xx.
+        $request = [Net.WebRequest]::Create($uri)
+        $request.AllowAutoRedirect = $false
+        $response = $request.GetResponse()
+        try {
+            if ([int]$response.StatusCode -lt 300) {
+                $file = [IO.File]::Create($OutFile)
+                try { $response.GetResponseStream().CopyTo($file) } finally { $file.Dispose() }
+                return
+            }
+            if ($redirects -ge 10) { throw "$Url was redirected more than 10 times - refusing to install" }
+            $uri = [uri]::new($uri, $response.Headers['Location'])
+        } finally {
+            $response.Dispose()
+        }
     }
 }
 
 function Install-Rtk {
     # Everything is local to this function: through `irm | iex` the script
-    # runs in the caller's session, which it must leave as it was.
+    # runs in the caller's session, which it must leave as it was. The one
+    # exception is $LASTEXITCODE, which PowerShell sets for the whole session
+    # when the version check below runs rtk.exe.
     $ErrorActionPreference = 'Stop'
     $ProgressPreference = 'SilentlyContinue' # the progress bar slows 5.1's downloads
     Set-StrictMode -Version Latest
@@ -103,7 +121,8 @@ function Install-Rtk {
 
         $replacing = Test-Path -LiteralPath $target
         try {
-            if ($replacing) { [IO.File]::Replace($staged, $target, $null) } else { [IO.File]::Move($staged, $target) }
+            # No backup file: PowerShell would pass $null as '', which Replace refuses.
+            if ($replacing) { [IO.File]::Replace($staged, $target, [NullString]::Value) } else { [IO.File]::Move($staged, $target) }
         } catch {
             if ($replacing) { throw "$target is in use; close it and run again ($($_.Exception.GetBaseException().Message))" }
             throw
