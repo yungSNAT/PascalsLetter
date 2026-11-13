@@ -23,7 +23,7 @@ use crate::core::http;
 use crate::core::utils::tool_exists;
 use anyhow::{Context, Result};
 use clap::Subcommand;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -813,11 +813,7 @@ pub(crate) fn ensure_running(bind: &str) -> Result<Option<DaemonPaths>> {
         .with_context(|| format!("creating {}", log_path.display()))?;
     let log_file_err = log_file.try_clone().context("cloning log file handle")?;
 
-    // Started in the state directory, not the shell's: the daemon reads
-    // `./rtk-proxy.toml`, and one in a cloned project could set the upstream
-    // that the relayed provider key is sent to.
-    Command::new(&bin)
-        .current_dir(&dir)
+    proxy_command(&bin, &dir)?
         .arg("start")
         .arg("--bind")
         .arg(bind)
@@ -874,9 +870,26 @@ fn forward_raw(subcmd: &str, extra: &[String]) -> Result<()> {
     exec(&build_forward_args(subcmd, None, extra))
 }
 
+/// `rtk-proxy` to run in the state directory `dir`, not the shell's: it reads
+/// `./rtk-proxy.toml`, and one in a cloned project could set the upstream that
+/// the relayed provider key is sent to, or that `service install` writes into
+/// the service's configuration. A relative `RTK_PROXY_CONFIG` is the user's
+/// own, so it still names a file in the shell's directory.
+fn proxy_command(bin: &Path, dir: &Path) -> Result<Command> {
+    let mut cmd = Command::new(bin);
+    cmd.current_dir(dir);
+    if let Some(config) =
+        std::env::var_os("RTK_PROXY_CONFIG").filter(|c| !c.is_empty() && Path::new(c).is_relative())
+    {
+        let here = std::env::current_dir().context("reading the current directory")?;
+        cmd.env("RTK_PROXY_CONFIG", here.join(config));
+    }
+    Ok(cmd)
+}
+
 fn exec(args: &[String]) -> Result<()> {
     let bin = locate_binary()?;
-    let status = Command::new(&bin)
+    let status = proxy_command(&bin, &state_dir()?)?
         .args(args)
         .status()
         .with_context(|| format!("failed to run {} {}", bin.display(), args.join(" ")))?;

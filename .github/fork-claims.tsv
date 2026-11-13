@@ -42,6 +42,7 @@ Windows arguments	windows	-	-	# MSYS quoting runs only on Windows; its tests are
 `git diff`	linux	tests/guard_integration_test.rs	a_truncated_git_show_recalls_the_whole_commit
 `rtk-proxy` key lending	linux	proxy/tests/functional.rs	the_relayed_key_is_lent_only_to_a_local_worker
 `rtk-proxy` start directory	linux	tests/llm_proxy_cwd_test.rs	the_daemon_starts_in_the_state_directory_not_the_shells
+`rtk-proxy` start directory	linux	tests/llm_proxy_cwd_test.rs	forwarded_subcommands_run_rtk_proxy_outside_the_shells_directory
 `rtk session`	linux	tests/session_tool_output_test.rs	share_counts_every_tool_in_both_content_forms_and_sessions_without_bash
 `cargo test`	linux	tests/fork_output_test.rs	cargo_test_keeps_compiler_warnings_on_a_passing_run
 Progress output	linux	tests/fork_output_test.rs	a_progress_redraw_reaches_the_filter_as_its_last_state
