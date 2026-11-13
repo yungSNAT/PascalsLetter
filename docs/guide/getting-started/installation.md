@@ -7,8 +7,20 @@ sidebar:
 
 # Installation
 
-:::caution[PascalsLetter builds from source]
-This page comes from upstream RTK. PascalsLetter has no prebuilt binaries yet, so install it with Cargo:
+:::caution[Installing PascalsLetter]
+This page comes from upstream RTK. PascalsLetter's releases hold the Apache-2.0 edition (`rtk-oss`). On Linux and macOS, install it with:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yungSNAT/PascalsLetter/develop/install.sh | sh
+```
+
+On Windows, in PowerShell 5.1 or 7, install it with the command below. It installs to `$HOME\.local\bin` and leaves PATH unchanged:
+
+```powershell
+irm https://raw.githubusercontent.com/yungSNAT/PascalsLetter/develop/install.ps1 | iex
+```
+
+For the full edition, build from source with Cargo:
 
 ```bash
 cargo install --git https://github.com/yungSNAT/PascalsLetter rtk --locked
@@ -55,6 +67,8 @@ brew install rtk-ai/tap/rtk
 
 ## winget (Windows)
 
+This installs upstream RTK's build. For PascalsLetter's, use `install.ps1` at the top of this page.
+
 ```powershell
 winget install rtk-ai.rtk
 ```
@@ -99,10 +113,10 @@ RTK works fully on native Windows. Since **v0.37.2** the auto-rewrite hook runs 
 
 ### Native Windows (manual install)
 
-Prefer [winget](#winget-windows) if you can — it handles PATH for you.
+PascalsLetter's `install.ps1`, at the top of this page, does step 1 for you; it leaves PATH unchanged.
 
 ```powershell
-# 1. Download and extract rtk-x86_64-pc-windows-msvc.zip from releases
+# 1. Download and extract rtk-oss-x86_64-pc-windows-msvc.zip from https://github.com/yungSNAT/PascalsLetter/releases
 # 2. Add rtk.exe to your PATH (e.g. C:\Users\<you>\.local\bin)
 # 3. Initialize - installs the native binary hook
 rtk init -g

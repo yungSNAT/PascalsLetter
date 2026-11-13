@@ -1,8 +1,8 @@
 # RTK Installation Guide - For AI Coding Assistants
 
-> **This guide comes from upstream RTK.** PascalsLetter's releases hold only the Apache-2.0 edition (`rtk-oss`); `install.sh` below installs it on Linux and macOS.
+> **This guide comes from upstream RTK.** PascalsLetter's releases hold only the Apache-2.0 edition (`rtk-oss`); `install.sh` below installs it on Linux and macOS, and `install.ps1` on Windows.
 > For the full edition, run `cargo install --git https://github.com/yungSNAT/PascalsLetter rtk --locked`.
-> The Homebrew and winget routes below install upstream RTK, without PascalsLetter's changes.
+> Homebrew and winget install upstream RTK, without PascalsLetter's changes.
 
 ## ⚠️ Name Collision Warning
 
@@ -58,8 +58,10 @@ rtk gain  # Must show the savings dashboard (not "command not found")
 
 ### Quick Install (Windows)
 
+In PowerShell 5.1 or 7, for the current user. It installs to `$HOME\.local\bin` and leaves PATH unchanged:
+
 ```powershell
-winget install rtk-ai.rtk
+irm https://raw.githubusercontent.com/yungSNAT/PascalsLetter/develop/install.ps1 | iex
 ```
 
 ### Alternative: Manual Installation
