@@ -45,6 +45,12 @@ pub fn isolate_rtk(cmd: &mut Command) {
     scratch::isolate_rtk(cmd);
 }
 
+/// [`isolate_rtk`] with `root` as the child's home and data directory, as
+/// [`rtk_command_in`] gives it, for a command that runs a copy of rtk.
+pub fn isolate_rtk_in(cmd: &mut Command, root: &std::path::Path) {
+    scratch::isolate_rtk_in(cmd, root);
+}
+
 /// This test binary's scratch directory, where an isolated child's data goes.
 pub fn scratch_dir() -> &'static std::path::Path {
     scratch::scratch_dir()

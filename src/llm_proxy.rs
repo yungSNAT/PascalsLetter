@@ -23,7 +23,7 @@ use crate::core::http;
 use crate::core::utils::tool_exists;
 use anyhow::{Context, Result};
 use clap::Subcommand;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -813,11 +813,7 @@ pub(crate) fn ensure_running(bind: &str) -> Result<Option<DaemonPaths>> {
         .with_context(|| format!("creating {}", log_path.display()))?;
     let log_file_err = log_file.try_clone().context("cloning log file handle")?;
 
-    // Started in the state directory, not the shell's: the daemon reads
-    // `./rtk-proxy.toml`, and one in a cloned project could set the upstream
-    // that the relayed provider key is sent to.
-    Command::new(&bin)
-        .current_dir(&dir)
+    proxy_command(&bin, &dir, true)?
         .arg("start")
         .arg("--bind")
         .arg(bind)
@@ -874,9 +870,46 @@ fn forward_raw(subcmd: &str, extra: &[String]) -> Result<()> {
     exec(&build_forward_args(subcmd, None, extra))
 }
 
+/// `rtk-proxy` to run in the state directory `dir`, not the shell's: it reads
+/// `./rtk-proxy.toml`, and one in a cloned project could set the upstream that
+/// the relayed provider key is sent to, or that `service install` writes into
+/// the service's configuration. For a child that `reads_config` (`start` and
+/// `service install`), a relative `RTK_PROXY_CONFIG` is the user's own, so it
+/// is made to name the file in the shell's directory; other children get it
+/// as it is, since they never read it.
+fn proxy_command(bin: &Path, dir: &Path, reads_config: bool) -> Result<Command> {
+    let mut cmd = Command::new(bin);
+    cmd.current_dir(dir);
+    if let Some(config) = crate::core::user_dirs::env_path("RTK_PROXY_CONFIG")
+        .filter(|c| reads_config && !c.is_empty() && Path::new(c).is_relative())
+    {
+        cmd.env("RTK_PROXY_CONFIG", absolute_config(&config)?);
+    }
+    Ok(cmd)
+}
+
+/// `config` made absolute from the current directory, also a Windows
+/// drive-relative `C:custom.toml`, which a join would leave relative.
+/// rtk-proxy reads the variable only as Unicode and treats anything else as
+/// unset, falling back to other configuration, so such a path is refused.
+fn absolute_config(config: &std::ffi::OsStr) -> Result<String> {
+    std::path::absolute(config)
+        .context("resolving RTK_PROXY_CONFIG")?
+        .into_os_string()
+        .into_string()
+        .map_err(|path| {
+            anyhow::anyhow!(
+                "RTK_PROXY_CONFIG resolves to {}, which is not valid Unicode, so rtk-proxy \
+                 would ignore it; move the file to a path that is",
+                Path::new(&path).display()
+            )
+        })
+}
+
 fn exec(args: &[String]) -> Result<()> {
     let bin = locate_binary()?;
-    let status = Command::new(&bin)
+    let reads_config = matches!(args, [s, i, ..] if s == "service" && i == "install");
+    let status = proxy_command(&bin, &state_dir()?, reads_config)?
         .args(args)
         .status()
         .with_context(|| format!("failed to run {} {}", bin.display(), args.join(" ")))?;
@@ -889,6 +922,28 @@ fn exec(args: &[String]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_relative_config_is_taken_from_the_current_directory() {
+        let here = std::env::current_dir().unwrap();
+        assert_eq!(
+            PathBuf::from(absolute_config("custom.toml".as_ref()).unwrap()),
+            here.join("custom.toml")
+        );
+    }
+
+    /// `C:custom.toml` means the current folder of drive C:, which a join
+    /// with the current directory leaves as it is.
+    #[cfg(windows)]
+    #[test]
+    fn a_drive_relative_config_is_taken_from_the_current_directory() {
+        let here = std::env::current_dir().unwrap();
+        let drive = &here.to_str().unwrap()[..2];
+        assert_eq!(
+            PathBuf::from(absolute_config(format!("{drive}custom.toml").as_ref()).unwrap()),
+            here.join("custom.toml")
+        );
+    }
 
     /// Never empty and never a path — it is interpolated straight into a
     /// "run this" hint.
