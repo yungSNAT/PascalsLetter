@@ -124,8 +124,9 @@ cargo clippy --manifest-path proxy/Cargo.toml --all-targets
 ```
 
 `proxy/` pins `rusqlite 0.34` to match what `icm-store` links — `libsqlite3-sys`
-declares `links = "sqlite3"`, so two versions cannot coexist in one graph. That
-pin is why the root crate tracks the same version; do not bump one alone.
+declares `links = "sqlite3"`, so two versions cannot coexist in one graph. The
+root crate links no icm-store and is on a later rusqlite; `proxy/osv-scanner.toml`
+records why the daemon's older SQLite is ignored and when to revisit it.
 
 ## Coding Rules
 
