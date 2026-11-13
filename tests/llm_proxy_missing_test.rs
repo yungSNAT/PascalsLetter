@@ -7,13 +7,10 @@ mod common;
 fn a_missing_daemon_points_to_the_source_build_not_a_release_archive() {
     // rtk looks for the daemon next to its own executable and on PATH, so run
     // a copy from a directory that holds nothing else, with an empty PATH.
+    let built = std::path::PathBuf::from(common::rtk_command().get_program());
     let dir = common::tempdir();
-    let rtk = dir.path().join(
-        std::path::Path::new(env!("CARGO_BIN_EXE_rtk"))
-            .file_name()
-            .unwrap(),
-    );
-    std::fs::copy(env!("CARGO_BIN_EXE_rtk"), &rtk).expect("copy rtk");
+    let rtk = dir.path().join(built.file_name().unwrap());
+    std::fs::copy(&built, &rtk).expect("copy rtk");
     let empty_path = common::tempdir();
 
     let mut cmd = std::process::Command::new(&rtk);
