@@ -268,10 +268,13 @@ pub(crate) fn check_command_with_rules_and_prefixes(
     // The commands as written and with continued lines joined, as the shell and
     // the rewrite read them: a `\<newline>` between a prefix and its command
     // (`env \<newline> FOO=1 git push`) stops the prefix peel on the written text.
+    let continued = registry::collapse_line_continuations(cmd);
     let mut segments = split_compound_command(cmd);
-    for segment in split_compound_command(&joined) {
-        if !segments.contains(&segment) {
-            segments.push(segment);
+    if continued != cmd {
+        for segment in split_compound_command(&continued) {
+            if !segments.contains(&segment) {
+                segments.push(segment);
+            }
         }
     }
     gate_verdict(
