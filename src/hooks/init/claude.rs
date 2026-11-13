@@ -714,30 +714,8 @@ pub(super) fn run_default_mode(
         )?;
     }
 
-    // Report result
     if !dry_run {
-        match patch_result {
-            PatchResult::Patched => {
-                // patch_settings_json_command printed what it wrote
-                println!("\nRTK hook registered (global).");
-            }
-            PatchResult::AlreadyPresent => {
-                println!("\nRTK hook registered (global).");
-                println!("\n  settings.json: hook already present");
-                if opencode_plugin.is_some() {
-                    println!("  Restart Claude Code and OpenCode. Test with: git status");
-                } else {
-                    println!("  Restart Claude Code. Test with: git status");
-                }
-            }
-            PatchResult::Declined | PatchResult::Skipped => {
-                // Manual instructions already printed
-                println!("RTK hook not registered: settings.json was not patched.");
-            }
-            PatchResult::WouldPatch => {
-                // Cannot happen outside dry_run
-            }
-        }
+        report_registration(patch_result, "global", opencode_plugin.is_some());
     }
 
     // 6. Generate user-global filters template (~/.config/rtk/filters.toml)
@@ -939,37 +917,33 @@ pub(super) fn run_hook_only_mode(
         )?;
     }
 
-    // Report result
     if !dry_run {
-        match patch_result {
-            PatchResult::Patched => {
-                // patch_settings_json_command printed what it wrote
-                println!("\nRTK hook registered (hook-only mode).");
-            }
-            PatchResult::AlreadyPresent => {
-                println!("\nRTK hook registered (hook-only mode).");
-                println!("\n  settings.json: hook already present");
-                if opencode_plugin.is_some() {
-                    println!("  Restart Claude Code and OpenCode. Test with: git status");
-                } else {
-                    println!("  Restart Claude Code. Test with: git status");
-                }
-            }
-            PatchResult::Declined | PatchResult::Skipped => {
-                // Manual instructions already printed
-                println!("RTK hook not registered: settings.json was not patched.");
-            }
-            PatchResult::WouldPatch => {
-                // Cannot happen outside dry_run
-            }
-        }
-    }
-
-    if !dry_run {
+        report_registration(patch_result, "hook-only mode", opencode_plugin.is_some());
         println!(); // Final newline
     }
 
     Ok(())
+}
+
+/// Says whether settings.json now holds the hook, after
+/// `patch_settings_json_command` printed what it wrote or the manual steps.
+fn report_registration(patch_result: PatchResult, mode: &str, opencode: bool) {
+    match patch_result {
+        PatchResult::Patched => println!("\nRTK hook registered ({mode})."),
+        PatchResult::AlreadyPresent => {
+            println!("\nRTK hook registered ({mode}).");
+            println!("\n  settings.json: hook already present");
+            if opencode {
+                println!("  Restart Claude Code and OpenCode. Test with: git status");
+            } else {
+                println!("  Restart Claude Code. Test with: git status");
+            }
+        }
+        PatchResult::Declined | PatchResult::Skipped => {
+            println!("RTK hook not registered: settings.json was not patched.");
+        }
+        PatchResult::WouldPatch => {} // only in a dry run, which reports nothing here
+    }
 }
 
 /// Detailed hook status for Claude Code (used by `rtk discover` and warning coordinator).

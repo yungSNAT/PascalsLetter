@@ -8,11 +8,7 @@ mod common;
 /// `rtk rewrite`'s exit code for `command`, with only the given project rules.
 fn rewrite_exit(command: &str, deny: &[&str], allow: &[&str]) -> Option<i32> {
     let root = common::tempdir();
-    let home = root.path().join("home");
     let project = root.path().join("project");
-    std::fs::create_dir_all(home.join(".config")).expect("mkdir home");
-    std::fs::create_dir_all(root.path().join("claude-home")).expect("mkdir claude home");
-    std::fs::create_dir_all(project.join(".claude")).expect("mkdir project");
     let rules = |rules: &[&str]| {
         rules
             .iter()
@@ -20,6 +16,9 @@ fn rewrite_exit(command: &str, deny: &[&str], allow: &[&str]) -> Option<i32> {
             .collect::<Vec<_>>()
             .join(", ")
     };
+    let mut cmd = common::rtk_command_in(root.path());
+    std::fs::create_dir_all(project.join(".claude")).expect("mkdir project");
+    std::fs::create_dir_all(root.path().join("claude-home")).expect("mkdir claude home");
     std::fs::write(
         project.join(".claude/settings.json"),
         format!(
@@ -29,14 +28,10 @@ fn rewrite_exit(command: &str, deny: &[&str], allow: &[&str]) -> Option<i32> {
         ),
     )
     .expect("write settings");
-    common::rtk_command()
-        .args(["rewrite", command])
-        .current_dir(&project)
-        .env("HOME", &home)
-        .env("XDG_CONFIG_HOME", home.join(".config"))
+    // Windows finds the home through the shell API, so name Claude's own
+    // directory too, or the developer's global rules would apply.
+    cmd.args(["rewrite", command])
         .env("CLAUDE_CONFIG_DIR", root.path().join("claude-home"))
-        .env("RTK_DB_PATH", project.join("rtk.db"))
-        .env("LC_ALL", "C")
         .output()
         .expect("spawn rtk rewrite")
         .status
