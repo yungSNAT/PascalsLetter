@@ -881,10 +881,27 @@ fn proxy_command(bin: &Path, dir: &Path) -> Result<Command> {
     if let Some(config) =
         std::env::var_os("RTK_PROXY_CONFIG").filter(|c| !c.is_empty() && Path::new(c).is_relative())
     {
-        let here = std::env::current_dir().context("reading the current directory")?;
-        cmd.env("RTK_PROXY_CONFIG", here.join(config));
+        cmd.env("RTK_PROXY_CONFIG", absolute_config(&config)?);
     }
     Ok(cmd)
+}
+
+/// `config` made absolute from the current directory, also a Windows
+/// drive-relative `C:custom.toml`, which a join would leave relative.
+/// rtk-proxy reads the variable only as Unicode and treats anything else as
+/// unset, falling back to other configuration, so such a path is refused.
+fn absolute_config(config: &std::ffi::OsStr) -> Result<String> {
+    std::path::absolute(config)
+        .context("resolving RTK_PROXY_CONFIG")?
+        .into_os_string()
+        .into_string()
+        .map_err(|path| {
+            anyhow::anyhow!(
+                "RTK_PROXY_CONFIG resolves to {}, which is not valid Unicode, so rtk-proxy \
+                 would ignore it; move the file to a path that is",
+                Path::new(&path).display()
+            )
+        })
 }
 
 fn exec(args: &[String]) -> Result<()> {
@@ -902,6 +919,28 @@ fn exec(args: &[String]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_relative_config_is_taken_from_the_current_directory() {
+        let here = std::env::current_dir().unwrap();
+        assert_eq!(
+            PathBuf::from(absolute_config("custom.toml".as_ref()).unwrap()),
+            here.join("custom.toml")
+        );
+    }
+
+    /// `C:custom.toml` means the current folder of drive C:, which a join
+    /// with the current directory leaves as it is.
+    #[cfg(windows)]
+    #[test]
+    fn a_drive_relative_config_is_taken_from_the_current_directory() {
+        let here = std::env::current_dir().unwrap();
+        let drive = &here.to_str().unwrap()[..2];
+        assert_eq!(
+            PathBuf::from(absolute_config(format!("{drive}custom.toml").as_ref()).unwrap()),
+            here.join("custom.toml")
+        );
+    }
 
     /// Never empty and never a path — it is interpolated straight into a
     /// "run this" hint.
