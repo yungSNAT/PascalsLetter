@@ -100,11 +100,18 @@ jobs:
             "rtk "?*) version=${out#rtk } ;;
             *) echo "::error::unexpected --version output: $out"; exit 1 ;;
           esac
-          # shortcut: one release per upstream version. The tag carries the
-          # version without its `+pascalsletter` metadata, so a second release
-          # on the same upstream base needs a numbered tag scheme first.
-          if [ "$REF_TYPE" = tag ] && [ "$TAG" != "fork-v${version%%+*}" ]; then
-            echo "::error::tag $TAG does not match rtk $version; expected fork-v${version%%+*}"
+          # The version is upstream's, plus `+pascalsletter` for the first
+          # release on it and `+pascalsletter.N` for the next ones. The tag is
+          # fork-v<upstream>, then -N: 1.2.0+pascalsletter.1 is fork-v1.2.0-1.
+          if [[ $version =~ ^([0-9]+\.[0-9]+\.[0-9]+)\+pascalsletter(\.([1-9][0-9]*))?$ ]]; then
+            expected="fork-v${BASH_REMATCH[1]}${BASH_REMATCH[3]:+-${BASH_REMATCH[3]}}"
+          else
+            echo "::error::rtk $version is not <upstream>+pascalsletter or <upstream>+pascalsletter.N"
+            exit 1
+          fi
+          echo "release tag for this version: $expected"
+          if [ "$REF_TYPE" = tag ] && [ "$TAG" != "$expected" ]; then
+            echo "::error::tag $TAG does not match rtk $version; expected $expected"
             exit 1
           fi
           mkdir pkg
@@ -220,12 +227,16 @@ jobs:
           unmoved() {
             [ "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq .object.sha)" = "$TAG_OBJECT" ]
           }
+          # The notes list the pull requests merged since the latest published
+          # release, after the text below.
+          previous=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
           if ! unmoved; then
             echo "::error::$TAG moved after the check; no draft was made"
             exit 1
           fi
           gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
             --title "PascalsLetter ${TAG#fork-v}" \
+            --generate-notes --notes-start-tag "$previous" \
             --notes "The Apache-2.0 edition of rtk (\`rtk-oss\`), built from $TAG. Check an archive against \`checksums.txt\`, and its provenance with \`gh attestation verify <archive> --repo $GITHUB_REPOSITORY\`."
           if ! unmoved; then
             echo "::error::$TAG moved whilst its draft was made; delete the draft, which may name another commit"

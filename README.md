@@ -37,7 +37,7 @@ Releases hold the Apache-2.0 edition (upstream calls it `rtk-oss`), which leaves
 
 ```bash
 cargo install --git https://github.com/yungSNAT/PascalsLetter rtk --locked
-rtk --version   # rtk 1.2.0+pascalsletter
+rtk --version   # rtk 1.2.0+pascalsletter.1
 ```
 
 PascalsLetter and upstream RTK both install `rtk`, so uninstall any Homebrew, winget or upstream `install.sh` copy of RTK first. Add `--no-default-features` to build the Apache-2.0 edition instead. Both editions install `rtk`. Then set up your agent with `rtk init` as in [Quick Start](#quick-start). The `rtk-proxy` daemon is a separate package that this command does not install; build it with `cargo build --release --manifest-path proxy/Cargo.toml`.
