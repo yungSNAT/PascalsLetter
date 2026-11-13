@@ -8,9 +8,11 @@ fn a_missing_daemon_points_to_the_source_build_not_a_release_archive() {
     // rtk looks for the daemon next to its own executable and on PATH, so run
     // a copy from a directory that holds nothing else, with an empty PATH.
     let dir = common::tempdir();
-    let rtk = dir
-        .path()
-        .join(std::path::Path::new(env!("CARGO_BIN_EXE_rtk")).file_name().unwrap());
+    let rtk = dir.path().join(
+        std::path::Path::new(env!("CARGO_BIN_EXE_rtk"))
+            .file_name()
+            .unwrap(),
+    );
     std::fs::copy(env!("CARGO_BIN_EXE_rtk"), &rtk).expect("copy rtk");
     let empty_path = common::tempdir();
 
@@ -29,6 +31,9 @@ fn a_missing_daemon_points_to_the_source_build_not_a_release_archive() {
         stderr.contains("cargo build --release --manifest-path proxy/Cargo.toml"),
         "{stderr}"
     );
-    assert!(!stderr.contains("release archive (rtk-proxy-<target>)"), "{stderr}");
+    assert!(
+        !stderr.contains("release archive (rtk-proxy-<target>)"),
+        "{stderr}"
+    );
     assert!(stderr.contains("publishes no release archive"), "{stderr}");
 }
