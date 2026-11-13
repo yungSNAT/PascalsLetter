@@ -27,6 +27,15 @@ pub fn rtk_command() -> Command {
     cmd
 }
 
+/// [`rtk_command`] with `root` as the child's home and data directory, started
+/// in `root/project`: for a test whose child must find a home of its own, such
+/// as one without `~/.claude/settings.json`. Keep `root` alive for the test.
+pub fn rtk_command_in(root: &std::path::Path) -> Command {
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_rtk"));
+    scratch::isolate_rtk_in(&mut cmd, root);
+    cmd
+}
+
 /// Isolate a child the way [`rtk_command`] does: an empty environment but for
 /// what `scratch::kept` lets through, with rtk's data in this test binary's
 /// scratch directory. It clears whatever the command set before and starts it

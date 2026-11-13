@@ -118,7 +118,7 @@ rtk init -g                # answer y at the settings.json prompt
 rtk init -g --auto-patch   # or: patch settings.json without asking
 ```
 
-The default `N` leaves no hook registered: any legacy `rtk-rewrite.sh` entry is removed and `rtk hook claude` is not added. The `RTK hook registered (global).` banner prints either way; the line that confirms the patch is `settings.json: hook added` (or `settings.json: hook already present` when an earlier run added it). Restart Claude Code, then confirm:
+The default `N` leaves no hook registered: any legacy `rtk-rewrite.sh` entry is removed and `rtk hook claude` is not added. Init then prints `RTK hook not registered: settings.json was not patched.`; when the patch is written it prints `settings.json: hook added` (or `settings.json: hook already present` when an earlier run added it) and `RTK hook registered (global).` Restart Claude Code, then confirm:
 
 ```powershell
 rtk init --show
