@@ -77,7 +77,12 @@ release.yml (a dry run: build and checksums only)
 
 Only the Apache-2.0 edition (`rtk-oss-<target>`) is built, for x86_64 and
 aarch64 Linux (musl), x86_64 and aarch64 macOS, and x86_64 Windows with a
-static C runtime. The tag is `fork-v` followed by the version `rtk --version`
-prints, less its `+pascalsletter` metadata: `fork-v1.2.0` for
-`rtk 1.2.0+pascalsletter`. Nothing is published until a maintainer publishes
-the draft.
+static C runtime. The version is upstream's with `+pascalsletter` build
+metadata for the first release on that upstream version, and
+`+pascalsletter.N` for each later one, counting from 1. The tag is `fork-v`
+followed by the upstream version, then `-N` if there is one: `fork-v1.2.0` for
+`rtk 1.2.0+pascalsletter` and `fork-v1.2.0-1` for `rtk 1.2.0+pascalsletter.1`.
+The build job prints the tag it expects. A merge that brings in a new upstream
+version sets the metadata back to `+pascalsletter`. The draft's notes list the
+pull requests merged since the latest published release. Nothing is published
+until a maintainer publishes the draft.
