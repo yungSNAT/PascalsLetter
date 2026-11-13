@@ -159,7 +159,7 @@ fn named_segment(rng: &mut Rng) -> (String, Option<String>) {
     let command = rng.pick(COMMANDS);
     let mut text = format!("{}{}", rng.pick(PREFIXES), command);
     // A line continuation inside the command, which the shell joins.
-    if rng.next() % 6 == 0 {
+    if rng.next().is_multiple_of(6) {
         text = text.replacen(' ', " \\\n  ", 1);
     }
     text.push_str(rng.pick(REDIRECTS));
@@ -189,7 +189,7 @@ fn a_rewritten_command_never_gets_allow_under_a_deny_rule_naming_it() {
             cmd.push_str(rng.pick(OPERATORS));
             cmd.push_str(text);
         }
-        if rng.next() % 5 == 0 {
+        if rng.next().is_multiple_of(5) {
             cmd.push_str(" # note; ok");
         }
         if rewrite_command(&cmd, &[], &[]).is_none_or(|out| out == cmd) {

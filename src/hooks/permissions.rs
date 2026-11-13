@@ -265,8 +265,17 @@ pub(crate) fn check_command_with_rules_and_prefixes(
     // A zsh glob such as `--forc(e)` may become any word a deny or ask rule
     // names, but its segments end at the `(`, where no rule can read it.
     let glob_group = (!deny_rules.is_empty() || !ask_rules.is_empty()) && opens_zsh_glob_group(cmd);
+    // The commands as written and with continued lines joined, as the shell and
+    // the rewrite read them: a `\<newline>` between a prefix and its command
+    // (`env \<newline> FOO=1 git push`) stops the prefix peel on the written text.
+    let mut segments = split_compound_command(cmd);
+    for segment in split_compound_command(&joined) {
+        if !segments.contains(&segment) {
+            segments.push(segment);
+        }
+    }
     gate_verdict(
-        &split_compound_command(cmd),
+        &segments,
         &wrapper_segments,
         glob_group || unattestable_either_reading(cmd, ShellDialect::Posix),
         deny_rules,
@@ -3546,6 +3555,25 @@ mod tests {
             ),
             PermissionVerdict::Ask
         );
+    }
+
+    /// Found by `a_rewritten_command_never_gets_allow_under_a_deny_rule_naming_it`:
+    /// the shell joins a continued line, so `env \<newline> FOO=1 ls -la` runs
+    /// `ls -la`, and the rewrite reads it so, but the peel stopped at the `\`.
+    #[test]
+    fn test_line_continuation_after_a_prefix_is_joined_before_the_deny_check() {
+        let allow = vec!["*".to_string()];
+        for (cmd, rule) in [
+            ("env \\\n  FOO=1 ls -la", "ls -la:*"),
+            ("timeout \\\n  30 wc -l src/main.rs", "wc -l:*"),
+            ("{ env \\\n  FOO=1 npm test; } && cargo test", "npm test:*"),
+        ] {
+            assert_eq!(
+                check_command_with_rules(cmd, &[rule.to_string()], &[], &allow),
+                PermissionVerdict::Deny,
+                "{cmd:?}"
+            );
+        }
     }
 
     #[test]
