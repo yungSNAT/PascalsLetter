@@ -813,7 +813,11 @@ pub(crate) fn ensure_running(bind: &str) -> Result<Option<DaemonPaths>> {
         .with_context(|| format!("creating {}", log_path.display()))?;
     let log_file_err = log_file.try_clone().context("cloning log file handle")?;
 
+    // Started in the state directory, not the shell's: the daemon reads
+    // `./rtk-proxy.toml`, and one in a cloned project could set the upstream
+    // that the relayed provider key is sent to.
     Command::new(&bin)
+        .current_dir(&dir)
         .arg("start")
         .arg("--bind")
         .arg(bind)
