@@ -377,3 +377,6 @@ if ($failures.Count -gt 0) {
 }
 Remove-Item -LiteralPath $work -Recurse -Force
 Write-Host "install.ps1: all 19 cases passed ($($PSVersionTable.PSEdition) $($PSVersionTable.PSVersion))" -ForegroundColor Green
+# The last case leaves its child's exit code, 1, in $LASTEXITCODE, and a caller that
+# dot-sources this script, as a GitHub Actions step does, would exit with it.
+exit 0
