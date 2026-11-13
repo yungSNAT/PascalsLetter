@@ -813,7 +813,7 @@ pub(crate) fn ensure_running(bind: &str) -> Result<Option<DaemonPaths>> {
         .with_context(|| format!("creating {}", log_path.display()))?;
     let log_file_err = log_file.try_clone().context("cloning log file handle")?;
 
-    proxy_command(&bin, &dir)?
+    proxy_command(&bin, &dir, true)?
         .arg("start")
         .arg("--bind")
         .arg(bind)
@@ -873,13 +873,15 @@ fn forward_raw(subcmd: &str, extra: &[String]) -> Result<()> {
 /// `rtk-proxy` to run in the state directory `dir`, not the shell's: it reads
 /// `./rtk-proxy.toml`, and one in a cloned project could set the upstream that
 /// the relayed provider key is sent to, or that `service install` writes into
-/// the service's configuration. A relative `RTK_PROXY_CONFIG` is the user's
-/// own, so it still names a file in the shell's directory.
-fn proxy_command(bin: &Path, dir: &Path) -> Result<Command> {
+/// the service's configuration. For a child that `reads_config` (`start` and
+/// `service install`), a relative `RTK_PROXY_CONFIG` is the user's own, so it
+/// is made to name the file in the shell's directory; other children get it
+/// as it is, since they never read it.
+fn proxy_command(bin: &Path, dir: &Path, reads_config: bool) -> Result<Command> {
     let mut cmd = Command::new(bin);
     cmd.current_dir(dir);
-    if let Some(config) =
-        std::env::var_os("RTK_PROXY_CONFIG").filter(|c| !c.is_empty() && Path::new(c).is_relative())
+    if let Some(config) = std::env::var_os("RTK_PROXY_CONFIG")
+        .filter(|c| reads_config && !c.is_empty() && Path::new(c).is_relative())
     {
         cmd.env("RTK_PROXY_CONFIG", absolute_config(&config)?);
     }
@@ -906,7 +908,8 @@ fn absolute_config(config: &std::ffi::OsStr) -> Result<String> {
 
 fn exec(args: &[String]) -> Result<()> {
     let bin = locate_binary()?;
-    let status = proxy_command(&bin, &state_dir()?)?
+    let reads_config = matches!(args, [s, i, ..] if s == "service" && i == "install");
+    let status = proxy_command(&bin, &state_dir()?, reads_config)?
         .args(args)
         .status()
         .with_context(|| format!("failed to run {} {}", bin.display(), args.join(" ")))?;

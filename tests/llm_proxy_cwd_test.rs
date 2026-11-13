@@ -116,7 +116,7 @@ fn config_read(output: &str) -> PathBuf {
 /// and an absolute one is passed on as it is.
 #[test]
 fn a_relative_rtk_proxy_config_still_names_a_file_in_the_shells_directory() {
-    for (relative, start) in [(true, false), (false, false), (true, true)] {
+    for (relative, start) in [(true, false), (false, false), (true, true), (false, true)] {
         let (mut cmd, _dir, project) = rtk_beside_stand_in(PRINT_CONFIG);
         let custom = project.path().join("custom.toml");
         std::fs::write(&custom, "").expect("write custom.toml");
@@ -142,20 +142,25 @@ fn a_relative_rtk_proxy_config_still_names_a_file_in_the_shells_directory() {
     }
 }
 
+/// A folder in `project` whose name is not UTF-8, holding a `custom.toml`.
+/// Linux only: macOS refuses such a name.
+#[cfg(target_os = "linux")]
+fn non_unicode_folder(project: &Path) -> PathBuf {
+    use std::os::unix::ffi::OsStrExt;
+    let odd = project.join(std::ffi::OsStr::from_bytes(b"not-unicode-\xff"));
+    std::fs::create_dir(&odd).expect("create a folder named with a non-UTF-8 byte");
+    std::fs::write(odd.join("custom.toml"), "").expect("write custom.toml");
+    odd
+}
+
 /// rtk-proxy reads `RTK_PROXY_CONFIG` only as Unicode and treats anything else
 /// as unset, so a relative one that would resolve to a path that is not is
-/// refused rather than passed on to be ignored. Linux only: macOS refuses such
-/// a folder name.
+/// refused rather than passed on to be ignored.
 #[cfg(target_os = "linux")]
 #[test]
 fn a_config_path_rtk_proxy_cannot_read_is_refused() {
-    use std::os::unix::ffi::OsStrExt;
     let (mut cmd, _dir, project) = rtk_beside_stand_in(PRINT_CONFIG);
-    let odd = project
-        .path()
-        .join(std::ffi::OsStr::from_bytes(b"not-unicode-\xff"));
-    std::fs::create_dir(&odd).expect("create a folder named with a non-UTF-8 byte");
-    std::fs::write(odd.join("custom.toml"), "").expect("write custom.toml");
+    let odd = non_unicode_folder(project.path());
     let out = cmd
         .current_dir(&odd)
         .env("RTK_PROXY_CONFIG", "custom.toml")
@@ -168,4 +173,24 @@ fn a_config_path_rtk_proxy_cannot_read_is_refused() {
         String::from_utf8_lossy(&out.stderr).contains("not valid Unicode"),
         "{out:?}"
     );
+}
+
+/// A child that reads no configuration gets `RTK_PROXY_CONFIG` as it is, so it
+/// still runs from a folder whose path is not UTF-8.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_child_that_reads_no_config_runs_from_a_folder_that_is_not_unicode() {
+    let (mut cmd, _dir, project) = rtk_beside_stand_in(PRINT_CONFIG);
+    let odd = non_unicode_folder(project.path());
+    let out = cmd
+        .current_dir(&odd)
+        .env("RTK_PROXY_CONFIG", "custom.toml")
+        .args(["llm-proxy", "status"])
+        .output()
+        .expect("rtk llm-proxy status");
+    assert!(out.status.success(), "{out:?}");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let (cwd, config) = stdout.trim().split_once('\n').expect("2 lines");
+    assert!(cwd.ends_with("llm-proxy"), "{stdout}");
+    assert_eq!(config, "custom.toml", "{stdout}");
 }
