@@ -40,12 +40,18 @@ mkdir -p "$T/rtk" "$T/rtk-oss" "$T/pl-oss" "$T/tokenade" "$T/snip"
 (cd "$T/snip" && A=snip_0.26.0_linux_amd64.tar.gz &&
   fetch "$SNIP/checksums.txt" checksums.txt && fetch "$SNIP/$A" "$A" &&
   verify checksums.txt "$A" && tar -xzf "$A")
+# Chisle publishes no archive: its v3.12.1 tag, checked by commit and by a
+# clean tree, so a cached or moved copy cannot run under its label.
+CHISLE=84e8f5a392aa8706604bf143822009a7e5c48c44
 [ -d "$T/chisle" ] ||
   git clone --quiet --depth 1 --branch v3.12.1 https://github.com/JayPokale/Chisle "$T/chisle"
+[ "$(git -C "$T/chisle" rev-parse HEAD)" = "$CHISLE" ] &&
+  [ -z "$(git -C "$T/chisle" status --porcelain --ignored)" ] ||
+  { echo "$T/chisle is not a clean checkout of $CHISLE" >&2; exit 1; }
 
 # This checkout's full edition, as `cargo install --git` builds it.
 CARGO_TARGET_DIR=$WORK/target-rtk cargo build --release --locked --manifest-path "$ROOT/Cargo.toml"
-CARGO_TARGET_DIR=$WORK/target-bench cargo build --release --manifest-path "$HERE/Cargo.toml"
+CARGO_TARGET_DIR=$WORK/target-bench cargo build --release --locked --manifest-path "$HERE/Cargo.toml"
 
 OUT=$WORK/run-$(date -u +%Y%m%dT%H%M%SZ)
 "$WORK/target-bench/release/output-tokens" \
@@ -56,6 +62,7 @@ OUT=$WORK/run-$(date -u +%Y%m%dT%H%M%SZ)
   --rtk "PascalsLetter (this checkout)=$WORK/target-rtk/release/rtk" \
   --wrap "Tokenade 2.0.9=env TOKENADE_NO_AUTO_UPDATE=1 TOKENADE_NO_STAR_INVITE=1 $T/tokenade/tokenade wrap {qcmd}" \
   --wrap "snip 0.26.0=$T/snip/snip {cmd}" \
+  --wrap "raw, run again={cmd}" \
   --chisle "Chisle 3.12.1=$T/chisle/hooks/chisle-compress-output.js"
 { cargo --version; cargo clippy --version; node --version; uv --version
   "$WORK/repos/click/.venv/bin/python" --version; git --version; rg --version | head -1; } >"$OUT/toolchain.txt"

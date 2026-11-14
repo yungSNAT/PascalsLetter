@@ -41,6 +41,18 @@ case "$1" in
 esac
 "#;
 
+// Stands in for Chisle's hook: replaces the notes with "cut", and replies
+// with nothing for any other output, which leaves it as it was.
+const FAKE_CHISLE: &str = r#"let input = '';
+process.stdin.on('data', (chunk) => { input += chunk; });
+process.stdin.on('end', () => {
+  const result = JSON.parse(input).toolResult;
+  if (result.textResultForLlm.startsWith('one two')) {
+    process.stdout.write(JSON.stringify({ modifiedResult: { resultType: result.resultType, textResultForLlm: 'cut' } }));
+  }
+});
+"#;
+
 #[test]
 fn every_side_runs_from_the_pinned_commit_in_its_own_home() {
     let root = scratch();
@@ -58,6 +70,8 @@ fn every_side_runs_from_the_pinned_commit_in_its_own_home() {
     let rtk = root.join("fake-rtk");
     fs::write(&rtk, FAKE_RTK).unwrap();
     fs::set_permissions(&rtk, fs::Permissions::from_mode(0o755)).unwrap();
+    let chisle = root.join("fake-chisle.js");
+    fs::write(&chisle, FAKE_CHISLE).unwrap();
     let corpus = root.join("corpus.toml");
     fs::write(
         &corpus,
@@ -82,6 +96,8 @@ fn every_side_runs_from_the_pinned_commit_in_its_own_home() {
         .arg("--rtk")
         .arg(format!("fake={}", rtk.display()))
         .args(["--wrap", "wrapped=sh -c {qcmd}"])
+        .arg("--chisle")
+        .arg(format!("trimmed={}", chisle.display()))
         .output()
         .unwrap();
     assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
@@ -89,16 +105,19 @@ fn every_side_runs_from_the_pinned_commit_in_its_own_home() {
     let csv = fs::read_to_string(out.join("results.csv")).unwrap();
     let lines: Vec<&str> = csv.lines().collect();
     assert_eq!(lines[0], "n,repo,command,side,rewritten_to,exit,bytes,tokens");
-    assert_eq!(lines.len(), 1 + 2 * 3);
+    assert_eq!(lines.len(), 1 + 2 * 4);
     // The raw side reads the pinned file, 20 lines of 28 bytes.
     assert!(lines[1].starts_with("1,demo,cat notes.txt,raw,,0,560,"), "{}", lines[1]);
     assert_eq!(lines[2], "1,demo,cat notes.txt,fake,rtk read notes.txt,4,6,2");
     assert!(lines[3].starts_with("1,demo,cat notes.txt,wrapped,,0,560,"), "{}", lines[3]);
+    // The Chisle side takes the raw output and its exit code.
+    assert!(lines[4].starts_with("1,demo,cat notes.txt,trimmed,,0,3,"), "{}", lines[4]);
     // stderr is joined to stdout, and a command the hook leaves alone keeps the raw output.
     let second = "2,demo,printf 'x%.0s' 1 2 3; echo err >&2; exit 2";
-    let raw_second = lines[4].strip_prefix(&format!("{second},raw,,2,7,")).unwrap();
-    assert_eq!(lines[5], format!("{second},fake,,2,7,{raw_second}"));
-    assert_eq!(lines[6], format!("{second},wrapped,,2,7,{raw_second}"));
+    let raw_second = lines[5].strip_prefix(&format!("{second},raw,,2,7,")).unwrap();
+    assert_eq!(lines[6], format!("{second},fake,,2,7,{raw_second}"));
+    assert_eq!(lines[7], format!("{second},wrapped,,2,7,{raw_second}"));
+    assert_eq!(lines[8], format!("{second},trimmed,,2,7,{raw_second}"));
     assert_eq!(
         fs::read_to_string(out.join("outputs/002-raw.txt")).unwrap(),
         "xxxerr\n"

@@ -10,6 +10,7 @@ url = "https://github.com/BurntSushi/ripgrep"
 rev = "4649aa9700619f94cf9c66876e9549d83420e16c" # 14.1.1
 setup = [
   "printf '\\n#[test]\\nfn output_tokens_fails() {\\n    assert_eq!(1 + 1, 3, \"deliberate failure\");\\n}\\n' >> crates/globset/src/lib.rs",
+  "cargo build --quiet",
   "cargo test --workspace --no-run --quiet",
   # Warms the cache only: current clippy denies a lint in grep-cli 14.1.1.
   "cargo clippy --workspace --quiet || true",
