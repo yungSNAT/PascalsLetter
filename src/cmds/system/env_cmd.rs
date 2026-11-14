@@ -17,7 +17,31 @@ pub fn run(filter: Option<&str>, verbose: u8) -> Result<()> {
 
     let mut vars: Vec<(String, String)> = env::vars().collect();
     vars.sort_by(|a, b| a.0.cmp(&b.0));
+    let body = render(&vars, filter);
+    let raw = raw_lines(&vars, filter);
+    let shown_body = never_worse(&raw, &body);
+    print!("{}", shown_body);
+    timer.track("env", "rtk env", &raw, shown_body);
+    Ok(())
+}
 
+/// `vars` as `env` prints them, limited to those `filter` names: what the
+/// listing replaces, so what it must not exceed.
+fn raw_lines(vars: &[(String, String)], filter: Option<&str>) -> String {
+    vars.iter()
+        .filter(|(key, _)| matches_filter(key, filter))
+        .fold(String::new(), |mut output, (k, v)| {
+            let _ = writeln!(output, "{}={}", k, v);
+            output
+        })
+}
+
+fn matches_filter(key: &str, filter: Option<&str>) -> bool {
+    filter.is_none_or(|f| key.to_lowercase().contains(&f.to_lowercase()))
+}
+
+/// The filtered listing of `vars`, sorted by name.
+fn render(vars: &[(String, String)], filter: Option<&str>) -> String {
     // Interesting categories
     let mut path_vars = Vec::new();
     let mut lang_vars = Vec::new();
@@ -25,25 +49,22 @@ pub fn run(filter: Option<&str>, verbose: u8) -> Result<()> {
     let mut tool_vars = Vec::new();
     let mut other_vars = Vec::new();
 
-    for (key, value) in &vars {
-        // Apply filter if provided
-        if let Some(f) = filter
-            && !key.to_lowercase().contains(&f.to_lowercase())
-        {
+    for (key, value) in vars {
+        if !matches_filter(key, filter) {
             continue;
         }
 
-        let display_value = if value.len() > 100 {
-            let preview: String = value.chars().take(50).collect();
-            format!("{}... ({} chars)", preview, value.chars().count())
-        } else {
+        // PATH is split into entries before anything is shortened.
+        let display_value = if is_path_key(key) {
             value.clone()
+        } else {
+            shorten(value)
         };
 
         let entry = (key.clone(), display_value);
 
         // Categorize
-        if key.contains("PATH") {
+        if is_path_var(key) {
             path_vars.push(entry);
         } else if is_lang_var(key) {
             lang_vars.push(entry);
@@ -60,17 +81,8 @@ pub fn run(filter: Option<&str>, verbose: u8) -> Result<()> {
     if !path_vars.is_empty() {
         let _ = writeln!(body, "PATH Variables:");
         for (k, v) in &path_vars {
-            if k == "PATH" {
-                // Split PATH for readability
-                let paths: Vec<&str> = v.split(':').collect();
-                let _ = writeln!(body, "  PATH ({} entries):", paths.len());
-                const MAX_PATH_ENTRIES: usize = CAP_WARNINGS;
-                for p in paths.iter().take(MAX_PATH_ENTRIES) {
-                    let _ = writeln!(body, "    {}", p);
-                }
-                if paths.len() > MAX_PATH_ENTRIES {
-                    let _ = writeln!(body, "    ... +{} more", paths.len() - MAX_PATH_ENTRIES);
-                }
+            if is_path_key(k) {
+                write_path(&mut body, v);
             } else {
                 let _ = writeln!(body, "  {}={}", k, v);
             }
@@ -118,15 +130,51 @@ pub fn run(filter: Option<&str>, verbose: u8) -> Result<()> {
     if filter.is_none() {
         let _ = writeln!(body, "\nTotal: {} vars (showing {} relevant)", total, shown);
     }
+    body
+}
 
-    let raw: String = vars.iter().fold(String::new(), |mut output, (k, v)| {
-        let _ = writeln!(output, "{}={}", k, v);
-        output
-    });
-    let shown_body = never_worse(&raw, &body);
-    print!("{}", shown_body);
-    timer.track("env", "rtk env", &raw, shown_body);
-    Ok(())
+/// Whether `key` names the search path: `PATH`, or on Windows, where names
+/// ignore case and the variable is stored as `Path`, any spelling of it.
+fn is_path_key(key: &str) -> bool {
+    if cfg!(windows) {
+        key.eq_ignore_ascii_case("PATH")
+    } else {
+        key == "PATH"
+    }
+}
+
+/// Whether `key` belongs under 'PATH Variables': its name holds `PATH`, in any
+/// case on Windows only, since Unix names are case-sensitive.
+fn is_path_var(key: &str) -> bool {
+    if cfg!(windows) {
+        key.to_ascii_uppercase().contains("PATH")
+    } else {
+        key.contains("PATH")
+    }
+}
+
+/// A value over 100 bytes, cut to its first 50 characters and its length.
+fn shorten(value: &str) -> String {
+    if value.len() > 100 {
+        let preview: String = value.chars().take(50).collect();
+        format!("{}... ({} chars)", preview, value.chars().count())
+    } else {
+        value.to_string()
+    }
+}
+
+/// PATH one entry per line, split on the platform's separator (`:`, or `;` on
+/// Windows, whose entries hold drive colons).
+fn write_path(body: &mut String, value: &str) {
+    let paths: Vec<_> = env::split_paths(value).collect();
+    let _ = writeln!(body, "  PATH ({} entries):", paths.len());
+    const MAX_PATH_ENTRIES: usize = CAP_WARNINGS;
+    for p in paths.iter().take(MAX_PATH_ENTRIES) {
+        let _ = writeln!(body, "    {}", shorten(&p.to_string_lossy()));
+    }
+    if paths.len() > MAX_PATH_ENTRIES {
+        let _ = writeln!(body, "    ... +{} more", paths.len() - MAX_PATH_ENTRIES);
+    }
 }
 
 fn is_lang_var(key: &str) -> bool {
@@ -232,5 +280,63 @@ mod tests {
     fn test_is_interesting_var_negative() {
         assert!(!is_interesting_var("RANDOM_VAR"));
         assert!(!is_interesting_var("MY_CUSTOM_VAR"));
+    }
+
+    #[test]
+    fn a_long_path_is_split_before_it_is_shortened() {
+        let entries: Vec<String> = (0..8).map(|i| format!("/opt/tool-{i}/bin")).collect();
+        let path = env::join_paths(&entries).unwrap().into_string().unwrap();
+        assert!(path.len() > 100, "the value must be long enough to be cut");
+        let body = render(&[("PATH".to_string(), path)], Some("PATH"));
+        assert!(body.contains("PATH (8 entries):"), "{body}");
+        for entry in &entries {
+            assert!(body.contains(&format!("    {entry}\n")), "{entry}: {body}");
+        }
+    }
+
+    /// `rtk env -f PATH` is held to what `env | grep PATH` prints, not to the
+    /// whole environment, which a listing of every PATH entry can exceed.
+    #[test]
+    fn a_filtered_listing_is_held_to_the_variables_it_names() {
+        let vars = vec![
+            ("HOME".to_string(), "/home/me".to_string()),
+            ("PATH".to_string(), "/a:/b".to_string()),
+        ];
+        let raw = raw_lines(&vars, Some("PATH"));
+        assert_eq!(raw, "PATH=/a:/b\n");
+        assert_eq!(never_worse(&raw, &render(&vars, Some("PATH"))), raw);
+        assert_eq!(raw_lines(&vars, None), "HOME=/home/me\nPATH=/a:/b\n");
+    }
+
+    /// Unix names are case-sensitive, so a lower-case `path` keeps its category.
+    #[cfg(not(windows))]
+    #[test]
+    fn a_lower_case_path_name_is_not_a_path_variable_on_unix() {
+        let vars = vec![(
+            "npm_execpath".to_string(),
+            "/usr/lib/node_modules/npm/bin/npm-cli.js".to_string(),
+        )];
+        let body = render(&vars, None);
+        assert!(
+            body.contains("Language/Runtime:\n  npm_execpath="),
+            "{body}"
+        );
+        assert!(!body.contains("PATH Variables:"), "{body}");
+    }
+
+    /// Windows stores the variable as `Path`, and its entries hold drive colons.
+    #[cfg(windows)]
+    #[test]
+    fn a_windows_path_keeps_its_drive_letters() {
+        let entries: Vec<String> = (0..5)
+            .map(|i| format!(r"C:\Program Files\Tool{i}\bin"))
+            .collect();
+        let path = entries.join(";");
+        assert!(path.len() > 100, "the value must be long enough to be cut");
+        let body = render(&[("Path".to_string(), path)], None);
+        assert!(body.contains("PATH (5 entries):"), "{body}");
+        for entry in &entries {
+            assert!(body.contains(&format!("    {entry}\n")), "{entry}: {body}");
+        }
     }
 }
