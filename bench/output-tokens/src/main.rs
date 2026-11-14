@@ -186,7 +186,13 @@ fn sides(args: &Args) -> Result<Vec<Side>> {
 fn slug(label: &str) -> String {
     label
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '-' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
         .collect()
 }
 
@@ -320,10 +326,18 @@ fn checkout(repo: &Repo, work: &Path, home: &Path) -> Result<PathBuf> {
     if !dir.exists() {
         git(work, &["clone", "--quiet", &repo.url, &repo.name])?;
     }
-    git(&dir, &["checkout", "--quiet", "--force", "--detach", &repo.rev])?;
+    git(
+        &dir,
+        &["checkout", "--quiet", "--force", "--detach", &repo.rev],
+    )?;
     git(&dir, &["clean", "--quiet", "-fd"])?;
     let head = git(&dir, &["rev-parse", "HEAD"])?;
-    ensure!(head == repo.rev, "{} is at {head}, not {}", repo.name, repo.rev);
+    ensure!(
+        head == repo.rev,
+        "{} is at {head}, not {}",
+        repo.name,
+        repo.rev
+    );
     let first = repo_path(&dir, repo);
     for script in &repo.setup {
         prepare(script, &dir, home, &first)?;
@@ -510,7 +524,12 @@ fn summary_md(rows: &[Row], corpus: &Corpus, sides: &[Side], versions: &[String]
         "\n| Side | Tokens | Saved against raw | Larger than raw | Exit code differs from raw | Rewritten by its hook |\n",
     );
     md.push_str("| --- | ---: | ---: | ---: | ---: | ---: |\n");
-    let total = |side: usize| rows.iter().filter(|r| r.side == side).map(|r| r.tokens).sum();
+    let total = |side: usize| {
+        rows.iter()
+            .filter(|r| r.side == side)
+            .map(|r| r.tokens)
+            .sum()
+    };
     let raw_total: usize = total(0);
     for (index, side) in sides.iter().enumerate() {
         let side_rows: Vec<&Row> = rows.iter().filter(|r| r.side == index).collect();
@@ -597,7 +616,13 @@ fn main() -> Result<()> {
             .expect("validated");
         let (repo, dir) = (&corpus.repo[index], &dirs[index]);
         let first = repo_path(dir, repo);
-        eprintln!("[{}/{}] {}: {}", n + 1, corpus.command.len(), repo.name, command.run);
+        eprintln!(
+            "[{}/{}] {}: {}",
+            n + 1,
+            corpus.command.len(),
+            repo.name,
+            command.run
+        );
         let raw_home = layout.home(&sides[0]);
         if let Some(script) = &command.before {
             prepare(script, dir, &raw_home, &first)?;

@@ -24,7 +24,11 @@ fn git(dir: &Path, args: &[&str]) -> String {
         .current_dir(dir)
         .output()
         .unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     String::from_utf8_lossy(&out.stdout).trim().to_string()
 }
 
@@ -59,7 +63,11 @@ fn every_side_runs_from_the_pinned_commit_in_its_own_home() {
     let upstream = root.join("upstream");
     fs::create_dir_all(&upstream).unwrap();
     git(&upstream, &["init", "--quiet"]);
-    fs::write(upstream.join("notes.txt"), "one two three four five six\n".repeat(20)).unwrap();
+    fs::write(
+        upstream.join("notes.txt"),
+        "one two three four five six\n".repeat(20),
+    )
+    .unwrap();
     git(&upstream, &["add", "notes.txt"]);
     git(&upstream, &["commit", "--quiet", "-m", "pinned"]);
     let rev = git(&upstream, &["rev-parse", "HEAD"]);
@@ -100,21 +108,45 @@ fn every_side_runs_from_the_pinned_commit_in_its_own_home() {
         .arg(format!("trimmed={}", chisle.display()))
         .output()
         .unwrap();
-    assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
 
     let csv = fs::read_to_string(out.join("results.csv")).unwrap();
     let lines: Vec<&str> = csv.lines().collect();
-    assert_eq!(lines[0], "n,repo,command,side,rewritten_to,exit,bytes,tokens");
+    assert_eq!(
+        lines[0],
+        "n,repo,command,side,rewritten_to,exit,bytes,tokens"
+    );
     assert_eq!(lines.len(), 1 + 2 * 4);
     // The raw side reads the pinned file, 20 lines of 28 bytes.
-    assert!(lines[1].starts_with("1,demo,cat notes.txt,raw,,0,560,"), "{}", lines[1]);
-    assert_eq!(lines[2], "1,demo,cat notes.txt,fake,rtk read notes.txt,4,6,2");
-    assert!(lines[3].starts_with("1,demo,cat notes.txt,wrapped,,0,560,"), "{}", lines[3]);
+    assert!(
+        lines[1].starts_with("1,demo,cat notes.txt,raw,,0,560,"),
+        "{}",
+        lines[1]
+    );
+    assert_eq!(
+        lines[2],
+        "1,demo,cat notes.txt,fake,rtk read notes.txt,4,6,2"
+    );
+    assert!(
+        lines[3].starts_with("1,demo,cat notes.txt,wrapped,,0,560,"),
+        "{}",
+        lines[3]
+    );
     // The Chisle side takes the raw output and its exit code.
-    assert!(lines[4].starts_with("1,demo,cat notes.txt,trimmed,,0,3,"), "{}", lines[4]);
+    assert!(
+        lines[4].starts_with("1,demo,cat notes.txt,trimmed,,0,3,"),
+        "{}",
+        lines[4]
+    );
     // stderr is joined to stdout, and a command the hook leaves alone keeps the raw output.
     let second = "2,demo,printf 'x%.0s' 1 2 3; echo err >&2; exit 2";
-    let raw_second = lines[5].strip_prefix(&format!("{second},raw,,2,7,")).unwrap();
+    let raw_second = lines[5]
+        .strip_prefix(&format!("{second},raw,,2,7,"))
+        .unwrap();
     assert_eq!(lines[6], format!("{second},fake,,2,7,{raw_second}"));
     assert_eq!(lines[7], format!("{second},wrapped,,2,7,{raw_second}"));
     assert_eq!(lines[8], format!("{second},trimmed,,2,7,{raw_second}"));
@@ -127,12 +159,18 @@ fn every_side_runs_from_the_pinned_commit_in_its_own_home() {
     let before = fs::read_to_string(root.join("work/demo/before.log")).unwrap();
     assert_eq!(before, "set\n".repeat(3));
     let home = fs::read_to_string(out.join("homes/fake/ran")).unwrap();
-    assert_eq!(Path::new(home.trim()), out.join("homes/fake").canonicalize().unwrap());
+    assert_eq!(
+        Path::new(home.trim()),
+        out.join("homes/fake").canonicalize().unwrap()
+    );
 
     let summary = fs::read_to_string(out.join("summary.md")).unwrap();
     assert!(summary.contains("- fake: `rtk 0.0.0-test`"), "{summary}");
     let fake_total = format!("| fake | {} |", 2 + raw_second.parse::<usize>().unwrap());
-    let fake_row = summary.lines().find(|l| l.starts_with(&fake_total)).expect(&summary);
+    let fake_row = summary
+        .lines()
+        .find(|l| l.starts_with(&fake_total))
+        .expect(&summary);
     // Not larger than raw, one exit code differs (4 against 0), one command rewritten.
     assert!(fake_row.ends_with("| 0 | 1 | 1 |"), "{fake_row}");
 
@@ -147,7 +185,11 @@ fn every_side_runs_from_the_pinned_commit_in_its_own_home() {
         .arg(root.join("out2"))
         .output()
         .unwrap();
-    assert!(rerun.status.success(), "{}", String::from_utf8_lossy(&rerun.stderr));
+    assert!(
+        rerun.status.success(),
+        "{}",
+        String::from_utf8_lossy(&rerun.stderr)
+    );
     assert_eq!(
         fs::read_to_string(root.join("work/demo/before.log")).unwrap(),
         "set\n"
@@ -161,7 +203,10 @@ fn every_side_runs_from_the_pinned_commit_in_its_own_home() {
         .arg(&out)
         .output()
         .unwrap();
-    assert!(!refused.status.success(), "an existing out directory is refused");
+    assert!(
+        !refused.status.success(),
+        "an existing out directory is refused"
+    );
 
     fs::remove_dir_all(&root).unwrap();
 }

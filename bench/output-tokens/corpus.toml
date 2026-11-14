@@ -84,10 +84,13 @@ before = "touch crates/core/main.rs crates/globset/src/lib.rs"
 [[command]]
 repo = "ripgrep"
 run = "cargo test -p grep-searcher"
+# Builds first, so no side's output carries the compile left by the touches above.
+before = "cargo test -p grep-searcher --no-run --quiet"
 
 [[command]]
 repo = "ripgrep"
 run = "cargo test --workspace"
+before = "cargo test --workspace --no-run --quiet"
 
 [[command]]
 repo = "click"
