@@ -141,6 +141,51 @@ fn run_cli(args: &[&str]) -> String {
     String::from_utf8_lossy(&out.stdout).into_owned()
 }
 
+/// Something other than rtk-proxy holds the port: it answers `/health` with a
+/// 200 and would honour `/admin/shutdown`. `stop` must not post to it, and
+/// `status` must not call it the proxy.
+#[tokio::test]
+async fn stop_and_status_leave_another_server_on_the_port_alone() {
+    let other = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({"status": "ok", "service": "dev-server"})),
+        )
+        .mount(&other)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&other)
+        .await;
+    let bind = other.address().to_string();
+
+    for command in ["stop", "status"] {
+        let args = [command.to_string(), "--bind".into(), bind.clone()];
+        let out = tokio::task::spawn_blocking(move || {
+            Command::new(env!("CARGO_BIN_EXE_rtk-proxy"))
+                .args(&args)
+                .output()
+                .unwrap()
+        })
+        .await
+        .unwrap();
+        assert!(
+            !out.status.success(),
+            "{command} treated another server as rtk-proxy: {}",
+            String::from_utf8_lossy(&out.stdout)
+        );
+    }
+    let posts = other
+        .received_requests()
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|r| r.method.as_str() == "POST")
+        .count();
+    assert_eq!(posts, 0, "stop posted a shutdown to another server");
+}
+
 #[tokio::test]
 async fn cli_subcommands_talk_to_a_running_daemon_then_stop_it() {
     let port = free_port();
