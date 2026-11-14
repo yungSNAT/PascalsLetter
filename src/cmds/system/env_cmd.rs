@@ -64,7 +64,7 @@ fn render(vars: &[(String, String)], filter: Option<&str>) -> String {
         let entry = (key.clone(), display_value);
 
         // Categorize
-        if key.to_ascii_uppercase().contains("PATH") {
+        if is_path_var(key) {
             path_vars.push(entry);
         } else if is_lang_var(key) {
             lang_vars.push(entry);
@@ -140,6 +140,16 @@ fn is_path_key(key: &str) -> bool {
         key.eq_ignore_ascii_case("PATH")
     } else {
         key == "PATH"
+    }
+}
+
+/// Whether `key` belongs under 'PATH Variables': its name holds `PATH`, in any
+/// case on Windows only, since Unix names are case-sensitive.
+fn is_path_var(key: &str) -> bool {
+    if cfg!(windows) {
+        key.to_ascii_uppercase().contains("PATH")
+    } else {
+        key.contains("PATH")
     }
 }
 
@@ -296,6 +306,22 @@ mod tests {
         assert_eq!(raw, "PATH=/a:/b\n");
         assert_eq!(never_worse(&raw, &render(&vars, Some("PATH"))), raw);
         assert_eq!(raw_lines(&vars, None), "HOME=/home/me\nPATH=/a:/b\n");
+    }
+
+    /// Unix names are case-sensitive, so a lower-case `path` keeps its category.
+    #[cfg(not(windows))]
+    #[test]
+    fn a_lower_case_path_name_is_not_a_path_variable_on_unix() {
+        let vars = vec![(
+            "npm_execpath".to_string(),
+            "/usr/lib/node_modules/npm/bin/npm-cli.js".to_string(),
+        )];
+        let body = render(&vars, None);
+        assert!(
+            body.contains("Language/Runtime:\n  npm_execpath="),
+            "{body}"
+        );
+        assert!(!body.contains("PATH Variables:"), "{body}");
     }
 
     /// Windows stores the variable as `Path`, and its entries hold drive colons.

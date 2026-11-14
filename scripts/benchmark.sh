@@ -356,7 +356,9 @@ bench "deps" "cat Cargo.toml" "$RTK deps"
 # ===================
 section "env"
 bench "env" "env" "$RTK env"
-bench "env -f PATH" "env | grep PATH" "$RTK env -f PATH"
+# `-f` keeps every variable whose name holds the text in any case, such as the
+# runners' PSModulePath; a plain `grep PATH` would leave those out of the raw side.
+bench "env -f PATH" "env | grep -i '^[^=]*path'" "$RTK env -f PATH"
 
 # ===================
 # err
