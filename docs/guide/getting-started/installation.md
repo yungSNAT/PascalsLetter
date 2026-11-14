@@ -26,7 +26,7 @@ For the full edition, build from source with Cargo:
 cargo install --git https://github.com/yungSNAT/PascalsLetter rtk --locked
 ```
 
-The curl, Homebrew, winget and pre-built binary routes below install upstream RTK, without PascalsLetter's changes.
+The Homebrew and winget routes below install upstream RTK, without PascalsLetter's changes.
 :::
 
 ## Name collision warning
@@ -50,16 +50,18 @@ If both commands work, RTK is already installed. Skip to [Project initialization
 ## Quick install (Linux and macOS)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/master/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/yungSNAT/PascalsLetter/develop/install.sh | sh
 ```
 
-Installs to `~/.local/bin`. Add it to your PATH if it is not there already:
+Installs PascalsLetter's Apache-2.0 edition to `~/.local/bin`. Add it to your PATH if it is not there already:
 
 ```bash
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc   # or ~/.zshrc
 ```
 
 ## Homebrew (macOS and Linux)
+
+This installs upstream RTK's build, without PascalsLetter's changes.
 
 ```bash
 brew install rtk-ai/tap/rtk
@@ -85,11 +87,11 @@ cargo install --git https://github.com/yungSNAT/PascalsLetter rtk --locked
 
 ## Pre-built binaries (Windows, Linux, macOS)
 
-Download from [GitHub releases](https://github.com/rtk-ai/rtk/releases):
+Download PascalsLetter's Apache-2.0 edition from [its releases](https://github.com/yungSNAT/PascalsLetter/releases), with `checksums.txt` to check them against:
 
-- macOS: `rtk-x86_64-apple-darwin.tar.gz` / `rtk-aarch64-apple-darwin.tar.gz`
-- Linux: `rtk-x86_64-unknown-linux-musl.tar.gz` / `rtk-aarch64-unknown-linux-musl.tar.gz`
-- Windows: `rtk-x86_64-pc-windows-msvc.zip`
+- macOS: `rtk-oss-x86_64-apple-darwin.tar.gz` / `rtk-oss-aarch64-apple-darwin.tar.gz`
+- Linux: `rtk-oss-x86_64-unknown-linux-musl.tar.gz` / `rtk-oss-aarch64-unknown-linux-musl.tar.gz`
+- Windows: `rtk-oss-x86_64-pc-windows-msvc.zip`
 
 **Windows users**: Extract the zip and place `rtk.exe` in a directory on your PATH. Run RTK from Command Prompt, PowerShell, or Windows Terminal — do not double-click the `.exe` (it prints usage and exits immediately). See [Windows](#windows) below — the hook system works natively, no WSL required.
 
@@ -98,12 +100,12 @@ Download from [GitHub releases](https://github.com/rtk-ai/rtk/releases):
 The same `rtk` binary built without the BUSL-1.1 compression engine — the hook rewrite system and every command filter, under Apache-2.0 alone. Pick this if your policy does not allow a source-available licence in the build.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/master/install.sh | RTK_EDITION=oss sh
-brew install rtk-ai/tap/rtk-oss
+curl -fsSL https://raw.githubusercontent.com/yungSNAT/PascalsLetter/develop/install.sh | sh
+brew install rtk-ai/tap/rtk-oss   # upstream RTK's build
 cargo install --git https://github.com/yungSNAT/PascalsLetter rtk --locked --no-default-features
 ```
 
-Release assets are named `rtk-oss-<target>`, with `rtk-oss` Debian and RPM packages alongside. The binary is still called `rtk`, so hooks and scripts are unchanged — but the two editions conflict and cannot be installed together.
+PascalsLetter's release assets are `rtk-oss-<target>` archives and `checksums.txt`, with no Debian or RPM packages. The binary is still called `rtk`, so hooks and scripts are unchanged — but the two editions conflict and cannot be installed together.
 
 See [Editions and Licensing](../resources/editions.md) for what the edition omits and where the licence boundary falls.
 
@@ -135,7 +137,7 @@ winget install BurntSushi.ripgrep.MSVC
 [WSL](https://learn.microsoft.com/en-us/windows/wsl/install) also works and behaves exactly like Linux:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/master/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/yungSNAT/PascalsLetter/develop/install.sh | sh
 rtk init -g
 ```
 

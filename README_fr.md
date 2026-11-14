@@ -66,6 +66,8 @@ Les nombres de tokens rapportes par RTK sont estimes avec `octets / 4` : RTK n'e
 
 ## Installation
 
+> Cette traduction vient de RTK upstream : les commandes ci-dessous installent RTK upstream, sans les modifications de PascalsLetter. Pour installer PascalsLetter, suivez [Install](README.md#install) dans le README en anglais.
+
 ### Homebrew (recommande)
 
 ```bash

@@ -66,6 +66,8 @@ RTK 报告的 token 数量按 `字节数 / 4` 估算：RTK 不内置分词器，
 
 ## 安装
 
+> 本译文来自上游 RTK：下面的命令安装的是上游 RTK，不含 PascalsLetter 的改动。要安装 PascalsLetter，请按照英文 README 的 [Install](README.md#install) 操作。
+
 ### Homebrew（推荐）
 
 ```bash

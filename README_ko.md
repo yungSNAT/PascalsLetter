@@ -66,6 +66,8 @@ RTK가 보고하는 토큰 수는 `바이트 / 4`로 추정됩니다. RTK에는 
 
 ## 설치
 
+> 이 번역은 업스트림 RTK의 것입니다. 아래 명령은 PascalsLetter의 변경 사항이 없는 업스트림 RTK를 설치합니다. PascalsLetter를 설치하려면 영어 README의 [Install](README.md#install)을 따르세요.
+
 ### Homebrew (권장)
 
 ```bash
