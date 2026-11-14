@@ -18,15 +18,26 @@ pub fn run(filter: Option<&str>, verbose: u8) -> Result<()> {
     let mut vars: Vec<(String, String)> = env::vars().collect();
     vars.sort_by(|a, b| a.0.cmp(&b.0));
     let body = render(&vars, filter);
-
-    let raw: String = vars.iter().fold(String::new(), |mut output, (k, v)| {
-        let _ = writeln!(output, "{}={}", k, v);
-        output
-    });
+    let raw = raw_lines(&vars, filter);
     let shown_body = never_worse(&raw, &body);
     print!("{}", shown_body);
     timer.track("env", "rtk env", &raw, shown_body);
     Ok(())
+}
+
+/// `vars` as `env` prints them, limited to those `filter` names: what the
+/// listing replaces, so what it must not exceed.
+fn raw_lines(vars: &[(String, String)], filter: Option<&str>) -> String {
+    vars.iter()
+        .filter(|(key, _)| matches_filter(key, filter))
+        .fold(String::new(), |mut output, (k, v)| {
+            let _ = writeln!(output, "{}={}", k, v);
+            output
+        })
+}
+
+fn matches_filter(key: &str, filter: Option<&str>) -> bool {
+    filter.is_none_or(|f| key.to_lowercase().contains(&f.to_lowercase()))
 }
 
 /// The filtered listing of `vars`, sorted by name.
@@ -39,10 +50,7 @@ fn render(vars: &[(String, String)], filter: Option<&str>) -> String {
     let mut other_vars = Vec::new();
 
     for (key, value) in vars {
-        // Apply filter if provided
-        if let Some(f) = filter
-            && !key.to_lowercase().contains(&f.to_lowercase())
-        {
+        if !matches_filter(key, filter) {
             continue;
         }
 
@@ -274,6 +282,20 @@ mod tests {
         for entry in &entries {
             assert!(body.contains(&format!("    {entry}\n")), "{entry}: {body}");
         }
+    }
+
+    /// `rtk env -f PATH` is held to what `env | grep PATH` prints, not to the
+    /// whole environment, which a listing of every PATH entry can exceed.
+    #[test]
+    fn a_filtered_listing_is_held_to_the_variables_it_names() {
+        let vars = vec![
+            ("HOME".to_string(), "/home/me".to_string()),
+            ("PATH".to_string(), "/a:/b".to_string()),
+        ];
+        let raw = raw_lines(&vars, Some("PATH"));
+        assert_eq!(raw, "PATH=/a:/b\n");
+        assert_eq!(never_worse(&raw, &render(&vars, Some("PATH"))), raw);
+        assert_eq!(raw_lines(&vars, None), "HOME=/home/me\nPATH=/a:/b\n");
     }
 
     /// Windows stores the variable as `Path`, and its entries hold drive colons.
