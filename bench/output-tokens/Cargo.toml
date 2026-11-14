@@ -1,0 +1,21 @@
+# Measures the tokens in each tool's version of a command's output over a
+# fixed corpus (see README.md). Its own workspace root, like proxy/, so its
+# tokeniser stays out of the CLI's dependency graph and lockfile.
+[workspace]
+
+[package]
+name = "output-tokens"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.91"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Ships its vocabularies inside the crate, so counting needs no network.
+tiktoken-rs = "0.12"
+toml = "0.8"
