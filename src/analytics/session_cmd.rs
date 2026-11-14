@@ -7,8 +7,10 @@ use crate::discover::provider::{
 };
 use crate::discover::registry::{Classification, classify_command, split_command_chain};
 use anyhow::{Context, Result};
+use std::cmp::Reverse;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 /// A summarized session for display.
 struct SessionSummary {
@@ -103,6 +105,12 @@ fn tool_output_report(output: &ToolOutputBytes, logs_read: usize, logs_total: us
     report
 }
 
+/// Sort `paths` newest first, calling `mtime` once per file. A file it can't date counts as the
+/// Unix epoch; files with the same time keep their order.
+fn sort_newest_first(paths: &mut [PathBuf], mut mtime: impl FnMut(&Path) -> Option<SystemTime>) {
+    paths.sort_by_cached_key(|p| Reverse(mtime(p).unwrap_or(SystemTime::UNIX_EPOCH)));
+}
+
 pub fn run(_verbose: u8) -> Result<()> {
     let provider = ClaudeProvider;
     let sessions = provider
@@ -124,15 +132,8 @@ pub fn run(_verbose: u8) -> Result<()> {
         })
         .collect();
 
-    // Sort by mtime desc
-    session_files.sort_by(|a, b| {
-        let ma = fs::metadata(a)
-            .and_then(|m| m.modified())
-            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-        let mb = fs::metadata(b)
-            .and_then(|m| m.modified())
-            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-        mb.cmp(&ma)
+    sort_newest_first(&mut session_files, |p| {
+        fs::metadata(p).and_then(|m| m.modified()).ok()
     });
 
     // Take top 10
@@ -260,6 +261,27 @@ mod tests {
             is_error: false,
             sequence_index: 0,
         }
+    }
+
+    #[test]
+    fn test_sort_newest_first_dates_each_file_once() {
+        let mut paths: Vec<PathBuf> = (0..100)
+            .map(|i| PathBuf::from(format!("{i}.jsonl")))
+            .collect();
+        let mut reads = 0;
+        sort_newest_first(&mut paths, |p| {
+            reads += 1;
+            // 0 can't be dated; 1 and 2 share a time; each later file is newer.
+            let i: u64 = p.file_stem()?.to_str()?.parse().ok()?;
+            (i != 0).then(|| SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(i.max(2) * 60))
+        });
+        assert_eq!(reads, 100, "one metadata read per file");
+        let expected: Vec<PathBuf> = (3..100)
+            .rev()
+            .chain([1, 2, 0])
+            .map(|i| PathBuf::from(format!("{i}.jsonl")))
+            .collect();
+        assert_eq!(paths, expected);
     }
 
     // --- Progress bar ---
