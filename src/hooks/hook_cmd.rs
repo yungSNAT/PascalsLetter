@@ -1285,7 +1285,7 @@ fn opencode_answer_for(cmd: &str, agent: Option<&str>) -> Value {
 /// `{}`, trading token savings on that command for the user's own policy
 /// (#4195). An allow stays an allow, an ask stays a prompt, and a deny stays
 /// denied — RTK never blocks, lifts or silences anything.
-fn opencode_answer(cmd: &str, rules: &[permissions_opencode::Rule]) -> Value {
+pub(crate) fn opencode_answer(cmd: &str, rules: &[permissions_opencode::Rule]) -> Value {
     if cmd.trim().is_empty() {
         return json!({});
     }
