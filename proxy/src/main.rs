@@ -274,7 +274,27 @@ async fn sigterm() {
     std::future::pending::<()>().await;
 }
 
+/// The `/health` reply at `bind`, if what answers there says it is rtk-proxy.
+/// 8080, the default, is a common dev-server port: a bare 200 from whatever
+/// listens there must not count as the proxy, and `stop` must not post a
+/// shutdown to it.
+async fn identify(bind: &str) -> Option<serde_json::Value> {
+    let reply = reqwest::get(format!("{}/health", base_url(bind)))
+        .await
+        .ok()
+        .filter(|r| r.status().is_success())?;
+    let health: serde_json::Value = reply.json().await.ok()?;
+    (health.get("service").and_then(|v| v.as_str()) == Some("rtk-proxy")).then_some(health)
+}
+
 async fn run_stop(connect: ConnectArgs) {
+    if identify(&connect.bind).await.is_none() {
+        eprintln!(
+            "no rtk-proxy reachable at {}; nothing was asked to shut down",
+            connect.bind
+        );
+        std::process::exit(1);
+    }
     let url = format!("{}/admin/shutdown", base_url(&connect.bind));
     match reqwest::Client::new()
         .post(&url)
@@ -301,12 +321,7 @@ async fn run_stop(connect: ConnectArgs) {
 }
 
 async fn run_status(connect: ConnectArgs) {
-    let url = format!("{}/health", base_url(&connect.bind));
-    let reachable = match reqwest::get(&url).await {
-        Ok(r) if r.status().is_success() => r.json::<serde_json::Value>().await.ok(),
-        _ => None,
-    };
-    match reachable {
+    match identify(&connect.bind).await {
         Some(j) => println!(
             "running at {} (edition {}, v{})",
             connect.bind,
