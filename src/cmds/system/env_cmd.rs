@@ -17,7 +17,20 @@ pub fn run(filter: Option<&str>, verbose: u8) -> Result<()> {
 
     let mut vars: Vec<(String, String)> = env::vars().collect();
     vars.sort_by(|a, b| a.0.cmp(&b.0));
+    let body = render(&vars, filter);
 
+    let raw: String = vars.iter().fold(String::new(), |mut output, (k, v)| {
+        let _ = writeln!(output, "{}={}", k, v);
+        output
+    });
+    let shown_body = never_worse(&raw, &body);
+    print!("{}", shown_body);
+    timer.track("env", "rtk env", &raw, shown_body);
+    Ok(())
+}
+
+/// The filtered listing of `vars`, sorted by name.
+fn render(vars: &[(String, String)], filter: Option<&str>) -> String {
     // Interesting categories
     let mut path_vars = Vec::new();
     let mut lang_vars = Vec::new();
@@ -25,7 +38,7 @@ pub fn run(filter: Option<&str>, verbose: u8) -> Result<()> {
     let mut tool_vars = Vec::new();
     let mut other_vars = Vec::new();
 
-    for (key, value) in &vars {
+    for (key, value) in vars {
         // Apply filter if provided
         if let Some(f) = filter
             && !key.to_lowercase().contains(&f.to_lowercase())
@@ -34,7 +47,7 @@ pub fn run(filter: Option<&str>, verbose: u8) -> Result<()> {
         }
 
         // PATH is split into entries before anything is shortened.
-        let display_value = if key == "PATH" {
+        let display_value = if is_path_key(key) {
             value.clone()
         } else {
             shorten(value)
@@ -43,7 +56,7 @@ pub fn run(filter: Option<&str>, verbose: u8) -> Result<()> {
         let entry = (key.clone(), display_value);
 
         // Categorize
-        if key.contains("PATH") {
+        if key.to_ascii_uppercase().contains("PATH") {
             path_vars.push(entry);
         } else if is_lang_var(key) {
             lang_vars.push(entry);
@@ -60,7 +73,7 @@ pub fn run(filter: Option<&str>, verbose: u8) -> Result<()> {
     if !path_vars.is_empty() {
         let _ = writeln!(body, "PATH Variables:");
         for (k, v) in &path_vars {
-            if k == "PATH" {
+            if is_path_key(k) {
                 write_path(&mut body, v);
             } else {
                 let _ = writeln!(body, "  {}={}", k, v);
@@ -109,15 +122,17 @@ pub fn run(filter: Option<&str>, verbose: u8) -> Result<()> {
     if filter.is_none() {
         let _ = writeln!(body, "\nTotal: {} vars (showing {} relevant)", total, shown);
     }
+    body
+}
 
-    let raw: String = vars.iter().fold(String::new(), |mut output, (k, v)| {
-        let _ = writeln!(output, "{}={}", k, v);
-        output
-    });
-    let shown_body = never_worse(&raw, &body);
-    print!("{}", shown_body);
-    timer.track("env", "rtk env", &raw, shown_body);
-    Ok(())
+/// Whether `key` names the search path: `PATH`, or on Windows, where names
+/// ignore case and the variable is stored as `Path`, any spelling of it.
+fn is_path_key(key: &str) -> bool {
+    if cfg!(windows) {
+        key.eq_ignore_ascii_case("PATH")
+    } else {
+        key == "PATH"
+    }
 }
 
 /// A value over 100 bytes, cut to its first 50 characters and its length.
@@ -254,21 +269,26 @@ mod tests {
         let entries: Vec<String> = (0..8).map(|i| format!("/opt/tool-{i}/bin")).collect();
         let path = env::join_paths(&entries).unwrap().into_string().unwrap();
         assert!(path.len() > 100, "the value must be long enough to be cut");
-        let mut body = String::new();
-        write_path(&mut body, &path);
+        let body = render(&[("PATH".to_string(), path)], Some("PATH"));
         assert!(body.contains("PATH (8 entries):"), "{body}");
         for entry in &entries {
             assert!(body.contains(&format!("    {entry}\n")), "{entry}: {body}");
         }
     }
 
+    /// Windows stores the variable as `Path`, and its entries hold drive colons.
     #[cfg(windows)]
     #[test]
     fn a_windows_path_keeps_its_drive_letters() {
-        let mut body = String::new();
-        write_path(&mut body, r"C:\Program Files\Git\bin;C:\Windows\system32");
-        assert!(body.contains("PATH (2 entries):"), "{body}");
-        assert!(body.contains("    C:\\Program Files\\Git\\bin\n"), "{body}");
-        assert!(body.contains("    C:\\Windows\\system32\n"), "{body}");
+        let entries: Vec<String> = (0..5)
+            .map(|i| format!(r"C:\Program Files\Tool{i}\bin"))
+            .collect();
+        let path = entries.join(";");
+        assert!(path.len() > 100, "the value must be long enough to be cut");
+        let body = render(&[("Path".to_string(), path)], None);
+        assert!(body.contains("PATH (5 entries):"), "{body}");
+        for entry in &entries {
+            assert!(body.contains(&format!("    {entry}\n")), "{entry}: {body}");
+        }
     }
 }
