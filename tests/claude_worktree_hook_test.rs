@@ -7,20 +7,25 @@
 //! `scripts/fork-proof.sh` can run it against upstream RTK too.
 
 use std::io::Write;
-use std::process::Stdio;
+use std::process::{Command, Stdio};
 
 mod common;
 
 /// The command `rtk hook claude` substitutes for `command` run in `cwd`, or
 /// `None` when it leaves the command alone.
 fn hook(command: &str, cwd: &std::path::Path) -> Option<String> {
+    hook_with(common::rtk_command(), command, cwd)
+}
+
+/// [`hook`], run by `rtk`.
+fn hook_with(mut rtk: Command, command: &str, cwd: &std::path::Path) -> Option<String> {
     let payload = serde_json::json!({
         "tool_name": "Bash",
         "tool_input": { "command": command },
         "cwd": cwd,
     })
     .to_string();
-    let mut child = common::rtk_command()
+    let mut child = rtk
         .args(["hook", "claude"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -64,4 +69,48 @@ fn claude_worktree_leaves_a_git_operand_unrewritten() {
         );
         assert_eq!(hook(command, &worktree), None, "{command}");
     }
+}
+
+/// A `mode = "swap"` route rule runs the command after `rtk` (`rtk <task> ...
+/// -- sh -c 'git status'`), which the guard refuses as well.
+#[cfg(feature = "engine")]
+#[test]
+fn claude_worktree_keeps_git_out_of_a_pipeline_swap() {
+    const RULE: &str = r#"[upstream.haiku]
+provider = "anthropic"
+model = "claude-haiku-4-5"
+
+[task.check-build]
+kind = "digest"
+upstream = "haiku"
+
+[[hook.before_tool.shell]]
+name = "swap-git"
+when = { command_matches = "git status" }
+action = "route"
+task = "check-build"
+mode = "swap"
+"#;
+    let dir = common::tempdir();
+    let config = dir.path().join("config");
+    std::fs::create_dir_all(&config).expect("mkdir config");
+    std::fs::write(config.join("pipeline.toml"), RULE).expect("write pipeline");
+    let repo = dir.path().join("repo");
+    let worktree = repo.join(".claude/worktrees/feat-x");
+    std::fs::create_dir_all(&worktree).expect("mkdir worktree");
+    let rtk = || {
+        let mut rtk = common::rtk_command();
+        rtk.env("RTK_CONFIG_DIR", &config);
+        rtk
+    };
+
+    // Outside a worktree first, so a rule that never fires fails here.
+    let outside = hook_with(rtk(), "git status", &repo);
+    assert!(
+        outside
+            .as_deref()
+            .is_some_and(|c| c.starts_with("rtk check-build ")),
+        "control: the swap rule must fire outside a worktree: {outside:?}"
+    );
+    assert_eq!(hook_with(rtk(), "git status", &worktree), None);
 }

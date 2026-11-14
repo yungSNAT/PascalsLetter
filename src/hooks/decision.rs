@@ -416,7 +416,7 @@ fn withhold_git_rewrite(decision: HookDecision) -> HookDecision {
 /// both as written and as the shell passes them, quotes and escapes resolved.
 /// The test is deliberately broader than the guard (any letter case, `.` as a
 /// separator): a false match only leaves a command uncompressed.
-fn puts_git_after_rtk(rewritten: &str) -> bool {
+pub(crate) fn puts_git_after_rtk(rewritten: &str) -> bool {
     use crate::discover::lexer::{
         shell_split_as_passed, split_for_wrappers, split_for_wrappers_as_code,
     };

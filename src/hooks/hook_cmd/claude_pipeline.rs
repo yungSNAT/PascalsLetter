@@ -150,6 +150,15 @@ fn shell_gate(v: &Value) -> bool {
             true
         }
         ShellHookDecision::Swap { command, rule } => {
+            // Claude Code's worktree guard would refuse the swap, which runs the
+            // command after `rtk`; the main hook path decides instead.
+            if v.get("cwd")
+                .and_then(Value::as_str)
+                .is_some_and(decision::in_claude_worktree)
+                && decision::puts_git_after_rtk(&command)
+            {
+                return false;
+            }
             let verdict = permissions::check_command_for(cmd, permissions::Host::Claude);
             let (excluded, transparent) = crate::core::config::hook_rewrite_params();
             let rewrite =
