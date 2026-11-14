@@ -66,6 +66,8 @@ Los recuentos de tokens que reporta RTK se estiman como `bytes / 4`: RTK no incl
 
 ## Instalacion
 
+> Esta traducción viene de RTK upstream: los comandos de abajo instalan RTK upstream, sin los cambios de PascalsLetter. Para instalar PascalsLetter, sigue [Install](README.md#install) en el README en inglés.
+
 ### Homebrew (recomendado)
 
 ```bash

@@ -66,6 +66,8 @@ RTK が報告するトークン数は `バイト数 / 4` で見積もられて�
 
 ## インストール
 
+> この翻訳は上流の RTK のものです。以下のコマンドは、PascalsLetter の変更を含まない上流の RTK をインストールします。PascalsLetter をインストールするには、英語版 README の [Install](README.md#install) に従ってください。
+
 ### Homebrew（推奨）
 
 ```bash
