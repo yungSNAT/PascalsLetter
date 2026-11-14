@@ -119,20 +119,6 @@ fn http_client_with(connect: std::time::Duration, read: std::time::Duration) -> 
 
 impl AppState {
     pub fn new(config: config::Config) -> Self {
-        // A database left as a bare filename in the shell's cwd is invisible
-        // to `rtk gain`, which reads one fixed path. Adopt such a file once,
-        // only when still on the default path (never over an explicit
-        // setting).
-        for (path, default) in [
-            (&config.db, config::default_db_path()),
-            (&config.icm_db, config::default_icm_db_path()),
-        ] {
-            if *path == default {
-                if let Some(from) = config::adopt_stray_db(path) {
-                    tracing::info!(from = %from.display(), to = %path, "adopted database from launch directory");
-                }
-            }
-        }
         // A relative path a `service install` froze still resolves against the
         // service's cwd (`/` under launchd), unwritable and invisible to
         // `rtk gain`. Nothing here may override an explicit setting, so it
