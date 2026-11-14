@@ -105,7 +105,7 @@ fn tool_output_report(output: &ToolOutputBytes, logs_read: usize, logs_total: us
     report
 }
 
-/// Sort `paths` newest first, asking `mtime` once a file. A file it can't date counts as the
+/// Sort `paths` newest first, calling `mtime` once per file. A file it can't date counts as the
 /// Unix epoch; files with the same time keep their order.
 fn sort_newest_first(paths: &mut [PathBuf], mut mtime: impl FnMut(&Path) -> Option<SystemTime>) {
     paths.sort_by_cached_key(|p| Reverse(mtime(p).unwrap_or(SystemTime::UNIX_EPOCH)));
