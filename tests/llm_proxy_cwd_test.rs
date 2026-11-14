@@ -22,7 +22,7 @@ mod common;
 static EXECUTABLES: RwLock<()> = RwLock::new(());
 
 /// `cmd.output()`, spawned under [`EXECUTABLES`].
-fn output(cmd: &mut Command) -> std::io::Result<Output> {
+fn run(cmd: &mut Command) -> std::io::Result<Output> {
     let child = {
         let _spawning = EXECUTABLES.read().unwrap_or_else(PoisonError::into_inner);
         cmd.stdin(Stdio::null())
@@ -67,7 +67,7 @@ fn rtk_beside_stand_in(script: &str) -> (Command, tempfile::TempDir, tempfile::T
 /// check, so start fails and names the log the stand-in's output went to.
 /// Returns the log's path and text.
 fn start_and_read_log(cmd: &mut Command) -> (PathBuf, String) {
-    let out = output(cmd.args(["llm-proxy", "start", "--bind", "127.0.0.1:1"]))
+    let out = run(cmd.args(["llm-proxy", "start", "--bind", "127.0.0.1:1"]))
         .expect("rtk llm-proxy start");
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(!out.status.success(), "{out:?}");
@@ -102,7 +102,7 @@ fn forwarded_subcommands_run_rtk_proxy_outside_the_shells_directory() {
         &["stats"],
     ] {
         let (mut cmd, _dir, project) = rtk_beside_stand_in("#!/bin/sh\npwd -P\n");
-        let out = output(cmd.arg("llm-proxy").args(args)).expect("run rtk llm-proxy");
+        let out = run(cmd.arg("llm-proxy").args(args)).expect("run rtk llm-proxy");
         assert!(out.status.success(), "{args:?}: {out:?}");
         let cwd = PathBuf::from(String::from_utf8_lossy(&out.stdout).trim());
         assert_ne!(
@@ -148,7 +148,7 @@ fn a_relative_rtk_proxy_config_still_names_a_file_in_the_shells_directory() {
         let output = if start {
             start_and_read_log(&mut cmd).1
         } else {
-            let out = output(cmd.args(["llm-proxy", "service", "install"]))
+            let out = run(cmd.args(["llm-proxy", "service", "install"]))
                 .expect("rtk llm-proxy service install");
             assert!(out.status.success(), "{out:?}");
             String::from_utf8_lossy(&out.stdout).into_owned()
@@ -177,11 +177,10 @@ fn non_unicode_folder(project: &Path) -> PathBuf {
 fn a_config_path_rtk_proxy_cannot_read_is_refused() {
     let (mut cmd, _dir, project) = rtk_beside_stand_in(PRINT_CONFIG);
     let odd = non_unicode_folder(project.path());
-    let out = output(
-        cmd.current_dir(&odd)
-            .env("RTK_PROXY_CONFIG", "custom.toml")
-            .args(["llm-proxy", "service", "install"]),
-    )
+    let out = run(cmd
+        .current_dir(&odd)
+        .env("RTK_PROXY_CONFIG", "custom.toml")
+        .args(["llm-proxy", "service", "install"]))
     .expect("rtk llm-proxy service install");
     assert!(!out.status.success(), "{out:?}");
     assert!(out.stdout.is_empty(), "rtk-proxy ran: {out:?}");
@@ -198,11 +197,10 @@ fn a_config_path_rtk_proxy_cannot_read_is_refused() {
 fn a_child_that_reads_no_config_runs_from_a_folder_that_is_not_unicode() {
     let (mut cmd, _dir, project) = rtk_beside_stand_in(PRINT_CONFIG);
     let odd = non_unicode_folder(project.path());
-    let out = output(
-        cmd.current_dir(&odd)
-            .env("RTK_PROXY_CONFIG", "custom.toml")
-            .args(["llm-proxy", "status"]),
-    )
+    let out = run(cmd
+        .current_dir(&odd)
+        .env("RTK_PROXY_CONFIG", "custom.toml")
+        .args(["llm-proxy", "status"]))
     .expect("rtk llm-proxy status");
     assert!(out.status.success(), "{out:?}");
     let stdout = String::from_utf8_lossy(&out.stdout);
