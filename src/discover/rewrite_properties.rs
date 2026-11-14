@@ -6,11 +6,14 @@
 //! shellism the lexer sees in the original must appear, in order, in the
 //! rewrite; otherwise a hook would run something other than what the agent
 //! asked for. And a command the hook rewrites never gets Allow while a deny
-//! rule names one of the commands in it, or the hook would approve that command.
+//! rule names one of the commands in it, or the hook would approve that command;
+//! OpenCode, which applies its own rules, never gets a rewrite that lifts one.
 
-use super::lexer::{TokenKind, tokenize};
+use super::lexer::{TokenKind, gate_segments, tokenize};
 use super::registry::rewrite_command;
+use crate::hooks::hook_cmd::opencode_answer;
 use crate::hooks::permissions::{PermissionVerdict, check_command_with_rules};
+use crate::hooks::permissions_opencode::{Action, Rule, evaluate};
 
 /// Commands RTK rewrites, commands it leaves alone, and words that hold
 /// operator characters inside quotes.
@@ -153,24 +156,69 @@ fn rule_name(cmd: &str) -> Option<String> {
         .then(|| words.join(" "))
 }
 
+/// The prefixes and places OpenCode still reads as the command itself: it
+/// matches a rule against a command's whole text, so behind `env` or inside
+/// `bash -c '…'` a rule naming the command does not match there either.
+const OPENCODE_PREFIXES: &[&str] = &["", "", "! "];
+const OPENCODE_PLACES: &[&str] = &["%", "%", "{ %; }", "( % )"];
+
+/// The first two words of a command, by which an OpenCode rule names it;
+/// `None` when one of them is quoted text.
+fn opencode_rule_name(cmd: &str) -> Option<String> {
+    let words: Vec<&str> = cmd.split_whitespace().take(2).collect();
+    (words.len() == 2 && !words.iter().any(|word| word.contains(['"', '\''])))
+        .then(|| words.join(" "))
+}
+
+/// A random chain of commands from `prefixes` and `places`, with the name
+/// `name` gives each command for a deny rule.
+fn named_chain(
+    rng: &mut Rng,
+    prefixes: &[&str],
+    places: &[&str],
+    name: fn(&str) -> Option<String>,
+) -> (String, Vec<String>) {
+    let mut segments = vec![named_segment(rng, prefixes, places, name)];
+    for _ in 0..rng.next() % 4 {
+        segments.push(named_segment(rng, prefixes, places, name));
+    }
+    let mut cmd = segments[0].0.clone();
+    for (text, _) in &segments[1..] {
+        cmd.push_str(rng.pick(OPERATORS));
+        cmd.push_str(text);
+    }
+    if rng.next().is_multiple_of(5) {
+        cmd.push_str(" # note; ok");
+    }
+    (
+        cmd,
+        segments.into_iter().filter_map(|(_, name)| name).collect(),
+    )
+}
+
 /// One command in a random prefix, place and line continuation, with the
 /// deny rule that names it.
-fn named_segment(rng: &mut Rng) -> (String, Option<String>) {
+fn named_segment(
+    rng: &mut Rng,
+    prefixes: &[&str],
+    places: &[&str],
+    name: fn(&str) -> Option<String>,
+) -> (String, Option<String>) {
     let command = rng.pick(COMMANDS);
-    let mut text = format!("{}{}", rng.pick(PREFIXES), command);
+    let mut text = format!("{}{}", rng.pick(prefixes), command);
     // A line continuation inside the command, which the shell joins.
     if rng.next().is_multiple_of(6) {
         text = text.replacen(' ', " \\\n  ", 1);
     }
     text.push_str(rng.pick(REDIRECTS));
-    let place = rng.pick(PLACES);
+    let place = rng.pick(places);
     // A single-quoted script cannot hold a single quote.
     let text = if place.contains('\'') && text.contains('\'') {
         text
     } else {
         place.replace('%', &text)
     };
-    (text, rule_name(command))
+    (text, name(command))
 }
 
 #[test]
@@ -180,22 +228,11 @@ fn a_rewritten_command_never_gets_allow_under_a_deny_rule_naming_it() {
     let mut checked = 0;
     let mut failures = Vec::new();
     for _ in 0..10_000 {
-        let mut segments = vec![named_segment(&mut rng)];
-        for _ in 0..rng.next() % 4 {
-            segments.push(named_segment(&mut rng));
-        }
-        let mut cmd = segments[0].0.clone();
-        for (text, _) in &segments[1..] {
-            cmd.push_str(rng.pick(OPERATORS));
-            cmd.push_str(text);
-        }
-        if rng.next().is_multiple_of(5) {
-            cmd.push_str(" # note; ok");
-        }
+        let (cmd, names) = named_chain(&mut rng, PREFIXES, PLACES, rule_name);
         if rewrite_command(&cmd, &[], &[]).is_none_or(|out| out == cmd) {
             continue;
         }
-        for name in segments.iter().filter_map(|(_, name)| name.as_deref()) {
+        for name in &names {
             checked += 1;
             let deny = [format!("{name}:*")];
             if check_command_with_rules(&cmd, &deny, &[], &allow) == PermissionVerdict::Allow {
@@ -215,4 +252,73 @@ fn a_rewritten_command_never_gets_allow_under_a_deny_rule_naming_it() {
         checked > 5_000,
         "only {checked} deny rules were checked against a rewritten command"
     );
+}
+
+/// Whether OpenCode's own rules deny `cmd`, as OpenCode reads it: each command
+/// on its own, including one inside a group, subshell or negation, matched
+/// against its text as written.
+fn opencode_denies(cmd: &str, rules: &[Rule]) -> bool {
+    gate_segments(cmd).iter().any(|segment| {
+        let bare = segment.trim_start_matches(['{', '(', '!', ' ']);
+        [*segment, bare]
+            .iter()
+            .any(|text| evaluate(text, rules) == Some(Action::Deny))
+    })
+}
+
+/// OpenCode applies its own rules to the command the hook hands back, so a
+/// rewrite that un-matched a deny rule would lift it. For every command an
+/// OpenCode deny rule names, the hook hands back nothing or a command the rule
+/// still denies.
+#[test]
+fn opencode_still_denies_every_rewrite_the_hook_hands_back() {
+    let mut rng = Rng(0x5EED_2026_1115);
+    let mut checked = 0;
+    let mut failures = Vec::new();
+    for _ in 0..10_000 {
+        let (cmd, names) = named_chain(
+            &mut rng,
+            OPENCODE_PREFIXES,
+            OPENCODE_PLACES,
+            opencode_rule_name,
+        );
+        for name in &names {
+            let rules = [
+                opencode_rule("*", Action::Allow),
+                opencode_rule(&format!("{name} *"), Action::Deny),
+            ];
+            if !opencode_denies(&cmd, &rules) {
+                continue;
+            }
+            let answer = opencode_answer(&cmd, &rules);
+            let Some(rewritten) = answer.get("command").and_then(|c| c.as_str()) else {
+                continue;
+            };
+            checked += 1;
+            if !opencode_denies(rewritten, &rules) {
+                failures.push(format!("deny {name:?} lifted: {cmd:?} -> {rewritten:?}"));
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{} rewrites the hook hands OpenCode lift a deny rule the typed command matched; \
+         first 10:\n{}",
+        failures.len(),
+        failures[..failures.len().min(10)].join("\n")
+    );
+    // Guard against a generator that stops reaching a rewrite: the hook hands
+    // back none for most denied commands, and 123 of these chains at this seed.
+    assert!(
+        checked > 60,
+        "only {checked} rewrites of a denied command were checked"
+    );
+}
+
+fn opencode_rule(pattern: &str, action: Action) -> Rule {
+    Rule {
+        permission: "bash".to_string(),
+        pattern: pattern.to_string(),
+        action,
+    }
 }
