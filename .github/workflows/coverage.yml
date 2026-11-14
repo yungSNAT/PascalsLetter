@@ -3,8 +3,8 @@ name: Coverage
 # The test suite runs here, under cargo-llvm-cov, on every push to develop.
 # Its result is the README's tests badge, and its report feeds the Codecov
 # badge. ci.yml also runs on develop pushes, so that only develop saves the
-# Rust caches pull requests restore, and its Linux leg runs the same tests again
-# without instrumentation.
+# Rust caches pull requests restore; there its Linux leg builds the tests
+# without running them, as they run here.
 on:
   push:
     branches: [develop]
@@ -26,8 +26,10 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Install required search tools
-        run: sudo apt-get update && sudo apt-get install -y ripgrep grep
+      # fish as in ci.yml's Linux leg, so tests/fish_wrap_test.rs runs the wrap
+      # itself here too.
+      - name: Install required search tools and fish
+        run: sudo apt-get update && sudo apt-get install -y ripgrep grep fish
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: llvm-tools
