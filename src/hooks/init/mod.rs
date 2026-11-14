@@ -140,6 +140,7 @@ pub enum PatchResult {
     AlreadyPresent, // Hook was already in settings.json
     Declined,       // User declined when prompted
     Skipped,        // --no-patch flag used
+    NotRequired,    // The active pipeline needs no hook event
     WouldPatch,     // Dry-run: hook would have been added
 }
 
@@ -1006,7 +1007,7 @@ fn project_scope_footer_lines(
         (true, true) => "configured and running",
         (true, false) => "configured, daemon not running — `rtk llm-proxy start`",
         (false, true) => "daemon running but nothing routed to it — `rtk init -g`",
-        (false, false) => "not set up — `rtk init -g`",
+        (false, false) => "not set up — `rtk init -g` or `rtk llm-proxy start --env`",
     };
     vec![
         format!("  hooks:     {hooks}"),

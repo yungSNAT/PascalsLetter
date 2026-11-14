@@ -325,7 +325,7 @@ fn patch_settings_json_command(
             "  {}: the pipeline requires no hook events — file untouched",
             settings_path.display()
         );
-        return Ok(PatchResult::AlreadyPresent);
+        return Ok(PatchResult::NotRequired);
     }
     if missing.is_empty() && !matcher_stale {
         if verbose > 0 {
@@ -941,6 +941,9 @@ fn report_registration(patch_result: PatchResult, mode: &str, opencode: bool) {
         }
         PatchResult::Declined | PatchResult::Skipped => {
             println!("RTK hook not registered: settings.json was not patched.");
+        }
+        PatchResult::NotRequired => {
+            println!("RTK hook not needed: the active pipeline requires no hook events.");
         }
         PatchResult::WouldPatch => {} // only in a dry run, which reports nothing here
     }
