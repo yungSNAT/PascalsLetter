@@ -72,10 +72,8 @@ fn claude_worktree_leaves_a_git_operand_unrewritten() {
 }
 
 /// A `mode = "swap"` route rule runs the command after `rtk` (`rtk <task> ...
-/// -- sh -c 'git status'`), which the guard refuses as well. Unix only: on
-/// Windows the configuration directory, where the rule lives, is a known
-/// folder the environment cannot redirect.
-#[cfg(all(unix, feature = "engine"))]
+/// -- sh -c 'git status'`), which the guard refuses as well.
+#[cfg(feature = "engine")]
 #[test]
 fn claude_worktree_keeps_git_out_of_a_pipeline_swap() {
     const RULE: &str = r#"[upstream.haiku]
@@ -93,17 +91,18 @@ action = "route"
 task = "check-build"
 mode = "swap"
 "#;
-    let home = common::tempdir();
-    // dirs::config_dir() resolves differently per platform; cover both.
-    for dir in [".config/rtk", "Library/Application Support/rtk"] {
-        let dir = home.path().join(dir);
-        std::fs::create_dir_all(&dir).expect("mkdir config");
-        std::fs::write(dir.join("pipeline.toml"), RULE).expect("write pipeline");
-    }
-    let repo = home.path().join("repo");
+    let dir = common::tempdir();
+    let config = dir.path().join("config");
+    std::fs::create_dir_all(&config).expect("mkdir config");
+    std::fs::write(config.join("pipeline.toml"), RULE).expect("write pipeline");
+    let repo = dir.path().join("repo");
     let worktree = repo.join(".claude/worktrees/feat-x");
     std::fs::create_dir_all(&worktree).expect("mkdir worktree");
-    let rtk = || common::rtk_command_in(home.path());
+    let rtk = || {
+        let mut rtk = common::rtk_command();
+        rtk.env("RTK_CONFIG_DIR", &config);
+        rtk
+    };
 
     // Outside a worktree first, so a rule that never fires fails here.
     let outside = hook_with(rtk(), "git status", &repo);
