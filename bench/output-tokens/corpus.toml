@@ -1,0 +1,113 @@
+# The fixed corpus: commands a coding agent commonly runs, on public
+# repositories pinned to full commits. Each setup adds one failing test, so
+# the test runs and `git status` and `git diff` show a failure and a change.
+# cargo, clippy and pytest output depends on the toolchain: run.sh records
+# the versions beside the results.
+
+[[repo]]
+name = "ripgrep"
+url = "https://github.com/BurntSushi/ripgrep"
+rev = "4649aa9700619f94cf9c66876e9549d83420e16c" # 14.1.1
+setup = [
+  "printf '\\n#[test]\\nfn output_tokens_fails() {\\n    assert_eq!(1 + 1, 3, \"deliberate failure\");\\n}\\n' >> crates/globset/src/lib.rs",
+  "cargo build --quiet",
+  "cargo test --workspace --no-run --quiet",
+  # Warms the cache only: current clippy denies a lint in grep-cli 14.1.1.
+  "cargo clippy --workspace --quiet || true",
+]
+
+[[repo]]
+name = "click"
+url = "https://github.com/pallets/click"
+rev = "874ca2bc1c30d93a4ac6e36a15ed685eafe89097" # 8.1.7
+path = [".venv/bin"]
+setup = [
+  "printf '\\n\\ndef test_output_tokens_fails():\\n    assert 1 + 1 == 3, \"deliberate failure\"\\n' >> tests/test_basic.py",
+  "uv venv --quiet --allow-existing .venv",
+  "uv pip install --quiet --python .venv/bin/python pytest==8.3.5 -e .",
+]
+
+[[command]]
+repo = "ripgrep"
+run = "git log -n 20"
+
+[[command]]
+repo = "ripgrep"
+run = "git log --stat -n 3"
+
+[[command]]
+repo = "ripgrep"
+run = "git show HEAD~2"
+
+[[command]]
+repo = "ripgrep"
+run = "git diff e50df40a1967708b9781486b1c017e48040bceb0 4649aa9700619f94cf9c66876e9549d83420e16c -- crates/core"
+
+[[command]]
+repo = "ripgrep"
+run = "git status"
+
+[[command]]
+repo = "ripgrep"
+run = "git diff"
+
+[[command]]
+repo = "ripgrep"
+run = "grep -rn 'fn new' crates/searcher/src"
+
+[[command]]
+repo = "ripgrep"
+run = "rg -n 'unwrap\\(\\)' crates/printer/src"
+
+[[command]]
+repo = "ripgrep"
+run = "find crates -name '*.rs'"
+
+[[command]]
+repo = "ripgrep"
+run = "ls -la crates/core"
+
+[[command]]
+repo = "ripgrep"
+run = "cat crates/core/main.rs"
+
+[[command]]
+repo = "ripgrep"
+run = "cargo build"
+before = "touch crates/core/main.rs"
+
+[[command]]
+repo = "ripgrep"
+run = "cargo clippy --workspace"
+before = "touch crates/core/main.rs crates/globset/src/lib.rs"
+
+[[command]]
+repo = "ripgrep"
+run = "cargo test -p grep-searcher"
+# Builds first, so no side's output carries the compile left by the touches above.
+before = "cargo test -p grep-searcher --no-run --quiet"
+
+[[command]]
+repo = "ripgrep"
+run = "cargo test --workspace"
+before = "cargo test --workspace --no-run --quiet"
+
+[[command]]
+repo = "click"
+run = "pytest"
+
+[[command]]
+repo = "click"
+run = "pytest tests/test_options.py"
+
+[[command]]
+repo = "click"
+run = "git log --oneline -n 40"
+
+[[command]]
+repo = "click"
+run = "grep -n 'def ' src/click/core.py"
+
+[[command]]
+repo = "click"
+run = "find src -name '*.py'"

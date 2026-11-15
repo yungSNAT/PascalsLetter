@@ -1,0 +1,40 @@
+name: output-tokens
+
+# Lints and tests bench/output-tokens, the output token measurement, when it
+# changes. It is its own workspace, so ci.yml's workspace jobs do not see it.
+# No Rust cache: the crate builds in about a minute, and the repository's
+# caches sit at GitHub's 10 GB limit.
+on:
+  pull_request:
+    branches: [develop]
+    paths: ["bench/output-tokens/**", ".github/workflows/output-tokens.yml"]
+  push:
+    branches: [develop]
+    paths: ["bench/output-tokens/**", ".github/workflows/output-tokens.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: output-tokens-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    timeout-minutes: 20
+    name: output-tokens (lint + test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: clippy, rustfmt
+      - run: cargo fmt --manifest-path bench/output-tokens/Cargo.toml --check
+      - run: cargo clippy --manifest-path bench/output-tokens/Cargo.toml --locked --all-targets -- -D warnings
+      - run: cargo test --manifest-path bench/output-tokens/Cargo.toml --locked
+      - run: bash -n bench/output-tokens/run.sh
