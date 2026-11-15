@@ -516,10 +516,15 @@ pub fn run(
                             continue;
                         }
 
-                        // A segment the rewriter turns down whatever the
-                        // configuration, such as `git log > f`, runs raw with any
-                        // hook: not a saving the user missed.
-                        if registry::rewrite_command_precompiled(
+                        // The hook rewrites nothing in a line with a file-target
+                        // redirect or command substitution, such as `git log > f`,
+                        // and the rewriter turns some segments down with any
+                        // configuration. Either runs raw whatever the user sets,
+                        // so it is not a saving they missed.
+                        if lexer::unattestable_either_reading(
+                            &ext_cmd.command,
+                            lexer::ShellDialect::Posix,
+                        ) || registry::rewrite_command_precompiled(
                             part,
                             &[],
                             &coverage_ctx.normalized_transparent_prefixes,

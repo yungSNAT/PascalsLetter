@@ -22,7 +22,11 @@ fn a_command_writing_to_a_file_is_not_a_missed_saving() {
         .args(["discover", "--all", "--format", "json"])
         .output()
         .unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
 
     assert_eq!(report["total_commands"], 2, "{report}");
@@ -32,5 +36,8 @@ fn a_command_writing_to_a_file_is_not_a_missed_saving() {
         .iter()
         .map(|entry| entry["count"].as_u64().unwrap())
         .sum();
-    assert_eq!(missed, 1, "only `git log -n 5` is a missed saving: {report}");
+    assert_eq!(
+        missed, 1,
+        "only `git log -n 5` is a missed saving: {report}"
+    );
 }
