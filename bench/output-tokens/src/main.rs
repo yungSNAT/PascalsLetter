@@ -985,6 +985,7 @@ mod tests {
         assert!(facts(&Keep::Facts(vec!["io.rs".into()]), "src/radio.rs\n").is_err());
         // A short hash names the commit its full hash does.
         assert!(lost(&["4649aa9".to_string()], "commit 4649aa9700619f94\n").is_empty());
+        assert_eq!(lost(&["4649aa9".to_string()], "4649aa9z\n"), ["4649aa9"]);
         // A name is a whole name: not the end of another, nor the start of a longer one.
         let names = facts(&Keep::Rule(Rule::Basenames), "a/io.rs\nb/old.io.rs\n").unwrap();
         assert_eq!(lost(&names, "b/old.io.rs\n"), ["io.rs"]);
