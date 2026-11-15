@@ -981,6 +981,8 @@ mod tests {
         assert_eq!(lost(&io, "src/radio.rs\n"), ["io.rs"]);
         assert!(lost(&io, "src/io.rs:3: x\n").is_empty());
         assert!(facts(&Keep::Facts(vec!["io.rs".into()]), "src/radio.rs\n").is_err());
+        // A short hash names the commit its full hash does.
+        assert!(lost(&["4649aa9".to_string()], "commit 4649aa9700619f94\n").is_empty());
     }
 
     #[test]
