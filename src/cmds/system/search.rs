@@ -927,7 +927,6 @@ fn grouped_body(
             continue;
         }
 
-        let file_display = compact_path(file);
         // The file is named once, whole, above its matches, as rg's `--heading` does.
         if show_file {
             if !body.is_empty() {
@@ -949,6 +948,9 @@ fn grouped_body(
             let sep = if *is_match { ':' } else { '-' };
             if show_line {
                 body.push_str(&line_num.to_string());
+            }
+            // Under a heading, the mark stands in for the per-line path's.
+            if show_line || show_file {
                 body.push(sep);
             }
             body.push_str(content);
@@ -961,6 +963,7 @@ fn grouped_body(
         if remaining == 0 {
             continue;
         }
+        let file_display = compact_path(file);
         // Tee the file's full matches (real path) so the tail hint recovers them
         // openably, skipping the lines already shown.
         let hint = save_hidden

@@ -1447,11 +1447,11 @@ fn is_redundant_lint_link(line: &str, block: &[String]) -> bool {
         return false;
     };
     let named = format!("clippy::{lint}");
+    let word = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == ':';
     block.iter().any(|other| {
         other.trim_start().starts_with("= note:")
             && other.match_indices(&named).any(|(at, _)| {
-                !other[at + named.len()..]
-                    .starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_')
+                !other[..at].ends_with(word) && !other[at + named.len()..].starts_with(word)
             })
     })
 }
