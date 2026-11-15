@@ -117,6 +117,36 @@ fn a_progress_redraw_reaches_the_filter_as_its_last_state() {
 
 #[cfg(unix)]
 #[test]
+fn clippy_leaves_out_a_lint_link_its_note_already_names() {
+    let bin = common::tempdir();
+    fake_tool(
+        bin.path(),
+        "cargo",
+        "cat >&2 <<'EOF'
+error: this loop never actually loops
+   --> src/lib.rs:3:5
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.100.0/index.html#never_loop
+    = note: `#[deny(clippy::never_loop)]` on by default
+
+error: could not compile `demo` (lib) due to 1 previous error
+EOF
+exit 101",
+    );
+    let out = common::rtk_command()
+        .args(["cargo", "clippy"])
+        .env("PATH", format!("{}:/usr/bin:/bin", bin.path().display()))
+        .output()
+        .expect("run rtk cargo clippy");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+
+    assert!(stdout.contains("clippy::never_loop"), "{stdout}");
+    assert!(stdout.contains("src/lib.rs:3:5"), "{stdout}");
+    assert!(!stdout.contains("for further information"), "{stdout}");
+}
+
+#[cfg(unix)]
+#[test]
 fn cc_economics_npx_fallback_names_an_exact_ccusage_release() {
     let bin = common::tempdir();
     let calls = bin.path().join("calls");

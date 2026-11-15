@@ -2243,6 +2243,47 @@ error: aborting due to 1 previous error
     }
 
     #[test]
+    fn test_filter_cargo_clippy_drops_a_lint_link_only_where_a_note_names_the_lint() {
+        let output = r#"error: this loop never actually loops
+   --> crates/cli/src/decompress.rs:180:9
+    |
+180 | /         for i in self.globs.matches(path).into_iter().rev() {
+185 | |         }
+    | |_________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.100.0/index.html#never_loop
+    = note: `#[deny(clippy::never_loop)]` on by default
+
+error: this loop never actually loops
+   --> crates/cli/src/other.rs:7:9
+    |
+7   | /         for i in v {
+    | |_________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.100.0/index.html#never_loop
+
+error: written amount is not handled
+   --> crates/printer/src/json.rs:522:9
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.100.0/index.html#unused_io
+    = note: `#[deny(clippy::unused_io_amount)]` on by default
+
+error: aborting due to 3 previous errors
+"#;
+        let result = filter_cargo_clippy(output);
+        let links: Vec<&str> = result
+            .lines()
+            .filter(|l| l.contains("for further information"))
+            .collect();
+        // The first block's note names never_loop; the second has no note, and the third's
+        // note names a longer lint than its link.
+        assert_eq!(links.len(), 2, "got: {}", result);
+        assert!(links[0].ends_with("#never_loop"), "got: {}", result);
+        assert!(links[1].ends_with("#unused_io"), "got: {}", result);
+        assert!(result.contains("clippy::never_loop"), "got: {}", result);
+    }
+
+    #[test]
     fn test_filter_cargo_clippy_multiple_errors_show_all_blocks() {
         let output = r#"error[E0308]: mismatched types
  --> src/foo.rs:5:3
