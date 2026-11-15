@@ -2,6 +2,8 @@
 
 Counts the tokens a coding agent would read from each tool's version of a command's output, over a fixed corpus of commands on pinned public repositories. It measures **command output only**: not billed agent sessions, not answer quality, and not what an agent does with fewer tokens. Billed end-to-end comparisons such as [THOL](https://tokenade.net/en/thol) and TokenBench need paid model runs and are not repeated here.
 
+Published runs: [`results/`](results/).
+
 ## Method
 
 - **Corpus:** [`corpus.toml`](corpus.toml): 20 commands (git, grep, rg, find, ls, cat, cargo build, clippy and test, pytest) on [ripgrep](https://github.com/BurntSushi/ripgrep) 14.1.1 and [click](https://github.com/pallets/click) 8.1.7, each pinned to a full commit. Setup adds one failing test to each, so the test runs, `git status` and `git diff` have a failure and a change to report.
