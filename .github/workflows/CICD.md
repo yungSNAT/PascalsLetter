@@ -10,7 +10,8 @@ removed; this `release.yml` is the fork's own.
 
 Trigger: pull_request to develop or master | push to develop (without test
 presence, semgrep and the security scan's diff steps, which review a pull
-request's changes)
+request's changes; the Linux test leg builds the tests without running them,
+as coverage.yml runs them on that push)
 
 ```
                           ┌──────────────────┐

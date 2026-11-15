@@ -82,9 +82,12 @@ jobs:
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      # clippy's cache: these dependencies are checked the same way there, so
+      # this job restores it and saves no entry of its own (fewer cache keys).
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          save-if: ${{ github.ref == 'refs/heads/develop' }}
+          shared-key: clippy
+          save-if: false
       - run: cargo doc --no-deps
 
   # ─── Parallel gates (all need code to compile) ───
@@ -210,8 +213,13 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install fish
         # `--all` is `--workspace`: `rtk` + `engine`. `proxy/` is tested in
-        # its own job, since it is not a member.
-      - run: cargo test --all
+        # its own job, since it is not a member. On a develop push the Linux
+        # leg only builds the tests, for the cache pull requests restore:
+        # coverage.yml runs the same tests then.
+      - if: runner.os != 'Linux' || github.event_name != 'push'
+        run: cargo test --all
+      - if: runner.os == 'Linux' && github.event_name == 'push'
+        run: cargo test --all --no-run
 
   install-ps1:
     timeout-minutes: 10
@@ -252,9 +260,11 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
+      # clippy's cache, as in rustdoc: this job runs the same clippy build.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          save-if: ${{ github.ref == 'refs/heads/develop' }}
+          shared-key: clippy
+          save-if: false
 
       - name: Install the pinned cargo-audit
         uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
