@@ -484,9 +484,10 @@ fn savings_by_pipeline_at(db: &std::path::Path) -> Option<Vec<ProxyPipelineRow>>
 /// Candidate paths for the daemon binary, in preference order: next to the
 /// running `rtk`, then whatever is on `PATH`.
 ///
-/// The sibling lookup covers both real cases at once — a release installs the
-/// two binaries into the same directory, and `cargo build` drops them in the
-/// same `target/<profile>/`. Deliberately no `CARGO_MANIFEST_DIR` fallback:
+/// The sibling lookup covers both real cases at once — an upstream release
+/// installs the two binaries into the same directory (PascalsLetter's releases
+/// ship `rtk` alone), and `cargo build` drops them in the same
+/// `target/<profile>/`. Deliberately no `CARGO_MANIFEST_DIR` fallback:
 /// that would bake the build machine's absolute path into every shipped
 /// binary to serve one marginal case (rtk installed, proxy only built).
 fn binary_candidates() -> Vec<PathBuf> {
@@ -1085,8 +1086,8 @@ mod tests {
         );
     }
 
-    /// The sibling of the running binary must be tried before `PATH`: a
-    /// release installs `rtk` and `rtk-proxy` together, and an unrelated
+    /// The sibling of the running binary must be tried before `PATH`: an
+    /// upstream release installs `rtk` and `rtk-proxy` together, and an unrelated
     /// `rtk-proxy` earlier on `PATH` must not win over the one that shipped
     /// with this `rtk`.
     #[test]
