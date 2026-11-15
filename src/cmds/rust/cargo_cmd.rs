@@ -1464,11 +1464,33 @@ const MAX_ERROR_BLOCK_LINES: usize = 15;
 /// `help:` suggestion that ends it, which says how to fix the error, and names the number of
 /// lines left out wherever it cuts.
 fn cap_error_block(lines: &[&str]) -> Vec<String> {
-    lines
+    let own = |part: &[&str]| part.iter().map(|l| l.to_string()).collect::<Vec<_>>();
+    if lines.len() <= MAX_ERROR_BLOCK_LINES {
+        return own(lines);
+    }
+    let more = |n: usize| format!("… +{n} more lines");
+    // A plain cut keeps this many lines and says how many follow.
+    let keep = MAX_ERROR_BLOCK_LINES - 1;
+    let beyond = lines
         .iter()
-        .take(MAX_ERROR_BLOCK_LINES)
-        .map(|l| l.to_string())
-        .collect()
+        .position(|l| l.starts_with("help:"))
+        .filter(|&at| at >= keep);
+    let Some(help) = beyond else {
+        let mut shown = own(&lines[..keep]);
+        shown.push(more(lines.len() - keep));
+        return shown;
+    };
+    // The headline and its location stay, with a line for each cut.
+    let tail = (lines.len() - help).min(MAX_ERROR_BLOCK_LINES - 4);
+    let cut_after = lines.len() - help - tail;
+    let head = keep - tail - usize::from(cut_after > 0);
+    let mut shown = own(&lines[..head]);
+    shown.push(more(help - head));
+    shown.extend(own(&lines[help..help + tail]));
+    if cut_after > 0 {
+        shown.push(more(cut_after));
+    }
+    shown
 }
 
 fn filter_cargo_clippy(output: &str) -> String {
