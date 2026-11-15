@@ -174,14 +174,14 @@ The token counts RTK reports are estimated as `bytes / 4`: RTK ships no tokenize
 
 | Tool | Tokens | Saved against raw | Listed facts kept |
 | --- | ---: | ---: | ---: |
-| Raw output | 50,591 | | 981 of 981 |
-| RTK 1.2.0 | 12,207 | 75.9% | 713 |
-| PascalsLetter (`develop`) | 11,529 | 77.2% | 713 |
-| Tokenade 2.0.9 | 12,671 | 75.0% | 619 |
-| snip 0.26.0 | 10,027 | 80.2% | 628 |
-| Chisle 3.12.1 | 15,256 | 69.8% | 545 |
+| Raw output | 50,592 | | 981 of 981 |
+| RTK 1.2.0 | 12,213 | 75.9% | 713 |
+| PascalsLetter (`develop`) | 11,532 | 77.2% | 713 |
+| Tokenade 2.0.9 | 12,672 | 75.0% | 619 |
+| snip 0.26.0 | 10,028 | 80.2% | 628 |
+| Chisle 3.12.1 | 15,253 | 69.9% | 544 |
 
-PascalsLetter uses 678 tokens fewer than RTK although it shows `git diff` whole (211 tokens more; see `git diff` under [What PascalsLetter changes](#what-pascalsletter-changes)): its capped `rg` search names each file once (1,349 tokens against 2,179), and `cargo clippy` leaves out a lint link its note already names. snip's lead comes largely from cutting: it shows `git diff` as a diffstat without the patch, and it loses facts in 8 commands, 3 of them with no hint on how to get them back; RTK and PascalsLetter lose facts in 3 capped lists (`rg`, `grep` and `find`), each with an `rtk recall` hint for the rest. `cargo clippy` on ripgrep is 27,812 of the raw tokens. Per-command counts, versions and the control run: [results](bench/output-tokens/results/2026-11-15-2.md); each tool's lost facts: [facts](bench/output-tokens/results/2026-11-15-2-facts.md).
+PascalsLetter uses 681 tokens fewer than RTK although it shows `git diff` whole (211 tokens more; see `git diff` under [What PascalsLetter changes](#what-pascalsletter-changes)): its capped `rg` search names each file once (1,349 tokens against 2,179), and `cargo clippy` leaves out a lint link its note already names. snip's lead comes largely from cutting: it shows `git diff` as a diffstat without the patch, and it loses facts in 8 commands, 3 of them with no hint on how to get them back; RTK and PascalsLetter lose facts in 3 capped lists (`rg`, `grep` and `find`), each with an `rtk recall` hint for the rest. `cargo clippy` on ripgrep is 27,812 of the raw tokens. Per-command counts, versions and the control run: [results](bench/output-tokens/results/2026-11-15-2.md); each tool's lost facts: [facts](bench/output-tokens/results/2026-11-15-2-facts.md).
 
 ### Quick Start
 
