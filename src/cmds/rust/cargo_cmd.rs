@@ -2396,6 +2396,42 @@ error: could not compile `demo` (lib) due to 1 previous error
     }
 
     #[test]
+    fn test_cap_error_block_keeps_a_suggestion_that_starts_in_the_first_lines() {
+        let code: Vec<String> = (0..20).map(|n| format!("   | code {n}")).collect();
+        let fix: Vec<String> = (0..10).map(|n| format!("   ~ fix {n}")).collect();
+        let block = |code_lines: usize, fix_lines: usize| {
+            let mut block = vec!["error: short", "  --> src/lib.rs:1:1"];
+            block.extend(code[..code_lines].iter().map(String::as_str));
+            block.push("help: try");
+            block.extend(fix[..fix_lines].iter().map(String::as_str));
+            block
+        };
+
+        // `help:` at index 13 of 16 lines: its 2 suggestion lines are kept.
+        let capped = cap_error_block(&block(11, 2));
+        assert_eq!(capped.len(), MAX_ERROR_BLOCK_LINES);
+        assert_eq!(capped[..2], ["error: short", "  --> src/lib.rs:1:1"]);
+        assert_eq!(capped[10], "   | code 8");
+        assert_eq!(capped[11], "… +2 more lines");
+        assert_eq!(capped[12..], ["help: try", "   ~ fix 0", "   ~ fix 1"]);
+
+        // `help:` at index 8 with a 10-line suggestion: all of it fits.
+        let capped = cap_error_block(&block(6, 10));
+        assert_eq!(capped.len(), MAX_ERROR_BLOCK_LINES);
+        assert_eq!(
+            capped[..4],
+            [
+                "error: short",
+                "  --> src/lib.rs:1:1",
+                "   | code 0",
+                "… +5 more lines"
+            ]
+        );
+        assert_eq!(capped[4], "help: try");
+        assert_eq!(capped[5..], fix[..]);
+    }
+
+    #[test]
     fn test_filter_cargo_clippy_drops_a_lint_link_only_where_a_note_names_the_lint() {
         let output = r#"error: this loop never actually loops
    --> crates/cli/src/decompress.rs:180:9
