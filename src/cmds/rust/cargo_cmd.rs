@@ -1456,7 +1456,6 @@ fn is_redundant_lint_link(line: &str, block: &[String]) -> bool {
     })
 }
 
-/// Filter cargo clippy output - show full error blocks, group warnings by lint rule
 /// Longest error block `filter_cargo_clippy` shows, counting the lines that say what was cut.
 const MAX_ERROR_BLOCK_LINES: usize = 15;
 
@@ -1471,11 +1470,7 @@ fn cap_error_block(lines: &[&str]) -> Vec<String> {
     let more = |n: usize| format!("… +{n} more lines");
     // A plain cut keeps this many lines and says how many follow.
     let keep = MAX_ERROR_BLOCK_LINES - 1;
-    let beyond = lines
-        .iter()
-        .position(|l| l.starts_with("help:"))
-        .filter(|&at| at >= keep);
-    let Some(help) = beyond else {
+    let Some(help) = lines.iter().position(|l| l.starts_with("help:")) else {
         let mut shown = own(&lines[..keep]);
         shown.push(more(lines.len() - keep));
         return shown;
@@ -1483,9 +1478,11 @@ fn cap_error_block(lines: &[&str]) -> Vec<String> {
     // The headline and its location stay, with a line for each cut.
     let tail = (lines.len() - help).min(MAX_ERROR_BLOCK_LINES - 4);
     let cut_after = lines.len() - help - tail;
-    let head = keep - tail - usize::from(cut_after > 0);
+    let head = (keep - tail - usize::from(cut_after > 0)).min(help);
     let mut shown = own(&lines[..head]);
-    shown.push(more(help - head));
+    if help > head {
+        shown.push(more(help - head));
+    }
     shown.extend(own(&lines[help..help + tail]));
     if cut_after > 0 {
         shown.push(more(cut_after));
@@ -1493,6 +1490,7 @@ fn cap_error_block(lines: &[&str]) -> Vec<String> {
     shown
 }
 
+/// Filter cargo clippy output - show full error blocks, group warnings by lint rule
 fn filter_cargo_clippy(output: &str) -> String {
     let mut by_rule: HashMap<String, Vec<String>> = HashMap::new();
     let mut error_count = 0;
@@ -2393,6 +2391,42 @@ error: could not compile `demo` (lib) due to 1 previous error
         assert_eq!(capped[3], "help: try");
         assert_eq!(capped[13], "   | line 23");
         assert_eq!(capped[14], "… +6 more lines");
+    }
+
+    #[test]
+    fn test_cap_error_block_keeps_a_suggestion_that_starts_in_the_first_lines() {
+        let code: Vec<String> = (0..20).map(|n| format!("   | code {n}")).collect();
+        let fix: Vec<String> = (0..10).map(|n| format!("   ~ fix {n}")).collect();
+        let block = |code_lines: usize, fix_lines: usize| {
+            let mut block = vec!["error: short", "  --> src/lib.rs:1:1"];
+            block.extend(code[..code_lines].iter().map(String::as_str));
+            block.push("help: try");
+            block.extend(fix[..fix_lines].iter().map(String::as_str));
+            block
+        };
+
+        // `help:` at index 13 of 16 lines: its 2 suggestion lines are kept.
+        let capped = cap_error_block(&block(11, 2));
+        assert_eq!(capped.len(), MAX_ERROR_BLOCK_LINES);
+        assert_eq!(capped[..2], ["error: short", "  --> src/lib.rs:1:1"]);
+        assert_eq!(capped[10], "   | code 8");
+        assert_eq!(capped[11], "… +2 more lines");
+        assert_eq!(capped[12..], ["help: try", "   ~ fix 0", "   ~ fix 1"]);
+
+        // `help:` at index 8 with a 10-line suggestion: all of it fits.
+        let capped = cap_error_block(&block(6, 10));
+        assert_eq!(capped.len(), MAX_ERROR_BLOCK_LINES);
+        assert_eq!(
+            capped[..4],
+            [
+                "error: short",
+                "  --> src/lib.rs:1:1",
+                "   | code 0",
+                "… +5 more lines"
+            ]
+        );
+        assert_eq!(capped[4], "help: try");
+        assert_eq!(capped[5..], fix[..]);
     }
 
     #[test]
