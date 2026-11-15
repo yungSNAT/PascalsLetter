@@ -1436,6 +1436,26 @@ fn is_lint_name(tag: &str) -> bool {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == ':')
 }
 
+/// A `= help: for further information visit <url>#<lint>` line in a block whose `= note:`
+/// already names `clippy::<lint>`: the link is the lint's documentation page, found by name.
+fn is_redundant_lint_link(line: &str, block: &[String]) -> bool {
+    let Some((_, lint)) = line
+        .trim_start()
+        .strip_prefix("= help: for further information visit ")
+        .and_then(|url| url.rsplit_once('#'))
+    else {
+        return false;
+    };
+    let named = format!("clippy::{lint}");
+    let word = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == ':';
+    block.iter().any(|other| {
+        other.trim_start().starts_with("= note:")
+            && other.match_indices(&named).any(|(at, _)| {
+                !other[..at].ends_with(word) && !other[at + named.len()..].starts_with(word)
+            })
+    })
+}
+
 /// Filter cargo clippy output - show full error blocks, group warnings by lint rule
 fn filter_cargo_clippy(output: &str) -> String {
     let mut by_rule: HashMap<String, Vec<String>> = HashMap::new();
@@ -1539,7 +1559,7 @@ fn filter_cargo_clippy(output: &str) -> String {
         const MAX_CLIPPY_ERRORS: usize = CAP_WARNINGS;
         result.push_str("\nErrors:\n");
         for block in error_blocks.iter().take(MAX_CLIPPY_ERRORS) {
-            for block_line in block {
+            for block_line in block.iter().filter(|l| !is_redundant_lint_link(l, block)) {
                 result.push_str(&format!("  {}\n", truncate(block_line, 160)));
             }
             result.push('\n');
@@ -2240,6 +2260,54 @@ error: aborting due to 1 previous error
             "got: {}",
             result
         );
+    }
+
+    #[test]
+    fn test_filter_cargo_clippy_drops_a_lint_link_only_where_a_note_names_the_lint() {
+        let output = r#"error: this loop never actually loops
+   --> crates/cli/src/decompress.rs:180:9
+    |
+180 | /         for i in self.globs.matches(path).into_iter().rev() {
+185 | |         }
+    | |_________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.100.0/index.html#never_loop
+    = note: `#[deny(clippy::never_loop)]` on by default
+
+error: this loop never actually loops
+   --> crates/cli/src/other.rs:7:9
+    |
+7   | /         for i in v {
+    | |_________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.100.0/index.html#never_loop
+
+error: written amount is not handled
+   --> crates/printer/src/json.rs:522:9
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.100.0/index.html#unused_io
+    = note: `#[deny(clippy::unused_io_amount)]` on by default
+
+error: this loop never actually loops
+   --> crates/cli/src/third.rs:2:9
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.100.0/index.html#never_loop
+    = note: `#[deny(myclippy::never_loop)]` on by default
+
+error: aborting due to 4 previous errors
+"#;
+        let result = filter_cargo_clippy(output);
+        let links: Vec<&str> = result
+            .lines()
+            .filter(|l| l.contains("for further information"))
+            .collect();
+        // The first block's note names never_loop; the second has no note, the third's
+        // note names a longer lint than its link, and the fourth's a lint in another tool.
+        assert_eq!(links.len(), 3, "got: {}", result);
+        assert!(links[0].ends_with("#never_loop"), "got: {}", result);
+        assert!(links[1].ends_with("#unused_io"), "got: {}", result);
+        assert!(links[2].ends_with("#never_loop"), "got: {}", result);
+        assert!(result.contains("clippy::never_loop"), "got: {}", result);
     }
 
     #[test]

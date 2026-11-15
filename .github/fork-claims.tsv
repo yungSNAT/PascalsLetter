@@ -24,6 +24,7 @@ Windows arguments	windows	-	-	# MSYS quoting runs only on Windows; its tests are
 `grep` and `rg`	linux	tests/grep_capping_test.rs	a_whole_line_match_keeps_the_line
 `grep` and `rg`	linux	tests/grep_capping_test.rs	a_very_long_unlocated_line_is_cut_and_says_so
 `grep` and `rg`	linux	tests/grep_capping_test.rs	a_match_longer_than_the_window_keeps_its_end
+`grep` and `rg`	linux	tests/grep_capping_test.rs	a_capped_search_names_each_file_once_above_its_matches
 `rtk read`	linux	tests/read_range_test.rs	ranges_preserve_selected_bytes_for_files_and_stdin
 `rtk read`	linux	tests/read_range_test.rs	ranges_default_to_the_first_line_and_number_original_lines
 `rtk read`	linux	tests/read_range_test.rs	ranges_apply_to_each_file_and_read_stdin_once
@@ -47,6 +48,7 @@ Windows arguments	windows	-	-	# MSYS quoting runs only on Windows; its tests are
 `rtk-proxy` launch-directory databases	linux	proxy/tests/smoke_binary.rs	start_leaves_a_database_in_the_launch_directory_alone
 `rtk session`	linux	tests/session_tool_output_test.rs	share_counts_every_tool_in_both_content_forms_and_sessions_without_bash
 `cargo test`	linux	tests/fork_output_test.rs	cargo_test_keeps_compiler_warnings_on_a_passing_run
+`cargo clippy`	linux	tests/fork_output_test.rs	clippy_leaves_out_a_lint_link_its_note_already_names
 Progress output	linux	tests/fork_output_test.rs	a_progress_redraw_reaches_the_filter_as_its_last_state
 `rtk gain`	linux	tests/fork_output_test.rs	gain_counts_an_oversized_row_at_the_cap_and_nets_a_worse_one
 `rtk cc-economics`	linux	tests/fork_output_test.rs	cc_economics_npx_fallback_names_an_exact_ccusage_release
