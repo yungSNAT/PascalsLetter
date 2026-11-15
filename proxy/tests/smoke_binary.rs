@@ -266,3 +266,88 @@ async fn cli_subcommands_talk_to_a_running_daemon_then_stop_it() {
         "daemon should no longer be reachable after `stop`"
     );
 }
+
+/// A database in the launch directory, such as one committed to a cloned
+/// repository, stays where it is. Moved into the daemon's own data directory,
+/// its stored settings (the upstream URLs among them) would steer every later
+/// start, wherever it was launched from.
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn start_leaves_a_database_in_the_launch_directory_alone() {
+    let reply = || {
+        ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id":"msg_1","type":"message","role":"assistant","model":"claude-haiku-4-5",
+            "content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn",
+            "usage":{"input_tokens":10,"output_tokens":7}
+        }))
+    };
+    let configured = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(reply())
+        .mount(&configured)
+        .await;
+    let planted = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(reply())
+        .mount(&planted)
+        .await;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let launch = tmp.path().join("cloned-repo");
+    std::fs::create_dir(&launch).unwrap();
+    let stray = launch.join("rtk-proxy.db");
+    {
+        let store = rtk_proxy::store::Store::open(stray.to_str().unwrap()).unwrap();
+        store
+            .put_setting("anthropic_upstream", &planted.uri())
+            .await;
+    }
+    let stray_icm = launch.join("rtk-proxy-memory.db");
+    std::fs::write(&stray_icm, b"planted").unwrap();
+    // A configuration file of the test's own, so none on the host, such as
+    // /etc/rtk-proxy/rtk-proxy.toml, can turn the stores off or move them.
+    let config_file = tmp.path().join("rtk-proxy.toml");
+    std::fs::write(&config_file, "# defaults only\n").unwrap();
+    let config_home = tmp.path().join("config");
+
+    let port = free_port();
+    let base = format!("http://127.0.0.1:{port}");
+    let child = Command::new(env!("CARGO_BIN_EXE_rtk-proxy"))
+        .arg("start")
+        .current_dir(&launch)
+        .env_remove("RTK_PROXY_DB")
+        .env_remove("RTK_PROXY_ICM_DB")
+        .env("RTK_PROXY_CONFIG", &config_file)
+        .env("XDG_CONFIG_HOME", &config_home)
+        .env("RTK_PROXY_BIND", format!("127.0.0.1:{port}"))
+        .env("RTK_PROXY_ANTHROPIC_UPSTREAM", configured.uri())
+        .env("RUST_LOG", "warn")
+        .stdout(Stdio::null())
+        .spawn()
+        .expect("spawn rtk-proxy binary");
+    let _guard = Kill(child);
+
+    let client = reqwest::Client::new();
+    wait_healthy(&client, &base).await;
+    let r = client
+        .post(format!("{base}/v1/messages"))
+        .header("content-type", "application/json")
+        .header("x-api-key", "sk-ant-CALLER")
+        .body(r#"{"model":"claude-haiku-4-5","max_tokens":5,"messages":[{"role":"user","content":"hi"}]}"#)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200, "forward status");
+
+    assert!(
+        planted.received_requests().await.unwrap().is_empty(),
+        "the request and its key went to the upstream a launch-directory database named"
+    );
+    assert_eq!(configured.received_requests().await.unwrap().len(), 1);
+    assert!(stray.is_file(), "the launch-directory database was moved");
+    assert_eq!(
+        std::fs::read(&stray_icm).unwrap(),
+        b"planted",
+        "the launch-directory ICM database was moved"
+    );
+}

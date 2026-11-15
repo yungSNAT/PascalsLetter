@@ -31,9 +31,15 @@ fn default_data_dir() -> Option<std::path::PathBuf> {
 }
 
 fn default_path(file_name: &str) -> String {
-    default_data_dir()
-        .map(|dir| dir.join(file_name).to_string_lossy().into_owned())
-        .unwrap_or_else(|| file_name.to_string())
+    path_in(default_data_dir(), file_name)
+}
+
+/// With no data directory, the store is off: a bare filename would open
+/// whatever database sits in the launch directory, such as one committed to a
+/// cloned project, whose stored upstream URLs would then receive the key.
+fn path_in(dir: Option<std::path::PathBuf>, file_name: &str) -> String {
+    dir.map(|dir| dir.join(file_name).to_string_lossy().into_owned())
+        .unwrap_or_else(|| "off".to_string())
 }
 
 /// The default usage-store path, for callers that need to recognise it.
@@ -46,47 +52,6 @@ pub fn default_icm_db_path() -> String {
     default_path(ICM_DB_FILE_NAME)
 }
 
-/// Move a database found in the launch directory to where the CLI looks, so its history shows up in `rtk gain` instead of being
-/// orphaned. Returns the path it came from.
-///
-/// Refuses to act unless the destination is absent — an existing canonical
-/// file is real data, never overwritten. The write-ahead log travels with the
-/// database: a daemon killed uncleanly leaves committed rows in `-wal`, and
-/// moving the main file alone would drop them.
-pub fn adopt_stray_db(canonical: &str) -> Option<std::path::PathBuf> {
-    let dest = std::path::Path::new(canonical);
-    adopt_from(&std::path::PathBuf::from(dest.file_name()?), dest)
-}
-
-fn adopt_from(stray: &std::path::Path, dest: &std::path::Path) -> Option<std::path::PathBuf> {
-    if stray == dest || !stray.is_file() || dest.exists() {
-        return None;
-    }
-    std::fs::create_dir_all(dest.parent()?).ok()?;
-    move_file(stray, dest)?;
-    for suffix in ["-wal", "-shm"] {
-        let from = with_suffix(stray, suffix);
-        if from.is_file() {
-            move_file(&from, &with_suffix(dest, suffix));
-        }
-    }
-    Some(stray.to_path_buf())
-}
-
-fn with_suffix(path: &std::path::Path, suffix: &str) -> std::path::PathBuf {
-    let mut name = path.as_os_str().to_os_string();
-    name.push(suffix);
-    std::path::PathBuf::from(name)
-}
-
-fn move_file(from: &std::path::Path, to: &std::path::Path) -> Option<()> {
-    if std::fs::rename(from, to).is_ok() {
-        return Some(());
-    }
-    std::fs::copy(from, to).ok()?;
-    let _ = std::fs::remove_file(from);
-    Some(())
-}
 /// Total timeout for a BUFFERED upstream call. Ten minutes is far above any
 /// real non-streaming completion and still finite: without a bound, a wedged
 /// socket holds the agent's turn open with no exit but Ctrl-C.
@@ -443,6 +408,12 @@ pub fn load_toml_file<T: DeserializeOwned>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn no_data_directory_turns_the_stores_off() {
+        assert_eq!(path_in(None, DB_FILE_NAME), "off");
+        assert_eq!(path_in(None, ICM_DB_FILE_NAME), "off");
+    }
 
     fn empty_cli() -> StartArgs {
         StartArgs {
