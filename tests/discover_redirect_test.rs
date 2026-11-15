@@ -14,11 +14,15 @@ const SESSION: &str = r#"{"type":"assistant","message":{"content":[{"type":"tool
 #[test]
 fn a_command_writing_to_a_file_is_not_a_missed_saving() {
     let root = common::tempdir();
-    let project = root.path().join(".claude").join("projects").join("-demo");
+    let claude = root.path().join(".claude");
+    let project = claude.join("projects").join("-demo");
     std::fs::create_dir_all(&project).unwrap();
     std::fs::write(project.join("session.jsonl"), SESSION).unwrap();
 
     let out = common::rtk_command_in(root.path())
+        // Named outright: on Windows `dirs::home_dir` asks the shell API, not
+        // the variables the isolated child is given.
+        .env("CLAUDE_CONFIG_DIR", &claude)
         .args(["discover", "--all", "--format", "json"])
         .output()
         .unwrap();
