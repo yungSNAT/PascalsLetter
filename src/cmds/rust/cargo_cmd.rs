@@ -1457,6 +1457,20 @@ fn is_redundant_lint_link(line: &str, block: &[String]) -> bool {
 }
 
 /// Filter cargo clippy output - show full error blocks, group warnings by lint rule
+/// Longest error block `filter_cargo_clippy` shows, counting the lines that say what was cut.
+const MAX_ERROR_BLOCK_LINES: usize = 15;
+
+/// Shorten an error block to `MAX_ERROR_BLOCK_LINES`. A longer block keeps its start and the
+/// `help:` suggestion that ends it, which says how to fix the error, and names the number of
+/// lines left out wherever it cuts.
+fn cap_error_block(lines: &[&str]) -> Vec<String> {
+    lines
+        .iter()
+        .take(MAX_ERROR_BLOCK_LINES)
+        .map(|l| l.to_string())
+        .collect()
+}
+
 fn filter_cargo_clippy(output: &str) -> String {
     let mut by_rule: HashMap<String, Vec<String>> = HashMap::new();
     let mut error_count = 0;
@@ -1532,7 +1546,7 @@ fn filter_cargo_clippy(output: &str) -> String {
                     current_block.clear();
                 }
                 in_error = false;
-            } else if current_block.len() < 15 {
+            } else {
                 // Collect code-context lines (|, ^, = note:, help:, etc.)
                 current_block.push(line.to_string());
             }
@@ -1559,8 +1573,13 @@ fn filter_cargo_clippy(output: &str) -> String {
         const MAX_CLIPPY_ERRORS: usize = CAP_WARNINGS;
         result.push_str("\nErrors:\n");
         for block in error_blocks.iter().take(MAX_CLIPPY_ERRORS) {
-            for block_line in block.iter().filter(|l| !is_redundant_lint_link(l, block)) {
-                result.push_str(&format!("  {}\n", truncate(block_line, 160)));
+            let lines: Vec<&str> = block
+                .iter()
+                .filter(|l| !is_redundant_lint_link(l, block))
+                .map(String::as_str)
+                .collect();
+            for block_line in cap_error_block(&lines) {
+                result.push_str(&format!("  {}\n", truncate(&block_line, 160)));
             }
             result.push('\n');
         }
@@ -2260,6 +2279,98 @@ error: aborting due to 1 previous error
             "got: {}",
             result
         );
+    }
+
+    /// A 23-line error block: 16 lines of code and notes, then a 5-line `help:` suggestion.
+    const LONG_CLIPPY_BLOCK: &str = r#"    Checking demo v0.1.0
+error: this `match` can be collapsed into the outer `match`
+  --> src/lib.rs:12:9
+   |
+12 | /         match inner {
+13 | |             Some(1) => one(),
+14 | |             Some(2) => two(),
+15 | |             Some(3) => three(),
+16 | |             Some(4) => four(),
+17 | |             Some(5) => five(),
+18 | |             Some(6) => six(),
+19 | |             Some(7) => seven(),
+20 | |             Some(8) => eight(),
+21 | |             _ => other(),
+22 | |         }
+   | |_________^
+   |
+   = note: `-D clippy::collapsible-match` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(clippy::collapsible_match)]`
+help: the outer pattern can be modified to include the inner pattern
+   |
+11 ~     Some(inner @ 1..=8) => inner_arm(inner),
+12 ~     _ => other(),
+   |
+
+error: could not compile `demo` (lib) due to 1 previous error
+"#;
+
+    fn shown_error_lines(result: &str) -> Vec<&str> {
+        result
+            .lines()
+            .skip_while(|l| *l != "Errors:")
+            .skip(1)
+            .take_while(|l| !l.is_empty())
+            .collect()
+    }
+
+    #[test]
+    fn test_filter_cargo_clippy_keeps_the_fix_suggestion_of_a_long_block() {
+        let result = filter_cargo_clippy(LONG_CLIPPY_BLOCK);
+        let shown = shown_error_lines(&result);
+        assert_eq!(shown.len(), MAX_ERROR_BLOCK_LINES, "got: {result}");
+        assert_eq!(
+            shown[..2],
+            [
+                "  error: this `match` can be collapsed into the outer `match`",
+                "    --> src/lib.rs:12:9"
+            ]
+        );
+        // 9 lines of the start, the cut, then the whole suggestion.
+        assert_eq!(shown[9], "  … +9 more lines", "got: {result}");
+        assert_eq!(
+            shown[10..],
+            [
+                "  help: the outer pattern can be modified to include the inner pattern",
+                "     |",
+                "  11 ~     Some(inner @ 1..=8) => inner_arm(inner),",
+                "  12 ~     _ => other(),",
+                "     |"
+            ],
+            "got: {result}"
+        );
+    }
+
+    #[test]
+    fn test_filter_cargo_clippy_says_how_many_lines_a_long_block_leaves_out() {
+        // No suggestion: the start is kept and the cut is counted.
+        let (block, _) = LONG_CLIPPY_BLOCK.split_once("help: the outer").unwrap();
+        let shown_in = filter_cargo_clippy(block);
+        let shown = shown_error_lines(&shown_in);
+        assert_eq!(shown.len(), MAX_ERROR_BLOCK_LINES, "got: {shown_in}");
+        assert_eq!(shown[13], "  22 | |         }", "got: {shown_in}");
+        assert_eq!(shown[14], "  … +4 more lines", "got: {shown_in}");
+
+        // A suggestion longer than the block allows is cut too, and both cuts are counted.
+        let lines: Vec<String> = (0..30).map(|n| format!("   | line {n}")).collect();
+        let mut block = vec!["error: long", "  --> src/lib.rs:1:1"];
+        block.extend(lines[..14].iter().map(String::as_str));
+        block.push("help: try");
+        block.extend(lines[14..].iter().map(String::as_str));
+        let capped = cap_error_block(&block);
+        assert_eq!(capped.len(), MAX_ERROR_BLOCK_LINES);
+        assert_eq!(
+            capped[..3],
+            ["error: long", "  --> src/lib.rs:1:1", "… +14 more lines"]
+        );
+        assert_eq!(capped[3], "help: try");
+        assert_eq!(capped[13], "   | line 23");
+        assert_eq!(capped[14], "… +6 more lines");
     }
 
     #[test]
