@@ -7,7 +7,7 @@ Published runs: [`results/`](results/).
 ## Method
 
 - **Corpus:** [`corpus.toml`](corpus.toml): 20 commands (git, grep, rg, find, ls, cat, cargo build, clippy and test, pytest) on [ripgrep](https://github.com/BurntSushi/ripgrep) 14.1.1 and [click](https://github.com/pallets/click) 8.1.7, each pinned to a full commit. Setup adds one failing test to each, so the test runs, `git status` and `git diff` have a failure and a change to report.
-- **Sides:** each command runs once per side, from the same state (a corpus `before` command, such as `touch`, runs before every side).
+- **Sides:** each command runs once per side, in the same clone of each repository; a corpus `before` command, such as `touch` or a build, runs before every side, so each side starts from the same files and build artefacts as far as the corpus resets them.
   - `raw`: the command as written.
   - each rtk build: asked `rtk rewrite <command>`, as its hook asks. A rewritten command runs with that build first on `PATH`; a command it leaves alone keeps the raw output.
   - [Tokenade](https://github.com/pi-infected/tokenade): `tokenade wrap '<command>'` for every command.

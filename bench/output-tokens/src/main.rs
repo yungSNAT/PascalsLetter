@@ -65,7 +65,8 @@ struct Repo {
 struct CorpusCommand {
     repo: String,
     run: String,
-    /// Run before each side's run, so every side starts from the same state.
+    /// Run before each side's run, so every side starts from the files and
+    /// build artefacts it resets.
     before: Option<String>,
 }
 
@@ -247,8 +248,9 @@ fn count_tokens(text: &str) -> usize {
 }
 
 /// The environment every side's command runs in: a home of its own, so no
-/// tool reads the user's configuration or another side's state, and PATH
-/// with `first` ahead of the user's.
+/// tool reads the user's configuration or another side's home, and PATH
+/// with `first` ahead of the user's. The repositories and Cargo's build
+/// artefacts are shared.
 fn side_env(cmd: &mut Command, home: &Path, first: &[PathBuf]) -> Result<()> {
     let user_home = std::env::var_os("HOME").context("HOME is not set")?;
     for (var, dir) in [("CARGO_HOME", ".cargo"), ("RUSTUP_HOME", ".rustup")] {
