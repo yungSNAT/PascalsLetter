@@ -279,6 +279,7 @@ fn side_env(cmd: &mut Command, home: &Path, first: &[PathBuf]) -> Result<()> {
 /// Runs `script` with `sh`, stderr joined to stdout as an agent's shell tool
 /// returns them, and no stdin.
 fn run_shell(script: &str, dir: &Path, home: &Path, first: &[PathBuf]) -> Result<Outcome> {
+    // nosemgrep: interpreter-execution -- a benchmark, not rtk: it runs each corpus command through sh, as an agent's shell tool does
     let mut cmd = Command::new("sh");
     cmd.arg("-c")
         .arg(format!("exec 2>&1\n{script}"))
@@ -393,6 +394,7 @@ fn run_side(
         Kind::Rtk(bin) => {
             let mut first = vec![layout.shim(side)];
             first.extend_from_slice(repo_first);
+            // nosemgrep: dynamic-command-execution -- a benchmark, not rtk: asks the rtk build under test (--rtk) for its rewrite
             let mut ask = Command::new(bin);
             ask.args(["rewrite", &command.run])
                 .current_dir(dir)
@@ -422,6 +424,7 @@ fn run_side(
             )
         }
         Kind::Chisle(hook) => {
+            // nosemgrep: interpreter-execution -- a benchmark, not rtk: runs Chisle's hook (--chisle), which is JavaScript
             let mut node = Command::new("node");
             node.arg(hook)
                 .current_dir(dir)
@@ -569,6 +572,7 @@ fn version_of(side: &Side) -> String {
     let Kind::Rtk(bin) = &side.kind else {
         return String::new();
     };
+    // nosemgrep: dynamic-command-execution -- a benchmark, not rtk: reads the --version of the rtk build under test
     Command::new(bin)
         .arg("--version")
         .output()
@@ -697,6 +701,7 @@ mod tests {
         assert_eq!(fill_template("snip {cmd}", cmd), "snip grep -n 'a b' f");
         let quoted = fill_template("tool wrap {qcmd}", cmd);
         assert_eq!(quoted, r"tool wrap 'grep -n '\''a b'\'' f'");
+        // nosemgrep: interpreter-execution -- test: checks that sh reads a quoted template back as one word
         let echoed = Command::new("sh")
             .arg("-c")
             .arg(fill_template("printf %s {qcmd}", cmd))
