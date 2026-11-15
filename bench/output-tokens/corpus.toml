@@ -30,7 +30,7 @@ setup = [
 [[command]]
 repo = "ripgrep"
 run = "git log -n 20"
-question = "Which are the latest 20 commits, newest and oldest?"
+question = "Of the latest 20 commits, which is newest and which oldest?"
 keep = ["4649aa9", "f7b677d", "deps: update everything"]
 
 [[command]]
@@ -66,19 +66,19 @@ keep = "diff"
 [[command]]
 repo = "ripgrep"
 run = "grep -rn 'fn new' crates/searcher/src"
-question = "Where is a `new` function defined?"
+question = "Which lines define a `new` function?"
 keep = "matches"
 
 [[command]]
 repo = "ripgrep"
 run = "rg -n 'unwrap\\(\\)' crates/printer/src"
-question = "Where is `unwrap()` called?"
+question = "Which lines call `unwrap()`?"
 keep = "matches"
 
 [[command]]
 repo = "ripgrep"
 run = "find crates -name '*.rs'"
-question = "Which Rust files are there?"
+question = "What are the Rust files called?"
 keep = "basenames"
 
 [[command]]
@@ -145,5 +145,5 @@ keep = "matches"
 [[command]]
 repo = "click"
 run = "find src -name '*.py'"
-question = "Which Python files are there?"
+question = "What are the Python files called?"
 keep = "basenames"

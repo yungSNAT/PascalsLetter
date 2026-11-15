@@ -6,7 +6,7 @@
 use anyhow::{Context, Result, bail, ensure};
 use clap::Parser;
 use serde::Deserialize;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::fs;
 use std::io::Write as _;
@@ -196,11 +196,18 @@ fn match_text(line: &str) -> &str {
     }
 }
 
-/// The distinct facts `keep` takes from the raw output, squeezed; each must be in it.
+/// The facts `keep` takes from the raw output, squeezed, one for each time a rule finds it;
+/// each must be in the raw output, and a fact needs a letter or digit.
 fn facts(keep: &Keep, raw: &str) -> Result<Vec<String>> {
     let lines = raw.lines().filter(|l| !l.trim().is_empty());
     let found: Vec<String> = match keep {
-        Keep::Facts(list) => list.iter().map(|f| squeeze(f)).collect(),
+        Keep::Facts(list) => {
+            let mut seen = HashSet::new();
+            list.iter()
+                .map(|f| squeeze(f))
+                .filter(|f| seen.insert(f.clone()))
+                .collect()
+        }
         Keep::Rule(Rule::Lines) => lines.map(squeeze).collect(),
         Keep::Rule(Rule::Matches) => lines.map(|l| squeeze(match_text(l))).collect(),
         Keep::Rule(Rule::Diff) => lines
@@ -216,29 +223,49 @@ fn facts(keep: &Keep, raw: &str) -> Result<Vec<String>> {
             .map(|l| squeeze(l.trim_end_matches('/').rsplit('/').next().unwrap_or(l)))
             .collect(),
     };
-    let mut seen = HashSet::new();
     let found: Vec<String> = found
         .into_iter()
-        .filter(|f| !f.is_empty() && seen.insert(f.clone()))
+        .filter(|f| f.chars().any(char::is_alphanumeric))
         .collect();
-    let raw_lines: Vec<String> = raw.lines().map(squeeze).collect();
-    for fact in &found {
-        ensure!(
-            raw_lines.iter().any(|l| l.contains(fact.as_str())),
-            "fact '{fact}' is not in the raw output"
-        );
-    }
+    let missing = lost(&found, raw);
+    ensure!(
+        missing.is_empty(),
+        "fact '{}' is not in the raw output",
+        missing[0]
+    );
     Ok(found)
 }
 
-/// The `facts` no line of `text` holds, whitespace aside.
+/// How many times `fact` stands whole in `line`: no letter, digit or `_` joins it on
+/// either side, so `io.rs` is not in `radio.rs`.
+fn copies(line: &str, fact: &str) -> usize {
+    let word = |c: char| c.is_alphanumeric() || c == '_';
+    let joins_before = fact.starts_with(word);
+    let joins_after = fact.ends_with(word);
+    line.match_indices(fact)
+        .filter(|(at, _)| {
+            !(joins_before && line[..*at].ends_with(word))
+                && !(joins_after && line[at + fact.len()..].starts_with(word))
+        })
+        .count()
+}
+
+/// The `facts` that `text` does not hold, whitespace aside: a fact listed n times must stand
+/// whole n times across the lines.
 fn lost(facts: &[String], text: &str) -> Vec<String> {
     let lines: Vec<String> = text.lines().map(squeeze).collect();
-    facts
-        .iter()
-        .filter(|f| !lines.iter().any(|l| l.contains(f.as_str())))
-        .cloned()
-        .collect()
+    let mut left: HashMap<&str, usize> = HashMap::new();
+    let mut missing = Vec::new();
+    for fact in facts {
+        let held = left
+            .entry(fact)
+            .or_insert_with(|| lines.iter().map(|l| copies(l, fact)).sum());
+        match held.checked_sub(1) {
+            Some(rest) => *held = rest,
+            None => missing.push(fact.clone()),
+        }
+    }
+    missing
 }
 
 /// Whether `text` tells the agent how to get back what it left out, in any of the measured
@@ -684,10 +711,13 @@ fn summary_md(rows: &[Row], corpus: &Corpus, sides: &[Side], versions: &[String]
 /// command with the first facts each side lost.
 fn facts_md(rows: &[Row], corpus: &Corpus, sides: &[Side], facts_of: &[usize]) -> String {
     let mut md = String::from(
-        "No model is asked. Each command's answer needs facts taken from its raw output \
-         (`keep` in corpus.toml), and an output keeps a fact when one of its lines holds it, \
-         whitespace aside. A fact an output reworded counts as lost, so read the lost facts \
-         before reading a loss as a defect.\n\n\
+        "No model is asked. Each command with a `keep` in corpus.toml lists facts its answer \
+         needs, taken from its raw output: a chosen set, not all an answer could use. An \
+         output keeps a fact when one of its lines holds it whole (no letter, digit or `_` \
+         joined to it), whitespace aside, and a fact the raw output has n times must be held \
+         n times. A fact an output reworded counts as lost, so read the lost facts before \
+         reading a loss as a defect. A way to recover is recognised by each tool's hint text, \
+         not tried.\n\n\
          | Side | Facts kept | Commands that lost a fact | Of those, naming a way to recover |\n\
          | --- | ---: | ---: | ---: |\n",
     );
@@ -733,8 +763,10 @@ fn facts_md(rows: &[Row], corpus: &Corpus, sides: &[Side], facts_of: &[usize]) -
         );
         for row in rows.iter().filter(|r| r.command == n) {
             let lost = row.lost.as_deref().unwrap_or_default();
+            let mut shown = HashSet::new();
             let first: Vec<String> = lost
                 .iter()
+                .filter(|f| shown.insert(f.as_str()))
                 .take(3)
                 .map(|f| {
                     format!(
@@ -824,14 +856,14 @@ fn main() -> Result<()> {
             prepare(script, dir, &raw_home, &first)?;
         }
         let raw = run_shell(&command.run, dir, &raw_home, &first)?;
-        let mut outcomes = Vec::with_capacity(sides.len());
-        for side in &sides[1..] {
-            outcomes.push(run_side(side, &layout, command, dir, &first, &raw)?);
-        }
         let wanted = match &command.keep {
             Some(keep) => facts(keep, &raw.text).with_context(|| command.run.clone())?,
             None => Vec::new(),
         };
+        let mut outcomes = Vec::with_capacity(sides.len());
+        for side in &sides[1..] {
+            outcomes.push(run_side(side, &layout, command, dir, &first, &raw)?);
+        }
         outcomes.insert(0, raw);
         for (index, outcome) in outcomes.into_iter().enumerate() {
             let file = format!("{:03}-{}.txt", n + 1, slug(&sides[index].label));
