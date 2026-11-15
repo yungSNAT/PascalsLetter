@@ -68,6 +68,30 @@ struct CorpusCommand {
     /// Run before each side's run, so every side starts from the files and
     /// build artefacts it resets.
     before: Option<String>,
+    /// What an agent asks of this output; `keep` names the facts its answer needs.
+    question: Option<String>,
+    keep: Option<Keep>,
+}
+
+/// The facts an answer needs, all taken from the raw output: listed, or by a rule.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum Keep {
+    Rule(Rule),
+    Facts(Vec<String>),
+}
+
+#[derive(Deserialize, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+enum Rule {
+    /// Every line.
+    Lines,
+    /// Every grep or rg match line's text, after its `path:N:` or `N:`.
+    Matches,
+    /// Every added or removed line of a patch, with its sign.
+    Diff,
+    /// The last path component of every line.
+    Basenames,
 }
 
 enum Kind {
@@ -96,6 +120,10 @@ struct Row {
     rewritten: Option<String>,
     bytes: usize,
     tokens: usize,
+    /// The facts of the command's `keep` this output lacks, when it has one.
+    lost: Option<Vec<String>>,
+    /// Whether the output names a way to recover what it left out.
+    recovery: bool,
 }
 
 fn label_value(arg: &str) -> Result<(String, String), String> {
@@ -139,8 +167,92 @@ fn validate(corpus: &Corpus) -> Result<()> {
             command.run,
             command.repo
         );
+        ensure!(
+            command.question.is_some() == command.keep.is_some(),
+            "command '{}': give question and keep together",
+            command.run
+        );
     }
     Ok(())
+}
+
+/// Whitespace runs as one space, so a fact survives re-indentation.
+fn squeeze(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// A grep or rg `-n` line's text: what follows `path:N:` or `N:`.
+fn match_text(line: &str) -> &str {
+    let mut rest = line;
+    loop {
+        let digits = rest.len() - rest.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+        if digits > 0 && rest[digits..].starts_with(':') {
+            return &rest[digits + 1..];
+        }
+        match rest.find(':') {
+            Some(at) => rest = &rest[at + 1..],
+            None => return line,
+        }
+    }
+}
+
+/// The distinct facts `keep` takes from the raw output, squeezed; each must be in it.
+fn facts(keep: &Keep, raw: &str) -> Result<Vec<String>> {
+    let lines = raw.lines().filter(|l| !l.trim().is_empty());
+    let found: Vec<String> = match keep {
+        Keep::Facts(list) => list.iter().map(|f| squeeze(f)).collect(),
+        Keep::Rule(Rule::Lines) => lines.map(squeeze).collect(),
+        Keep::Rule(Rule::Matches) => lines.map(|l| squeeze(match_text(l))).collect(),
+        Keep::Rule(Rule::Diff) => lines
+            .filter(|l| {
+                (l.starts_with('+') || l.starts_with('-'))
+                    && !l.starts_with("+++ ")
+                    && !l.starts_with("--- ")
+                    && !l[1..].trim().is_empty()
+            })
+            .map(squeeze)
+            .collect(),
+        Keep::Rule(Rule::Basenames) => lines
+            .map(|l| squeeze(l.trim_end_matches('/').rsplit('/').next().unwrap_or(l)))
+            .collect(),
+    };
+    let mut seen = HashSet::new();
+    let found: Vec<String> = found
+        .into_iter()
+        .filter(|f| !f.is_empty() && seen.insert(f.clone()))
+        .collect();
+    let raw_lines: Vec<String> = raw.lines().map(squeeze).collect();
+    for fact in &found {
+        ensure!(
+            raw_lines.iter().any(|l| l.contains(fact.as_str())),
+            "fact '{fact}' is not in the raw output"
+        );
+    }
+    Ok(found)
+}
+
+/// The `facts` no line of `text` holds, whitespace aside.
+fn lost(facts: &[String], text: &str) -> Vec<String> {
+    let lines: Vec<String> = text.lines().map(squeeze).collect();
+    facts
+        .iter()
+        .filter(|f| !lines.iter().any(|l| l.contains(f.as_str())))
+        .cloned()
+        .collect()
+}
+
+/// Whether `text` tells the agent how to get back what it left out, in any of the measured
+/// tools' words.
+fn names_a_recovery(text: &str) -> bool {
+    [
+        "rtk recall ",
+        "[full output: ",
+        "[full diff: ",
+        "tokenade expand-ref ",
+        "Full patch: ",
+    ]
+    .iter()
+    .any(|hint| text.contains(hint))
 }
 
 fn sides(args: &Args) -> Result<Vec<Side>> {
@@ -568,6 +680,82 @@ fn summary_md(rows: &[Row], corpus: &Corpus, sides: &[Side], versions: &[String]
     md
 }
 
+/// What each side kept of the facts each command's answer needs: a table per side, then per
+/// command with the first facts each side lost.
+fn facts_md(rows: &[Row], corpus: &Corpus, sides: &[Side], facts_of: &[usize]) -> String {
+    let mut md = String::from(
+        "No model is asked. Each command's answer needs facts taken from its raw output \
+         (`keep` in corpus.toml), and an output keeps a fact when one of its lines holds it, \
+         whitespace aside. A fact an output reworded counts as lost, so read the lost facts \
+         before reading a loss as a defect.\n\n\
+         | Side | Facts kept | Commands that lost a fact | Of those, naming a way to recover |\n\
+         | --- | ---: | ---: | ---: |\n",
+    );
+    let total: usize = corpus
+        .command
+        .iter()
+        .zip(facts_of)
+        .filter(|(c, _)| c.keep.is_some())
+        .map(|(_, n)| n)
+        .sum();
+    for (index, side) in sides.iter().enumerate() {
+        let losing: Vec<&Row> = rows
+            .iter()
+            .filter(|r| r.side == index && r.lost.as_ref().is_some_and(|l| !l.is_empty()))
+            .collect();
+        let lost: usize = losing
+            .iter()
+            .filter_map(|r| r.lost.as_ref())
+            .map(Vec::len)
+            .sum();
+        let _ = writeln!(
+            md,
+            "| {} | {} of {total} | {} | {} |",
+            markdown_cell(&side.label),
+            total - lost,
+            losing.len(),
+            losing.iter().filter(|r| r.recovery).count()
+        );
+    }
+    for (n, command) in corpus.command.iter().enumerate() {
+        let Some(question) = &command.question else {
+            continue;
+        };
+        let _ = write!(
+            md,
+            "\n## {}. `{}` ({})\n\n{} {} facts.\n\n\
+             | Side | Kept | Names a way to recover | First facts lost |\n| --- | ---: | --- | --- |\n",
+            n + 1,
+            markdown_cell(&command.run),
+            command.repo,
+            question,
+            facts_of[n]
+        );
+        for row in rows.iter().filter(|r| r.command == n) {
+            let lost = row.lost.as_deref().unwrap_or_default();
+            let first: Vec<String> = lost
+                .iter()
+                .take(3)
+                .map(|f| {
+                    format!(
+                        "`{}`",
+                        markdown_cell(&f.chars().take(80).collect::<String>())
+                    )
+                })
+                .collect();
+            let _ = writeln!(
+                md,
+                "| {} | {} | {} | {} |",
+                markdown_cell(&sides[row.side].label),
+                facts_of[n] - lost.len(),
+                if row.recovery { "yes" } else { "no" },
+                first.join(", ")
+            );
+        }
+    }
+    md
+}
+
 fn version_of(side: &Side) -> String {
     let Kind::Rtk(bin) = &side.kind else {
         return String::new();
@@ -614,6 +802,8 @@ fn main() -> Result<()> {
     }
 
     let mut rows = Vec::new();
+    // Per command, how many facts its `keep` names.
+    let mut facts_of = Vec::new();
     for (n, command) in corpus.command.iter().enumerate() {
         let index = corpus
             .repo
@@ -638,6 +828,10 @@ fn main() -> Result<()> {
         for side in &sides[1..] {
             outcomes.push(run_side(side, &layout, command, dir, &first, &raw)?);
         }
+        let wanted = match &command.keep {
+            Some(keep) => facts(keep, &raw.text).with_context(|| command.run.clone())?,
+            None => Vec::new(),
+        };
         outcomes.insert(0, raw);
         for (index, outcome) in outcomes.into_iter().enumerate() {
             let file = format!("{:03}-{}.txt", n + 1, slug(&sides[index].label));
@@ -649,9 +843,16 @@ fn main() -> Result<()> {
                 rewritten: outcome.rewritten,
                 bytes: outcome.text.len(),
                 tokens: count_tokens(&outcome.text),
+                lost: command.keep.as_ref().map(|_| lost(&wanted, &outcome.text)),
+                recovery: names_a_recovery(&outcome.text),
             });
         }
+        facts_of.push(wanted.len());
     }
+    fs::write(
+        layout.out.join("facts.md"),
+        facts_md(&rows, &corpus, &sides, &facts_of),
+    )?;
     fs::write(
         layout.out.join("results.csv"),
         results_csv(&rows, &corpus, &sides),
@@ -682,6 +883,80 @@ mod tests {
         assert!(validate(&corpus("14.1.1", "r")).is_err());
         assert!(validate(&corpus(&REV.to_uppercase(), "r")).is_err());
         assert!(validate(&corpus(REV, "other")).is_err());
+    }
+
+    #[test]
+    fn a_question_comes_with_its_facts() {
+        let with = |extra: &str| -> Corpus {
+            toml::from_str(&format!(
+                "[[repo]]\nname = \"r\"\nurl = \"u\"\nrev = \"{REV}\"\n\
+                 [[command]]\nrepo = \"r\"\nrun = \"git log\"\n{extra}"
+            ))
+            .unwrap()
+        };
+        assert!(validate(&with("question = \"q\"\nkeep = \"lines\"\n")).is_ok());
+        assert!(validate(&with("question = \"q\"\nkeep = [\"a\"]\n")).is_ok());
+        assert!(validate(&with("question = \"q\"\n")).is_err());
+        assert!(validate(&with("keep = \"diff\"\n")).is_err());
+        assert!(
+            toml::from_str::<Corpus>(&format!(
+                "[[repo]]\nname = \"r\"\nurl = \"u\"\nrev = \"{REV}\"\n\
+             [[command]]\nrepo = \"r\"\nrun = \"x\"\nquestion = \"q\"\nkeep = \"words\"\n"
+            ))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn facts_come_from_the_raw_output_by_rule_or_list() {
+        let grep = "src/a.rs:12:    let x = 1;\nsrc/b.rs:3:fn f() {}\n4:solo: line\n";
+        assert_eq!(
+            facts(&Keep::Rule(Rule::Matches), grep).unwrap(),
+            ["let x = 1;", "fn f() {}", "solo: line"]
+        );
+        let diff = "--- a/f\n+++ b/f\n@@ -1 +1 @@\n-old  line\n+new line\n+\n+new line\n";
+        assert_eq!(
+            facts(&Keep::Rule(Rule::Diff), diff).unwrap(),
+            ["-old line", "+new line"]
+        );
+        assert_eq!(
+            facts(&Keep::Rule(Rule::Basenames), "a/b/c.rs\nd/c.rs\ne/\n").unwrap(),
+            ["c.rs", "e"]
+        );
+        assert_eq!(
+            facts(&Keep::Rule(Rule::Lines), "x  y\n\nz\n").unwrap(),
+            ["x y", "z"]
+        );
+        assert_eq!(
+            facts(&Keep::Facts(vec!["b  c".into()]), "a b c d\n").unwrap(),
+            ["b c"]
+        );
+        assert!(facts(&Keep::Facts(vec!["absent".into()]), "a b c\n").is_err());
+    }
+
+    #[test]
+    fn a_fact_is_kept_on_one_line_whatever_its_spacing() {
+        let facts = ["let x = 1;".to_string(), "fn f() {}".to_string()];
+        assert!(lost(&facts, "12:let   x = 1;\n  fn f() {}\n").is_empty());
+        assert_eq!(lost(&facts, "let x =\n1;\nfn f() {}\n"), ["let x = 1;"]);
+    }
+
+    #[test]
+    fn each_tools_recovery_hint_is_recognised() {
+        assert!(names_a_recovery(
+            "[full output: rtk recall 4ac7b03c95a09e7f]"
+        ));
+        assert!(names_a_recovery("+11 hidden: rtk recall 995969b07316e2e1]"));
+        assert!(names_a_recovery(
+            "[full output: /home/u/.local/share/snip/tee/1-cargo.log]"
+        ));
+        assert!(names_a_recovery(
+            "recover with `tokenade expand-ref 704eb3a4aef9`"
+        ));
+        assert!(names_a_recovery(
+            "diffstat only. Full patch: git show -p <rev>"
+        ));
+        assert!(!names_a_recovery("... more matches"));
     }
 
     #[test]
