@@ -168,6 +168,43 @@ fn a_capped_search_names_each_file_once_above_its_matches() {
     );
 }
 
+/// Under a file's heading and without line numbers, each line still says whether it matched
+/// (`:`) or is context (`-`), as the per-line path did.
+#[test]
+fn a_capped_search_without_line_numbers_marks_matches_and_context() {
+    let dir = tempfile::tempdir().expect("test setup");
+    let body: String = (0..400)
+        .map(|i| {
+            let kind = if i % 2 == 0 { "match" } else { "other" };
+            format!("{kind} {i} {}\n", "z".repeat(300))
+        })
+        .collect();
+    for name in ["one.txt", "two.txt"] {
+        std::fs::write(dir.path().join(name), &body).expect("test setup");
+    }
+
+    let out = common::rtk_command()
+        .args(["grep", "-r", "-C1", "match", "."])
+        .current_dir(dir.path())
+        .output()
+        .expect("rtk grep");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+
+    let lines: Vec<&str> = stdout.lines().collect();
+    let at = lines
+        .iter()
+        .position(|l| l.ends_with("one.txt"))
+        .unwrap_or_else(|| panic!("no heading for one.txt:\n{stdout:.1200}"));
+    assert!(
+        lines[at + 1].starts_with(":match 0 "),
+        "match not marked:\n{stdout:.1200}"
+    );
+    assert!(
+        lines[at + 2].starts_with("-other 1 "),
+        "context not marked:\n{stdout:.1200}"
+    );
+}
+
 /// The capped form saves the matches it hides for recovery. When grep's own output is printed
 /// instead, nothing is hidden, so nothing may be saved: no tee file and no stored copy, in
 /// either recovery mode.

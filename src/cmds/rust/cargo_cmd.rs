@@ -2288,18 +2288,25 @@ error: written amount is not handled
     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.100.0/index.html#unused_io
     = note: `#[deny(clippy::unused_io_amount)]` on by default
 
-error: aborting due to 3 previous errors
+error: this loop never actually loops
+   --> crates/cli/src/third.rs:2:9
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.100.0/index.html#never_loop
+    = note: `#[deny(myclippy::never_loop)]` on by default
+
+error: aborting due to 4 previous errors
 "#;
         let result = filter_cargo_clippy(output);
         let links: Vec<&str> = result
             .lines()
             .filter(|l| l.contains("for further information"))
             .collect();
-        // The first block's note names never_loop; the second has no note, and the third's
-        // note names a longer lint than its link.
-        assert_eq!(links.len(), 2, "got: {}", result);
+        // The first block's note names never_loop; the second has no note, the third's
+        // note names a longer lint than its link, and the fourth's a lint in another tool.
+        assert_eq!(links.len(), 3, "got: {}", result);
         assert!(links[0].ends_with("#never_loop"), "got: {}", result);
         assert!(links[1].ends_with("#unused_io"), "got: {}", result);
+        assert!(links[2].ends_with("#never_loop"), "got: {}", result);
         assert!(result.contains("clippy::never_loop"), "got: {}", result);
     }
 
