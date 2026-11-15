@@ -238,14 +238,19 @@ fn facts(keep: &Keep, raw: &str) -> Result<Vec<String>> {
 
 /// How many times `fact` stands whole in `line`: no letter, digit, `_`, `.` or `-` just
 /// before it and no letter, digit or `_` just after, so `io.rs` is in neither `old.io.rs`
-/// nor `io.rsx`. A short hash may run on into its full hash, which names the same commit.
+/// nor `io.rsx`. A short hash may run on into more hex digits, as its full hash does; git
+/// abbreviates a hash only as far as it stays unique in the repository.
 fn copies(line: &str, fact: &str) -> usize {
     let word = |c: char| c.is_alphanumeric() || c == '_';
-    let open_end = fact.len() >= 7 && fact.chars().all(|c| c.is_ascii_hexdigit());
+    let short_hash = fact.len() >= 7 && fact.chars().all(|c| c.is_ascii_hexdigit());
     line.match_indices(fact)
         .filter(|(at, _)| {
+            let mut after = &line[at + fact.len()..];
+            if short_hash {
+                after = after.trim_start_matches(|c: char| c.is_ascii_hexdigit());
+            }
             !line[..*at].ends_with(|c: char| word(c) || c == '.' || c == '-')
-                && (open_end || !line[at + fact.len()..].starts_with(word))
+                && !after.starts_with(word)
         })
         .count()
 }
@@ -715,7 +720,7 @@ fn facts_md(rows: &[Row], corpus: &Corpus, sides: &[Side], facts_of: &[usize]) -
          needs, taken from its raw output: a chosen set, not all an answer could use. An \
          output keeps a fact when one of its lines holds it whole (no letter, digit, `_`, `.` \
          or `-` just before it, no letter, digit or `_` just after it, though a short hash may \
-         run on into its full hash), whitespace aside, and a fact the raw output has n times \
+         run on into more hex digits), whitespace aside, and a fact the raw output has n times \
          must be held \
          n times. A fact an output reworded counts as lost, so read the lost facts before \
          reading a loss as a defect. A way to recover is recognised by each tool's hint text, \
