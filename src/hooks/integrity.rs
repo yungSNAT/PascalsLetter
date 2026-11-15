@@ -14,7 +14,7 @@
 
 use super::constants::{HOOKS_SUBDIR, PRE_TOOL_USE_KEY, REWRITE_HOOK_FILE};
 use super::init::resolve_claude_dir;
-use super::is_claude_hook_command;
+use super::is_claude_hook_entry;
 use anyhow::{Context, Result};
 use base16ct::HexDisplay;
 use sha2::{Digest, Sha256};
@@ -386,8 +386,7 @@ fn settings_has_claude_hook(content: &str) -> bool {
         .flatten()
         .filter_map(|entry| entry.get("hooks")?.as_array())
         .flatten()
-        .filter_map(|hook| hook.get("command")?.as_str())
-        .any(is_claude_hook_command)
+        .any(is_claude_hook_entry)
 }
 
 #[cfg(test)]
@@ -479,6 +478,24 @@ mod tests {
                         "type": "command",
                         "command": "/opt/homebrew/bin/rtk hook claude",
                         "timeout": 5
+                    }]
+                }]
+            }
+        }"#;
+
+        assert!(settings_has_claude_hook(settings));
+    }
+
+    #[test]
+    fn test_settings_has_claude_hook_accepts_exec_form() {
+        let settings = r#"{
+            "hooks": {
+                "PreToolUse": [{
+                    "matcher": "Bash|PowerShell",
+                    "hooks": [{
+                        "type": "command",
+                        "command": "rtk",
+                        "args": ["hook", "claude"]
                     }]
                 }]
             }

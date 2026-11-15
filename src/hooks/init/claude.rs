@@ -130,9 +130,8 @@ pub(super) fn remove_hook_from_json(root: &mut serde_json::Value) -> bool {
     let mut modified = false;
     for event_key in [PRE_TOOL_USE_KEY, POST_TOOL_USE_KEY, SESSION_START_KEY] {
         if !remove_hook_entries(root, event_key, HookEntries::Grouped, |hook| {
-            is_command_hook(hook, |cmd| {
-                is_claude_hook_command(cmd) || cmd.contains(REWRITE_HOOK_FILE)
-            })
+            is_claude_hook_entry(hook)
+                || is_command_hook(hook, |cmd| cmd.contains(REWRITE_HOOK_FILE))
         }) {
             continue;
         }
@@ -519,11 +518,7 @@ pub(super) fn refresh_hook_matcher(
         let has_rtk_command = entry
             .get("hooks")
             .and_then(|h| h.as_array())
-            .map(|hooks| {
-                hooks
-                    .iter()
-                    .any(|hook| is_command_hook(hook, is_claude_hook_command))
-            })
+            .map(|hooks| hooks.iter().any(is_claude_hook_entry))
             .unwrap_or(false);
         if has_rtk_command && entry.get("matcher").and_then(|m| m.as_str()) != Some(matcher) {
             entry["matcher"] = serde_json::json!(matcher);
@@ -588,11 +583,9 @@ fn rtk_hook_matchers(root: &serde_json::Value, event_key: &str) -> Vec<String> {
                         .and_then(|h| h.as_array())
                         .into_iter()
                         .flatten()
-                        .filter_map(|hook| hook.get("command")?.as_str())
-                        .any(|cmd| {
-                            cmd == CLAUDE_HOOK_COMMAND
-                                || is_claude_hook_command(cmd)
-                                || cmd.contains(REWRITE_HOOK_FILE)
+                        .any(|hook| {
+                            is_claude_hook_entry(hook)
+                                || is_command_hook(hook, |cmd| cmd.contains(REWRITE_HOOK_FILE))
                         })
                 })
                 .map(|entry| {
@@ -607,7 +600,7 @@ fn rtk_hook_matchers(root: &serde_json::Value, event_key: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Matches on legacy rtk-rewrite.sh path OR new `rtk hook claude` command
+/// Matches on legacy rtk-rewrite.sh path OR new `rtk hook claude` command, in shell or exec form
 pub(super) fn hook_already_present(
     root: &serde_json::Value,
     event_key: &str,
@@ -627,11 +620,10 @@ pub(super) fn hook_already_present(
         .filter_map(|entry| entry.get("hooks")?.as_array())
         .flatten()
         .any(|hook| {
-            is_command_hook(hook, |cmd| {
-                cmd == hook_command
-                    || is_claude_hook_command(cmd)
-                    || cmd.contains(REWRITE_HOOK_FILE)
-            })
+            is_claude_hook_entry(hook)
+                || is_command_hook(hook, |cmd| {
+                    cmd == hook_command || cmd.contains(REWRITE_HOOK_FILE)
+                })
         })
 }
 
@@ -1009,8 +1001,7 @@ fn binary_hook_registered(claude_dir: &Path) -> bool {
         .iter()
         .filter_map(|entry| entry.get("hooks")?.as_array())
         .flatten()
-        .filter_map(|hook| hook.get("command")?.as_str())
-        .any(crate::hooks::is_claude_hook_command)
+        .any(crate::hooks::is_claude_hook_entry)
 }
 
 #[cfg(test)]
@@ -1115,6 +1106,47 @@ mod tests {
             PRE_TOOL_USE_KEY,
             CLAUDE_HOOK_COMMAND
         ));
+    }
+
+    #[test]
+    fn test_hook_already_present_exec_form() {
+        let json_content = serde_json::json!({
+            "hooks": {
+                "PreToolUse": [{
+                    "matcher": "Bash",
+                    "hooks": [{
+                        "type": "command",
+                        "command": "rtk",
+                        "args": ["hook", "claude"]
+                    }]
+                }]
+            }
+        });
+
+        assert!(hook_already_present(
+            &json_content,
+            PRE_TOOL_USE_KEY,
+            CLAUDE_HOOK_COMMAND
+        ));
+    }
+
+    #[test]
+    fn test_remove_hook_from_json_exec_form() {
+        let mut json_content = serde_json::json!({
+            "hooks": {
+                "PreToolUse": [{
+                    "matcher": "Bash",
+                    "hooks": [{
+                        "type": "command",
+                        "command": "/usr/local/bin/rtk",
+                        "args": ["hook", "claude"]
+                    }]
+                }]
+            }
+        });
+
+        assert!(remove_hook_from_json(&mut json_content));
+        assert!(json_content["hooks"].get("PreToolUse").is_none());
     }
 
     #[test]
@@ -2180,6 +2212,24 @@ mod tests {
                 hook_status(),
                 crate::hooks::hook_check::HookStatus::Missing,
                 "settings.json pointing at deleted rtk-rewrite.sh must report Missing"
+            );
+        });
+    }
+
+    #[test]
+    fn test_hook_status_exec_form_binary_hook_is_ok() {
+        let tmp = test_isolation::tempdir();
+        with_claude_dir_override(&tmp, |claude_dir| {
+            fs::write(
+                claude_dir.join(SETTINGS_JSON),
+                r#"{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"rtk","args":["hook","claude"]}]}]}}"#,
+            )
+            .expect("write settings");
+
+            assert_eq!(
+                hook_status(),
+                crate::hooks::hook_check::HookStatus::Ok,
+                "an exec-form `rtk` + `[\"hook\", \"claude\"]` entry is the same hook"
             );
         });
     }
