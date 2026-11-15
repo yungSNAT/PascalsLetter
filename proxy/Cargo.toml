@@ -68,7 +68,7 @@ regex = "1"
 # when to revisit. The root `rtk` crate does not track this pin.
 rusqlite = { version = "0.34", features = ["bundled"] }
 # User-level config/log dir resolution for `rtk-proxy service` (launchd /
-# systemd --user / Task Scheduler). Same version pin as the root rtk crate.
+# systemd --user / Task Scheduler).
 dirs = "5"
 # Permanent memory (ICM) — CCR's cache backend. FTS-only (no fastembed/ONNX),
 # sqlite backend only: this is a single-node local daemon, so there is no
