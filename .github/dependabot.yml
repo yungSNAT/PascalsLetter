@@ -5,6 +5,15 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # A release is not proposed until it is 7 days old, so a bad or compromised
+    # one has time to be found and yanked. Security updates are not delayed.
+    cooldown:
+      default-days: 7
+    # One pull request per ecosystem and week, not one per package.
+    groups:
+      cargo:
+        patterns:
+          - "*"
     labels:
       - "dependencies"
     open-pull-requests-limit: 5
@@ -15,6 +24,12 @@ updates:
     directory: "/src/analytics/ccusage-pin"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
+    groups:
+      npm:
+        patterns:
+          - "*"
     labels:
       - "dependencies"
 
@@ -23,6 +38,12 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns:
+          - "*"
     labels:
       - "dependencies"
       - "area:ci"
@@ -33,5 +54,11 @@ updates:
     directory: "/.github/ci"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
+    groups:
+      pip:
+        patterns:
+          - "*"
     labels:
       - "dependencies"
