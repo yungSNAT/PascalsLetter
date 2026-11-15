@@ -2378,12 +2378,15 @@ mod tests {
     fn hook_gaps_reads_the_matcher_of_an_exec_form_hook() {
         let exec = settings_with(serde_json::json!({
             "PreToolUse": [{
-                "matcher": "Bash|Read",
+                "matcher": "Bash",
                 "hooks": [{ "type": "command", "command": "rtk", "args": ["hook", "claude"] }]
             }]
         }));
         let required = vec![(PRE_TOOL_USE_KEY, "Bash|Read".to_string())];
-        assert!(hook_gaps(&exec, &required).is_empty());
+        assert_eq!(
+            hook_gaps(&exec, &required),
+            vec!["PreToolUse does not cover Read"]
+        );
     }
 
     use super::claude::{remove_hook_from_json, remove_legacy_hook_entries_from_json};
