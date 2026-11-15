@@ -12,4 +12,4 @@
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0459"
 ignoreUntil = 2027-02-13
-reason = "Needs a database and -wal written by a less trusted party. rtk-proxy is not in releases (built from source only). Its stores default to <config dir>/rtk/llm-proxy, but on first start it adopts rtk-proxy.db or rtk-proxy-memory.db, with -wal, from the launch directory, and --db, --icm-db or RTK_PROXY_* can point elsewhere. Blocked on icm-store moving to rusqlite 0.41."
+reason = "Needs a database and -wal written by a less trusted party. rtk-proxy is not in this fork's releases (built from source only). Its stores are in <config dir>/rtk/llm-proxy unless --db, --icm-db, RTK_PROXY_DB, RTK_PROXY_ICM_DB or its config file name another path; it opens none from the launch directory. Blocked on icm-store moving to rusqlite 0.41."

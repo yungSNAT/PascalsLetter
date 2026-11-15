@@ -155,11 +155,11 @@ pub struct StartArgs {
     #[arg(long, env = "RTK_PROXY_RELAY_BORROWING")]
     relay_borrowing: Option<bool>,
 
-    /// SQLite path for the usage store; empty/`off` disables recording. [default: rtk-proxy.db]
+    /// SQLite path for the usage store; empty/`off` disables recording. [default: <config dir>/rtk/llm-proxy/rtk-proxy.db]
     #[arg(long, env = "RTK_PROXY_DB")]
     db: Option<String>,
 
-    /// SQLite path for the ICM store backing CCR's cache. [default: rtk-proxy-memory.db]
+    /// SQLite path for the ICM store backing CCR's cache. [default: <config dir>/rtk/llm-proxy/rtk-proxy-memory.db]
     #[arg(long, env = "RTK_PROXY_ICM_DB")]
     icm_db: Option<String>,
 
