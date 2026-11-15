@@ -170,18 +170,18 @@ The token counts RTK reports are estimated as `bytes / 4`: RTK ships no tokenize
 
 **In PascalsLetter's own words:** `rtk gain` estimates the bytes removed from the commands RTK filtered; it is not a measure of billed tokens. [JetBrains' billed trial](https://blog.jetbrains.com/ai/2026/07/rtk-claude-code-token-savings/) of RTK v0.43.0 (claude-sonnet-5 in Claude Code, 86 SkillsBench tasks, 20 July 2026) found tasks cost 7.6% more at low reasoning effort (p = 0.004) and the same at high effort, with quality unchanged in both, whilst `rtk gain` reported 96.2 million tokens saved. Claude Code's Read and Grep tools bypass the Bash hook, so much of what an agent reads is never filtered. PascalsLetter's fixes target output that RTK lost or mangled; their effect on billed cost has not been measured.
 
-**Measured command output, 15 November 2026:** [`bench/output-tokens`](bench/output-tokens) counts the tokens an agent reads from 20 common commands (git, grep, rg, find, ls, cat, cargo build, clippy and test, pytest) on ripgrep 14.1.1 and click 8.1.7, pinned to commits, with OpenAI's `o200k_base` vocabulary offline. It measures command output only, not billed sessions or answer quality, so it does not answer the trial above.
+**Measured command output, 15 November 2026:** [`bench/output-tokens`](bench/output-tokens) counts the tokens an agent reads from 20 common commands (git, grep, rg, find, ls, cat, cargo build, clippy and test, pytest) on ripgrep 14.1.1 and click 8.1.7, pinned to commits, with OpenAI's `o200k_base` vocabulary offline. It measures command output only, not billed sessions, so it does not answer the trial above. Without a model, 18 of the 20 commands also list facts taken from their raw output that an answer needs (a chosen set, such as each match line or file name, not all an answer could use), and the benchmark counts how many each tool's output still holds.
 
-| Tool | Tokens | Saved against raw |
-| --- | ---: | ---: |
-| Raw output | 50,640 | |
-| RTK 1.2.0 | 12,199 | 75.9% |
-| PascalsLetter (`develop`) | 12,424 | 75.5% |
-| Tokenade 2.0.9 | 12,729 | 74.9% |
-| snip 0.26.0 | 10,081 | 80.1% |
-| Chisle 3.12.1 | 15,363 | 69.7% |
+| Tool | Tokens | Saved against raw | Listed facts kept |
+| --- | ---: | ---: | ---: |
+| Raw output | 50,592 | | 981 of 981 |
+| RTK 1.2.0 | 12,209 | 75.9% | 713 |
+| PascalsLetter (`develop`) | 11,514 | 77.2% | 713 |
+| Tokenade 2.0.9 | 12,673 | 75.0% | 619 |
+| snip 0.26.0 | 10,028 | 80.2% | 628 |
+| Chisle 3.12.1 | 15,254 | 69.8% | 544 |
 
-Of PascalsLetter's 225 tokens more than RTK, 211 come from showing `git diff` whole (see `git diff` under [What PascalsLetter changes](#what-pascalsletter-changes)); snip's lead comes largely from showing `git diff` as a diffstat without the patch. `cargo clippy` on ripgrep is 27,807 of the raw tokens. Per-command counts, versions and the control run: [results](bench/output-tokens/results/2026-11-15.md).
+PascalsLetter uses 695 tokens fewer than RTK although it shows `git diff` whole (211 tokens more; see `git diff` under [What PascalsLetter changes](#what-pascalsletter-changes)): its capped `rg` search names each file once (1,349 tokens against 2,179), and `cargo clippy` leaves out a lint link its note already names. snip's lead comes largely from cutting: it shows `git diff` as a diffstat without the patch, and it loses facts in 8 commands, 3 of them with no hint on how to get them back; RTK and PascalsLetter lose facts in 3 capped lists (`rg`, `grep` and `find`), each with an `rtk recall` hint for the rest. `cargo clippy` on ripgrep is 27,812 of the raw tokens. Per-command counts, versions and the control run: [results](bench/output-tokens/results/2026-11-15-2.md); each tool's lost facts: [facts](bench/output-tokens/results/2026-11-15-2-facts.md).
 
 ### Quick Start
 

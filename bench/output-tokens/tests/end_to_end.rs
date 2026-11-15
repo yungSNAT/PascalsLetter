@@ -86,7 +86,8 @@ fn every_side_runs_from_the_pinned_commit_in_its_own_home() {
         format!(
             "[[repo]]\nname = \"demo\"\nurl = \"{}\"\nrev = \"{rev}\"\nsetup = [\"echo set > setup.txt\"]\n\n\
              [[command]]\nrepo = \"demo\"\nrun = \"cat notes.txt\"\n\
-             before = \"cat setup.txt >> before.log\"\n\n\
+             before = \"cat setup.txt >> before.log\"\n\
+             question = \"What do the notes say?\"\nkeep = [\"three four\"]\n\n\
              [[command]]\nrepo = \"demo\"\nrun = \"printf 'x%.0s' 1 2 3; echo err >&2; exit 2\"\n",
             upstream.display()
         ),
@@ -173,6 +174,19 @@ fn every_side_runs_from_the_pinned_commit_in_its_own_home() {
         .expect(&summary);
     // Not larger than raw, one exit code differs (4 against 0), one command rewritten.
     assert!(fake_row.ends_with("| 0 | 1 | 1 |"), "{fake_row}");
+
+    // Only the first command asks a question; the stand-in rtk and Chisle cut its one fact.
+    let facts = fs::read_to_string(out.join("facts.md")).unwrap();
+    for row in [
+        "| raw | 1 of 1 | 0 | 0 |",
+        "| fake | 0 of 1 | 1 | 0 |",
+        "| wrapped | 1 of 1 | 0 | 0 |",
+        "| trimmed | 0 of 1 | 1 | 0 |",
+        "| fake | 0 | no | `three four` |",
+    ] {
+        assert!(facts.lines().any(|l| l == row), "{row} missing:\n{facts}");
+    }
+    assert!(!facts.contains("printf"), "{facts}");
 
     // A rerun reuses the clone and starts again from the pinned commit, so
     // `git clean` has removed the first run's log before this one writes it.

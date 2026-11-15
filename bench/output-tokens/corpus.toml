@@ -30,46 +30,68 @@ setup = [
 [[command]]
 repo = "ripgrep"
 run = "git log -n 20"
+question = "Of the latest 20 commits, which is newest and which oldest?"
+keep = ["4649aa9", "f7b677d", "deps: update everything"]
 
 [[command]]
 repo = "ripgrep"
 run = "git log --stat -n 3"
+question = "Which files did the last 3 commits change?"
+keep = ["4649aa9", "c009652", "b9f7a9b", "Cargo.lock", "CHANGELOG.md"]
 
 [[command]]
 repo = "ripgrep"
 run = "git show HEAD~2"
+question = "What did the commit change?"
+keep = "diff"
 
 [[command]]
 repo = "ripgrep"
 run = "git diff e50df40a1967708b9781486b1c017e48040bceb0 4649aa9700619f94cf9c66876e9549d83420e16c -- crates/core"
+question = "What changed in crates/core between the 2 commits?"
+keep = "diff"
 
 [[command]]
 repo = "ripgrep"
 run = "git status"
+question = "Which files have uncommitted changes?"
+keep = ["crates/globset/src/lib.rs"]
 
 [[command]]
 repo = "ripgrep"
 run = "git diff"
+question = "What is the uncommitted change?"
+keep = "diff"
 
 [[command]]
 repo = "ripgrep"
 run = "grep -rn 'fn new' crates/searcher/src"
+question = "Which lines define a `new` function?"
+keep = "matches"
 
 [[command]]
 repo = "ripgrep"
 run = "rg -n 'unwrap\\(\\)' crates/printer/src"
+question = "Which lines call `unwrap()`?"
+keep = "matches"
 
 [[command]]
 repo = "ripgrep"
 run = "find crates -name '*.rs'"
+question = "What are the Rust files called?"
+keep = "basenames"
 
 [[command]]
 repo = "ripgrep"
 run = "ls -la crates/core"
+question = "What is in crates/core?"
+keep = ["flags", "haystack.rs", "logger.rs", "main.rs", "messages.rs", "README.md", "search.rs"]
 
 [[command]]
 repo = "ripgrep"
 run = "cat crates/core/main.rs"
+question = "What does crates/core/main.rs say?"
+keep = "lines"
 
 [[command]]
 repo = "ripgrep"
@@ -79,6 +101,8 @@ before = "touch crates/core/main.rs"
 [[command]]
 repo = "ripgrep"
 run = "cargo clippy --workspace"
+question = "Which errors stop clippy, and where?"
+keep = ["this loop never actually loops", "crates/cli/src/decompress.rs:180:9", "written amount is not handled", "crates/printer/src/json.rs:522:9"]
 before = "touch crates/core/main.rs crates/globset/src/lib.rs"
 
 [[command]]
@@ -90,24 +114,36 @@ before = "cargo test -p grep-searcher --no-run --quiet"
 [[command]]
 repo = "ripgrep"
 run = "cargo test --workspace"
+question = "Which test fails, where and why?"
+keep = ["output_tokens_fails", "crates/globset/src/lib.rs:1026:5", "deliberate failure"]
 before = "cargo test --workspace --no-run --quiet"
 
 [[command]]
 repo = "click"
 run = "pytest"
+question = "Which test fails, and why?"
+keep = ["test_output_tokens_fails", "deliberate failure"]
 
 [[command]]
 repo = "click"
 run = "pytest tests/test_options.py"
+question = "How many tests passed?"
+keep = ["112 passed"]
 
 [[command]]
 repo = "click"
 run = "git log --oneline -n 40"
+question = "Which are the latest 40 commits?"
+keep = "lines"
 
 [[command]]
 repo = "click"
 run = "grep -n 'def ' src/click/core.py"
+question = "Which functions does core.py define?"
+keep = "matches"
 
 [[command]]
 repo = "click"
 run = "find src -name '*.py'"
+question = "What are the Python files called?"
+keep = "basenames"

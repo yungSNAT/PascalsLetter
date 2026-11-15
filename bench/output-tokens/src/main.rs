@@ -6,7 +6,7 @@
 use anyhow::{Context, Result, bail, ensure};
 use clap::Parser;
 use serde::Deserialize;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::fs;
 use std::io::Write as _;
@@ -68,6 +68,30 @@ struct CorpusCommand {
     /// Run before each side's run, so every side starts from the files and
     /// build artefacts it resets.
     before: Option<String>,
+    /// What an agent asks of this output; `keep` names the facts its answer needs.
+    question: Option<String>,
+    keep: Option<Keep>,
+}
+
+/// The facts an answer needs, all taken from the raw output: listed, or by a rule.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum Keep {
+    Rule(Rule),
+    Facts(Vec<String>),
+}
+
+#[derive(Deserialize, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+enum Rule {
+    /// Every line.
+    Lines,
+    /// Every grep or rg match line's text, after its `path:N:` or `N:`.
+    Matches,
+    /// Every added or removed line of a patch, with its sign.
+    Diff,
+    /// The last path component of every line.
+    Basenames,
 }
 
 enum Kind {
@@ -96,6 +120,10 @@ struct Row {
     rewritten: Option<String>,
     bytes: usize,
     tokens: usize,
+    /// The facts of the command's `keep` this output lacks, when it has one.
+    lost: Option<Vec<String>>,
+    /// Whether the output names a way to recover what it left out.
+    recovery: bool,
 }
 
 fn label_value(arg: &str) -> Result<(String, String), String> {
@@ -139,8 +167,124 @@ fn validate(corpus: &Corpus) -> Result<()> {
             command.run,
             command.repo
         );
+        ensure!(
+            command.question.is_some() == command.keep.is_some(),
+            "command '{}': give question and keep together",
+            command.run
+        );
     }
     Ok(())
+}
+
+/// Whitespace runs as one space, so a fact survives re-indentation.
+fn squeeze(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// A grep or rg `-n` line's text: what follows `path:N:` or `N:`.
+fn match_text(line: &str) -> &str {
+    let mut rest = line;
+    loop {
+        let digits = rest.len() - rest.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+        if digits > 0 && rest[digits..].starts_with(':') {
+            return &rest[digits + 1..];
+        }
+        match rest.find(':') {
+            Some(at) => rest = &rest[at + 1..],
+            None => return line,
+        }
+    }
+}
+
+/// The facts `keep` takes from the raw output, squeezed, one for each time a rule finds it;
+/// each must be in the raw output, and a fact needs a letter or digit.
+fn facts(keep: &Keep, raw: &str) -> Result<Vec<String>> {
+    let lines = raw.lines().filter(|l| !l.trim().is_empty());
+    let found: Vec<String> = match keep {
+        Keep::Facts(list) => {
+            let mut seen = HashSet::new();
+            list.iter()
+                .map(|f| squeeze(f))
+                .filter(|f| seen.insert(f.clone()))
+                .collect()
+        }
+        Keep::Rule(Rule::Lines) => lines.map(squeeze).collect(),
+        Keep::Rule(Rule::Matches) => lines.map(|l| squeeze(match_text(l))).collect(),
+        Keep::Rule(Rule::Diff) => lines
+            .filter(|l| {
+                (l.starts_with('+') || l.starts_with('-'))
+                    && !l.starts_with("+++ ")
+                    && !l.starts_with("--- ")
+                    && !l[1..].trim().is_empty()
+            })
+            .map(squeeze)
+            .collect(),
+        Keep::Rule(Rule::Basenames) => lines
+            .map(|l| squeeze(l.trim_end_matches('/').rsplit('/').next().unwrap_or(l)))
+            .collect(),
+    };
+    let found: Vec<String> = found
+        .into_iter()
+        .filter(|f| f.chars().any(char::is_alphanumeric))
+        .collect();
+    let missing = lost(&found, raw);
+    ensure!(
+        missing.is_empty(),
+        "fact '{}' is not in the raw output",
+        missing[0]
+    );
+    Ok(found)
+}
+
+/// How many times `fact` stands whole in `line`: no letter, digit, `_`, `.` or `-` just
+/// before it and no letter, digit or `_` just after, so `io.rs` is in neither `old.io.rs`
+/// nor `io.rsx`. A short hash may run on into more hex digits, as its full hash does; git
+/// abbreviates a hash only as far as it stays unique in the repository.
+fn copies(line: &str, fact: &str) -> usize {
+    let word = |c: char| c.is_alphanumeric() || c == '_';
+    let short_hash = fact.len() >= 7 && fact.chars().all(|c| c.is_ascii_hexdigit());
+    line.match_indices(fact)
+        .filter(|(at, _)| {
+            let mut after = &line[at + fact.len()..];
+            if short_hash {
+                after = after.trim_start_matches(|c: char| c.is_ascii_hexdigit());
+            }
+            !line[..*at].ends_with(|c: char| word(c) || c == '.' || c == '-')
+                && !after.starts_with(word)
+        })
+        .count()
+}
+
+/// The `facts` that `text` does not hold, whitespace aside: a fact listed n times must stand
+/// whole n times across the lines.
+fn lost(facts: &[String], text: &str) -> Vec<String> {
+    let lines: Vec<String> = text.lines().map(squeeze).collect();
+    let mut left: HashMap<&str, usize> = HashMap::new();
+    let mut missing = Vec::new();
+    for fact in facts {
+        let held = left
+            .entry(fact)
+            .or_insert_with(|| lines.iter().map(|l| copies(l, fact)).sum());
+        match held.checked_sub(1) {
+            Some(rest) => *held = rest,
+            None => missing.push(fact.clone()),
+        }
+    }
+    missing
+}
+
+/// Whether `text` tells the agent how to get back what it left out, in any of the measured
+/// tools' words.
+fn names_a_recovery(text: &str) -> bool {
+    [
+        "rtk recall ",
+        "[full output: ",
+        "[full diff: ",
+        "tokenade expand-ref ",
+        "Full patch: ",
+    ]
+    .iter()
+    .any(|hint| text.contains(hint))
 }
 
 fn sides(args: &Args) -> Result<Vec<Side>> {
@@ -248,7 +392,7 @@ fn count_tokens(text: &str) -> usize {
 }
 
 /// The environment every side's command runs in: a home of its own, so no
-/// tool reads the user's configuration or another side's home, and PATH
+/// tool reads configuration from the user's home or another side's, and PATH
 /// with `first` ahead of the user's. The repositories and Cargo's build
 /// artefacts are shared.
 fn side_env(cmd: &mut Command, home: &Path, first: &[PathBuf]) -> Result<()> {
@@ -568,6 +712,89 @@ fn summary_md(rows: &[Row], corpus: &Corpus, sides: &[Side], versions: &[String]
     md
 }
 
+/// What each side kept of the facts each command's answer needs: a table per side, then per
+/// command with the first facts each side lost.
+fn facts_md(rows: &[Row], corpus: &Corpus, sides: &[Side], facts_of: &[usize]) -> String {
+    let mut md = String::from(
+        "No model is asked. Each command with a `keep` in corpus.toml lists facts its answer \
+         needs, taken from its raw output: a chosen set, not all an answer could use. An \
+         output keeps a fact when one of its lines holds it whole (no letter, digit, `_`, `.` \
+         or `-` just before it, no letter, digit or `_` just after it, though a short hash may \
+         run on into more hex digits), whitespace aside, and a fact the raw output has n times \
+         must be held \
+         n times. A fact an output reworded counts as lost, so read the lost facts before \
+         reading a loss as a defect. A way to recover is recognised by each tool's hint text, \
+         not tried.\n\n\
+         | Side | Facts kept | Commands that lost a fact | Of those, naming a way to recover |\n\
+         | --- | ---: | ---: | ---: |\n",
+    );
+    let total: usize = corpus
+        .command
+        .iter()
+        .zip(facts_of)
+        .filter(|(c, _)| c.keep.is_some())
+        .map(|(_, n)| n)
+        .sum();
+    for (index, side) in sides.iter().enumerate() {
+        let losing: Vec<&Row> = rows
+            .iter()
+            .filter(|r| r.side == index && r.lost.as_ref().is_some_and(|l| !l.is_empty()))
+            .collect();
+        let lost: usize = losing
+            .iter()
+            .filter_map(|r| r.lost.as_ref())
+            .map(Vec::len)
+            .sum();
+        let _ = writeln!(
+            md,
+            "| {} | {} of {total} | {} | {} |",
+            markdown_cell(&side.label),
+            total - lost,
+            losing.len(),
+            losing.iter().filter(|r| r.recovery).count()
+        );
+    }
+    for (n, command) in corpus.command.iter().enumerate() {
+        let Some(question) = &command.question else {
+            continue;
+        };
+        let _ = write!(
+            md,
+            "\n## {}. `{}` ({})\n\n{} {} facts.\n\n\
+             | Side | Kept | Names a way to recover | First facts lost |\n| --- | ---: | --- | --- |\n",
+            n + 1,
+            markdown_cell(&command.run),
+            command.repo,
+            question,
+            facts_of[n]
+        );
+        for row in rows.iter().filter(|r| r.command == n) {
+            let lost = row.lost.as_deref().unwrap_or_default();
+            let mut shown = HashSet::new();
+            let first: Vec<String> = lost
+                .iter()
+                .filter(|f| shown.insert(f.as_str()))
+                .take(3)
+                .map(|f| {
+                    format!(
+                        "`{}`",
+                        markdown_cell(&f.chars().take(80).collect::<String>())
+                    )
+                })
+                .collect();
+            let _ = writeln!(
+                md,
+                "| {} | {} | {} | {} |",
+                markdown_cell(&sides[row.side].label),
+                facts_of[n] - lost.len(),
+                if row.recovery { "yes" } else { "no" },
+                first.join(", ")
+            );
+        }
+    }
+    md
+}
+
 fn version_of(side: &Side) -> String {
     let Kind::Rtk(bin) = &side.kind else {
         return String::new();
@@ -614,6 +841,8 @@ fn main() -> Result<()> {
     }
 
     let mut rows = Vec::new();
+    // Per command, how many facts its `keep` names.
+    let mut facts_of = Vec::new();
     for (n, command) in corpus.command.iter().enumerate() {
         let index = corpus
             .repo
@@ -634,6 +863,10 @@ fn main() -> Result<()> {
             prepare(script, dir, &raw_home, &first)?;
         }
         let raw = run_shell(&command.run, dir, &raw_home, &first)?;
+        let wanted = match &command.keep {
+            Some(keep) => facts(keep, &raw.text).with_context(|| command.run.clone())?,
+            None => Vec::new(),
+        };
         let mut outcomes = Vec::with_capacity(sides.len());
         for side in &sides[1..] {
             outcomes.push(run_side(side, &layout, command, dir, &first, &raw)?);
@@ -649,9 +882,16 @@ fn main() -> Result<()> {
                 rewritten: outcome.rewritten,
                 bytes: outcome.text.len(),
                 tokens: count_tokens(&outcome.text),
+                lost: command.keep.as_ref().map(|_| lost(&wanted, &outcome.text)),
+                recovery: names_a_recovery(&outcome.text),
             });
         }
+        facts_of.push(wanted.len());
     }
+    fs::write(
+        layout.out.join("facts.md"),
+        facts_md(&rows, &corpus, &sides, &facts_of),
+    )?;
     fs::write(
         layout.out.join("results.csv"),
         results_csv(&rows, &corpus, &sides),
@@ -682,6 +922,108 @@ mod tests {
         assert!(validate(&corpus("14.1.1", "r")).is_err());
         assert!(validate(&corpus(&REV.to_uppercase(), "r")).is_err());
         assert!(validate(&corpus(REV, "other")).is_err());
+    }
+
+    #[test]
+    fn a_question_comes_with_its_facts() {
+        let with = |extra: &str| -> Corpus {
+            toml::from_str(&format!(
+                "[[repo]]\nname = \"r\"\nurl = \"u\"\nrev = \"{REV}\"\n\
+                 [[command]]\nrepo = \"r\"\nrun = \"git log\"\n{extra}"
+            ))
+            .unwrap()
+        };
+        assert!(validate(&with("question = \"q\"\nkeep = \"lines\"\n")).is_ok());
+        assert!(validate(&with("question = \"q\"\nkeep = [\"a\"]\n")).is_ok());
+        assert!(validate(&with("question = \"q\"\n")).is_err());
+        assert!(validate(&with("keep = \"diff\"\n")).is_err());
+        assert!(
+            toml::from_str::<Corpus>(&format!(
+                "[[repo]]\nname = \"r\"\nurl = \"u\"\nrev = \"{REV}\"\n\
+             [[command]]\nrepo = \"r\"\nrun = \"x\"\nquestion = \"q\"\nkeep = \"words\"\n"
+            ))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn facts_come_from_the_raw_output_by_rule_or_list() {
+        let grep = "src/a.rs:12:    let x = 1;\nsrc/b.rs:3:fn f() {}\n4:solo: line\n";
+        assert_eq!(
+            facts(&Keep::Rule(Rule::Matches), grep).unwrap(),
+            ["let x = 1;", "fn f() {}", "solo: line"]
+        );
+        // A repeated line or name is a fact for each time it appears.
+        let diff = "--- a/f\n+++ b/f\n@@ -1 +1 @@\n-old  line\n+new line\n+\n+new line\n";
+        assert_eq!(
+            facts(&Keep::Rule(Rule::Diff), diff).unwrap(),
+            ["-old line", "+new line", "+new line"]
+        );
+        assert_eq!(
+            facts(&Keep::Rule(Rule::Basenames), "a/b/c.rs\nd/c.rs\ne/\n").unwrap(),
+            ["c.rs", "c.rs", "e"]
+        );
+        // A line with no letter or digit, such as a closing brace, tells an agent nothing.
+        assert_eq!(
+            facts(&Keep::Rule(Rule::Lines), "x  y\n\n}\nz\n").unwrap(),
+            ["x y", "z"]
+        );
+        assert_eq!(
+            facts(&Keep::Facts(vec!["b  c".into()]), "a b c d\n").unwrap(),
+            ["b c"]
+        );
+        assert!(facts(&Keep::Facts(vec!["absent".into()]), "a b c\n").is_err());
+    }
+
+    #[test]
+    fn a_fact_is_kept_on_one_line_whatever_its_spacing() {
+        let facts = ["let x = 1;".to_string(), "fn f() {}".to_string()];
+        assert!(lost(&facts, "12:let   x = 1;\n  fn f() {}\n").is_empty());
+        assert_eq!(lost(&facts, "let x =\n1;\nfn f() {}\n"), ["let x = 1;"]);
+    }
+
+    #[test]
+    fn a_fact_is_held_only_as_a_whole_word() {
+        let io = ["io.rs".to_string()];
+        assert_eq!(lost(&io, "src/radio.rs\n"), ["io.rs"]);
+        assert!(lost(&io, "src/io.rs:3: x\n").is_empty());
+        assert!(facts(&Keep::Facts(vec!["io.rs".into()]), "src/radio.rs\n").is_err());
+        // A short hash names the commit its full hash does.
+        assert!(lost(&["4649aa9".to_string()], "commit 4649aa9700619f94\n").is_empty());
+        assert_eq!(lost(&["4649aa9".to_string()], "4649aa9z\n"), ["4649aa9"]);
+        // A name is a whole name: not the end of another, nor the start of a longer one.
+        let names = facts(&Keep::Rule(Rule::Basenames), "a/io.rs\nb/old.io.rs\n").unwrap();
+        assert_eq!(lost(&names, "b/old.io.rs\n"), ["io.rs"]);
+        assert_eq!(lost(&io, "src/io.rsx\n"), ["io.rs"]);
+        // A line that starts with a sign is a whole line too.
+        let diff = ["+new line".to_string(), "+not+new line".to_string()];
+        assert_eq!(lost(&diff, "+not+new line\n"), ["+new line"]);
+    }
+
+    #[test]
+    fn each_copy_of_a_fact_must_be_kept() {
+        let names = facts(&Keep::Rule(Rule::Basenames), "a/lib.rs\nb/lib.rs\n").unwrap();
+        assert_eq!(lost(&names, "a/lib.rs\n"), ["lib.rs"]);
+        assert!(lost(&names, "a/ lib.rs\nb/ lib.rs\n").is_empty());
+        assert!(lost(&names, "a/ b/ lib.rs lib.rs\n").is_empty());
+    }
+
+    #[test]
+    fn each_tools_recovery_hint_is_recognised() {
+        assert!(names_a_recovery(
+            "[full output: rtk recall 4ac7b03c95a09e7f]"
+        ));
+        assert!(names_a_recovery("+11 hidden: rtk recall 995969b07316e2e1]"));
+        assert!(names_a_recovery(
+            "[full output: /home/u/.local/share/snip/tee/1-cargo.log]"
+        ));
+        assert!(names_a_recovery(
+            "recover with `tokenade expand-ref 704eb3a4aef9`"
+        ));
+        assert!(names_a_recovery(
+            "diffstat only. Full patch: git show -p <rev>"
+        ));
+        assert!(!names_a_recovery("... more matches"));
     }
 
     #[test]
