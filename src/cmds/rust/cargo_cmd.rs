@@ -1456,7 +1456,6 @@ fn is_redundant_lint_link(line: &str, block: &[String]) -> bool {
     })
 }
 
-/// Filter cargo clippy output - show full error blocks, group warnings by lint rule
 /// Longest error block `filter_cargo_clippy` shows, counting the lines that say what was cut.
 const MAX_ERROR_BLOCK_LINES: usize = 15;
 
@@ -1471,11 +1470,7 @@ fn cap_error_block(lines: &[&str]) -> Vec<String> {
     let more = |n: usize| format!("… +{n} more lines");
     // A plain cut keeps this many lines and says how many follow.
     let keep = MAX_ERROR_BLOCK_LINES - 1;
-    let beyond = lines
-        .iter()
-        .position(|l| l.starts_with("help:"))
-        .filter(|&at| at >= keep);
-    let Some(help) = beyond else {
+    let Some(help) = lines.iter().position(|l| l.starts_with("help:")) else {
         let mut shown = own(&lines[..keep]);
         shown.push(more(lines.len() - keep));
         return shown;
@@ -1483,9 +1478,11 @@ fn cap_error_block(lines: &[&str]) -> Vec<String> {
     // The headline and its location stay, with a line for each cut.
     let tail = (lines.len() - help).min(MAX_ERROR_BLOCK_LINES - 4);
     let cut_after = lines.len() - help - tail;
-    let head = keep - tail - usize::from(cut_after > 0);
+    let head = (keep - tail - usize::from(cut_after > 0)).min(help);
     let mut shown = own(&lines[..head]);
-    shown.push(more(help - head));
+    if help > head {
+        shown.push(more(help - head));
+    }
     shown.extend(own(&lines[help..help + tail]));
     if cut_after > 0 {
         shown.push(more(cut_after));
@@ -1493,6 +1490,7 @@ fn cap_error_block(lines: &[&str]) -> Vec<String> {
     shown
 }
 
+/// Filter cargo clippy output - show full error blocks, group warnings by lint rule
 fn filter_cargo_clippy(output: &str) -> String {
     let mut by_rule: HashMap<String, Vec<String>> = HashMap::new();
     let mut error_count = 0;
