@@ -914,17 +914,19 @@ mod tests {
             facts(&Keep::Rule(Rule::Matches), grep).unwrap(),
             ["let x = 1;", "fn f() {}", "solo: line"]
         );
+        // A repeated line or name is a fact for each time it appears.
         let diff = "--- a/f\n+++ b/f\n@@ -1 +1 @@\n-old  line\n+new line\n+\n+new line\n";
         assert_eq!(
             facts(&Keep::Rule(Rule::Diff), diff).unwrap(),
-            ["-old line", "+new line"]
+            ["-old line", "+new line", "+new line"]
         );
         assert_eq!(
             facts(&Keep::Rule(Rule::Basenames), "a/b/c.rs\nd/c.rs\ne/\n").unwrap(),
-            ["c.rs", "e"]
+            ["c.rs", "c.rs", "e"]
         );
+        // A line with no letter or digit, such as a closing brace, tells an agent nothing.
         assert_eq!(
-            facts(&Keep::Rule(Rule::Lines), "x  y\n\nz\n").unwrap(),
+            facts(&Keep::Rule(Rule::Lines), "x  y\n\n}\nz\n").unwrap(),
             ["x y", "z"]
         );
         assert_eq!(
@@ -939,6 +941,22 @@ mod tests {
         let facts = ["let x = 1;".to_string(), "fn f() {}".to_string()];
         assert!(lost(&facts, "12:let   x = 1;\n  fn f() {}\n").is_empty());
         assert_eq!(lost(&facts, "let x =\n1;\nfn f() {}\n"), ["let x = 1;"]);
+    }
+
+    #[test]
+    fn a_fact_is_held_only_as_a_whole_word() {
+        let io = ["io.rs".to_string()];
+        assert_eq!(lost(&io, "src/radio.rs\n"), ["io.rs"]);
+        assert!(lost(&io, "src/io.rs:3: x\n").is_empty());
+        assert!(facts(&Keep::Facts(vec!["io.rs".into()]), "src/radio.rs\n").is_err());
+    }
+
+    #[test]
+    fn each_copy_of_a_fact_must_be_kept() {
+        let names = facts(&Keep::Rule(Rule::Basenames), "a/lib.rs\nb/lib.rs\n").unwrap();
+        assert_eq!(lost(&names, "a/lib.rs\n"), ["lib.rs"]);
+        assert!(lost(&names, "a/ lib.rs\nb/ lib.rs\n").is_empty());
+        assert!(lost(&names, "a/ b/ lib.rs lib.rs\n").is_empty());
     }
 
     #[test]
