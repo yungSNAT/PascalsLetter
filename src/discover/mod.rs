@@ -516,6 +516,19 @@ pub fn run(
                             continue;
                         }
 
+                        // A segment the rewriter turns down whatever the
+                        // configuration, such as `git log > f`, runs raw with any
+                        // hook: not a saving the user missed.
+                        if registry::rewrite_command_precompiled(
+                            part,
+                            &[],
+                            &coverage_ctx.normalized_transparent_prefixes,
+                        )
+                        .is_none()
+                        {
+                            continue;
+                        }
+
                         let bucket = supported_map.entry(rtk_equivalent).or_insert_with(|| {
                             SupportedBucket {
                                 rtk_equivalent,
