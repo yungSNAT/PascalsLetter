@@ -28,6 +28,11 @@ jobs:
       fail-fast: false
       matrix:
         language: [javascript-typescript, python, rust, actions]
+    env:
+      # Full analysis everywhere: the overlay mode cached a base database per
+      # develop push (72 entries, 657 MB on 15 Nov 2026) to shorten PR runs of
+      # languages that finish in about a minute, beside a 10-minute rust leg.
+      CODEQL_OVERLAY_DATABASE_MODE: none
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

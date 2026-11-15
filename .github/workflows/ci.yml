@@ -413,9 +413,12 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
+      # The Linux test leg's cache holds this debug build's dependencies; reuse
+      # it rather than saving a copy of our own.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          save-if: ${{ github.ref == 'refs/heads/develop' }}
+          shared-key: test
+          save-if: false
 
       # Only output tokens are measured, so a release build would only add time.
       - name: Build rtk
