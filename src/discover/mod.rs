@@ -516,6 +516,24 @@ pub fn run(
                             continue;
                         }
 
+                        // The hook rewrites nothing in a line with a file-target
+                        // redirect or command substitution, such as `git log > f`,
+                        // and the rewriter turns some segments down with any
+                        // configuration. Either runs raw whatever the user sets,
+                        // so it is not a saving they missed.
+                        if lexer::unattestable_either_reading(
+                            &ext_cmd.command,
+                            lexer::ShellDialect::Posix,
+                        ) || registry::rewrite_command_precompiled(
+                            part,
+                            &[],
+                            &coverage_ctx.normalized_transparent_prefixes,
+                        )
+                        .is_none()
+                        {
+                            continue;
+                        }
+
                         let bucket = supported_map.entry(rtk_equivalent).or_insert_with(|| {
                             SupportedBucket {
                                 rtk_equivalent,
