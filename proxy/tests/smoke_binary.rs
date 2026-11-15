@@ -302,6 +302,13 @@ async fn start_leaves_a_database_in_the_launch_directory_alone() {
             .put_setting("anthropic_upstream", &planted.uri())
             .await;
     }
+    let stray_icm = launch.join("rtk-proxy-memory.db");
+    std::fs::write(&stray_icm, b"planted").unwrap();
+    // A configuration file of the test's own, so none on the host, such as
+    // /etc/rtk-proxy/rtk-proxy.toml, can turn the stores off or move them.
+    let config_file = tmp.path().join("rtk-proxy.toml");
+    std::fs::write(&config_file, "# defaults only\n").unwrap();
+    let config_home = tmp.path().join("config");
 
     let port = free_port();
     let base = format!("http://127.0.0.1:{port}");
@@ -309,11 +316,11 @@ async fn start_leaves_a_database_in_the_launch_directory_alone() {
         .arg("start")
         .current_dir(&launch)
         .env_remove("RTK_PROXY_DB")
-        .env_remove("RTK_PROXY_CONFIG")
-        .env("XDG_CONFIG_HOME", tmp.path().join("config"))
+        .env_remove("RTK_PROXY_ICM_DB")
+        .env("RTK_PROXY_CONFIG", &config_file)
+        .env("XDG_CONFIG_HOME", &config_home)
         .env("RTK_PROXY_BIND", format!("127.0.0.1:{port}"))
         .env("RTK_PROXY_ANTHROPIC_UPSTREAM", configured.uri())
-        .env("RTK_PROXY_ICM_DB", ":memory:")
         .env("RUST_LOG", "warn")
         .stdout(Stdio::null())
         .spawn()
@@ -338,4 +345,9 @@ async fn start_leaves_a_database_in_the_launch_directory_alone() {
     );
     assert_eq!(configured.received_requests().await.unwrap().len(), 1);
     assert!(stray.is_file(), "the launch-directory database was moved");
+    assert_eq!(
+        std::fs::read(&stray_icm).unwrap(),
+        b"planted",
+        "the launch-directory ICM database was moved"
+    );
 }

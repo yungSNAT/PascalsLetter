@@ -31,9 +31,15 @@ fn default_data_dir() -> Option<std::path::PathBuf> {
 }
 
 fn default_path(file_name: &str) -> String {
-    default_data_dir()
-        .map(|dir| dir.join(file_name).to_string_lossy().into_owned())
-        .unwrap_or_else(|| file_name.to_string())
+    path_in(default_data_dir(), file_name)
+}
+
+/// With no data directory, the store is off: a bare filename would open
+/// whatever database sits in the launch directory, such as one committed to a
+/// cloned project, whose stored upstream URLs would then receive the key.
+fn path_in(dir: Option<std::path::PathBuf>, file_name: &str) -> String {
+    dir.map(|dir| dir.join(file_name).to_string_lossy().into_owned())
+        .unwrap_or_else(|| "off".to_string())
 }
 
 /// The default usage-store path, for callers that need to recognise it.
@@ -402,6 +408,12 @@ pub fn load_toml_file<T: DeserializeOwned>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn no_data_directory_turns_the_stores_off() {
+        assert_eq!(path_in(None, DB_FILE_NAME), "off");
+        assert_eq!(path_in(None, ICM_DB_FILE_NAME), "off");
+    }
 
     fn empty_cli() -> StartArgs {
         StartArgs {
