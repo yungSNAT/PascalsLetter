@@ -42,6 +42,22 @@ pub fn is_claude_hook_command(command: &str) -> bool {
     is_rtk_hook_command(command, "claude")
 }
 
+/// True when a Claude Code hook entry runs `rtk hook claude`: in shell form
+/// (`"command": "rtk hook claude"`) or in exec form (`"command": "rtk"`,
+/// `"args": ["hook", "claude"]`), which Claude Code starts without a shell.
+/// Any `args` selects the exec form, so `command` must then be the binary alone.
+pub fn is_claude_hook_entry(hook: &serde_json::Value) -> bool {
+    init::is_command_hook(hook, |command| match hook.get("args") {
+        None => is_claude_hook_command(command),
+        Some(args) => {
+            is_rtk_binary(command)
+                && args
+                    .as_array()
+                    .is_some_and(|args| args.as_slice() == ["hook", "claude"])
+        }
+    })
+}
+
 #[cfg(feature = "engine")]
 static HOOK_AGENT: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
 
@@ -76,5 +92,49 @@ mod tests {
         assert!(!is_claude_hook_command("not-rtk hook claude"));
         assert!(!is_claude_hook_command("/opt/homebrew/bin/rtk hook cursor"));
         assert!(!is_claude_hook_command("echo rtk hook claude"));
+    }
+
+    #[test]
+    fn claude_hook_entry_matches_shell_and_exec_forms() {
+        use serde_json::json;
+        assert!(is_claude_hook_entry(
+            &json!({"type": "command", "command": "rtk hook claude"})
+        ));
+        assert!(is_claude_hook_entry(
+            &json!({"type": "command", "command": "rtk", "args": ["hook", "claude"]})
+        ));
+        assert!(is_claude_hook_entry(&json!({
+            "command": r"C:\Program Files\rtk\rtk.exe",
+            "args": ["hook", "claude"]
+        })));
+        assert!(is_claude_hook_entry(
+            &json!({"command": "/opt/homebrew/bin/rtk", "args": ["hook", "claude"]})
+        ));
+    }
+
+    #[test]
+    fn claude_hook_entry_rejects_other_exec_forms() {
+        use serde_json::json;
+        assert!(!is_claude_hook_entry(&json!({"command": "rtk"})));
+        assert!(!is_claude_hook_entry(
+            &json!({"command": "rtk", "args": ["hook", "cursor"]})
+        ));
+        assert!(!is_claude_hook_entry(
+            &json!({"command": "rtk", "args": ["hook", "claude", "--extra"]})
+        ));
+        assert!(!is_claude_hook_entry(
+            &json!({"command": "rtk", "args": "hook claude"})
+        ));
+        assert!(!is_claude_hook_entry(
+            &json!({"command": "not-rtk", "args": ["hook", "claude"]})
+        ));
+        assert!(!is_claude_hook_entry(
+            &json!({"type": "http", "command": "rtk", "args": ["hook", "claude"]})
+        ));
+        // With `args` present Claude Code runs `command` as a program name, so a
+        // shell-form string there names a program that does not exist.
+        assert!(!is_claude_hook_entry(
+            &json!({"command": "rtk hook claude", "args": []})
+        ));
     }
 }

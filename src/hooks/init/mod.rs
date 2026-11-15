@@ -16,7 +16,7 @@ use tempfile::NamedTempFile;
 use crate::core::utils::{from_json_str, strip_leading_bom};
 
 use super::integrity;
-use super::is_claude_hook_command;
+use super::is_claude_hook_entry;
 use crate::core::config::AwarenessLevel;
 #[cfg(test)]
 use crate::core::test_isolation;
@@ -1198,13 +1198,7 @@ fn session_start_entry_present(root: &serde_json::Value) -> bool {
             entry
                 .get("hooks")
                 .and_then(|h| h.as_array())
-                .is_some_and(|hs| {
-                    hs.iter().any(|h| {
-                        h.get("command")
-                            .and_then(|c| c.as_str())
-                            .is_some_and(is_claude_hook_command)
-                    })
-                })
+                .is_some_and(|hs| hs.iter().any(is_claude_hook_entry))
         })
     })
 }
@@ -2377,6 +2371,21 @@ mod tests {
         assert!(
             hook_gaps(&foreign, &required).is_empty(),
             "no rtk hook: not our business"
+        );
+    }
+
+    #[test]
+    fn hook_gaps_reads_the_matcher_of_an_exec_form_hook() {
+        let exec = settings_with(serde_json::json!({
+            "PreToolUse": [{
+                "matcher": "Bash",
+                "hooks": [{ "type": "command", "command": "rtk", "args": ["hook", "claude"] }]
+            }]
+        }));
+        let required = vec![(PRE_TOOL_USE_KEY, "Bash|Read".to_string())];
+        assert_eq!(
+            hook_gaps(&exec, &required),
+            vec!["PreToolUse does not cover Read"]
         );
     }
 
