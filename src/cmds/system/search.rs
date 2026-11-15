@@ -902,7 +902,7 @@ pub fn run(
 type FileEntries = Vec<(usize, bool, String)>;
 
 /// The grouped form's body, with how many lines it shows and how many files it skips: each
-/// file's first matches, up to `per_file` each and `max_results` in all, then a line for each
+/// file's first matches, under the file's name when the engine would show one, up to `per_file` each and `max_results` in all, then a line for each
 /// file with more and one for the files past the cap. With `save_hidden`, the hidden matches are
 /// saved for recovery and each of those lines says where; without it nothing is saved.
 fn grouped_body(
@@ -928,6 +928,14 @@ fn grouped_body(
         }
 
         let file_display = compact_path(file);
+        // The file is named once, whole, above its matches, as rg's `--heading` does.
+        if show_file {
+            if !body.is_empty() {
+                body.push('\n');
+            }
+            body.push_str(file);
+            body.push('\n');
+        }
         let mut file_shown = 0;
         let mut prev_line: usize = 0;
         for (line_num, is_match, content) in entries.iter().take(per_file) {
@@ -939,10 +947,6 @@ fn grouped_body(
             }
             prev_line = *line_num;
             let sep = if *is_match { ':' } else { '-' };
-            if show_file {
-                body.push_str(&file_display);
-                body.push(sep);
-            }
             if show_line {
                 body.push_str(&line_num.to_string());
                 body.push(sep);

@@ -1436,6 +1436,26 @@ fn is_lint_name(tag: &str) -> bool {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == ':')
 }
 
+/// A `= help: for further information visit <url>#<lint>` line in a block whose `= note:`
+/// already names `clippy::<lint>`: the link is the lint's documentation page, found by name.
+fn is_redundant_lint_link(line: &str, block: &[String]) -> bool {
+    let Some((_, lint)) = line
+        .trim_start()
+        .strip_prefix("= help: for further information visit ")
+        .and_then(|url| url.rsplit_once('#'))
+    else {
+        return false;
+    };
+    let named = format!("clippy::{lint}");
+    block.iter().any(|other| {
+        other.trim_start().starts_with("= note:")
+            && other.match_indices(&named).any(|(at, _)| {
+                !other[at + named.len()..]
+                    .starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_')
+            })
+    })
+}
+
 /// Filter cargo clippy output - show full error blocks, group warnings by lint rule
 fn filter_cargo_clippy(output: &str) -> String {
     let mut by_rule: HashMap<String, Vec<String>> = HashMap::new();
@@ -1539,7 +1559,7 @@ fn filter_cargo_clippy(output: &str) -> String {
         const MAX_CLIPPY_ERRORS: usize = CAP_WARNINGS;
         result.push_str("\nErrors:\n");
         for block in error_blocks.iter().take(MAX_CLIPPY_ERRORS) {
-            for block_line in block {
+            for block_line in block.iter().filter(|l| !is_redundant_lint_link(l, block)) {
                 result.push_str(&format!("  {}\n", truncate(block_line, 160)));
             }
             result.push('\n');
