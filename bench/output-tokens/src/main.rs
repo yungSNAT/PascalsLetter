@@ -360,7 +360,7 @@ fn count_tokens(text: &str) -> usize {
 }
 
 /// The environment every side's command runs in: a home of its own, so no
-/// tool reads the user's configuration or another side's home, and PATH
+/// tool reads configuration from the user's home or another side's, and PATH
 /// with `first` ahead of the user's. The repositories and Cargo's build
 /// artefacts are shared.
 fn side_env(cmd: &mut Command, home: &Path, first: &[PathBuf]) -> Result<()> {
