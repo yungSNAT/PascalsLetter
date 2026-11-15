@@ -236,13 +236,17 @@ fn facts(keep: &Keep, raw: &str) -> Result<Vec<String>> {
     Ok(found)
 }
 
-/// How many times `fact` starts a word in `line`: no letter, digit or `_` comes just before
-/// it, so `io.rs` is not in `radio.rs`, whilst a short hash is in its full hash.
+/// How many times `fact` stands whole in `line`: no letter, digit, `_`, `.` or `-` just
+/// before it and no letter, digit or `_` just after, so `io.rs` is in neither `old.io.rs`
+/// nor `io.rsx`. A short hash may run on into its full hash, which names the same commit.
 fn copies(line: &str, fact: &str) -> usize {
     let word = |c: char| c.is_alphanumeric() || c == '_';
-    let joins = fact.starts_with(word);
+    let open_end = fact.len() >= 7 && fact.chars().all(|c| c.is_ascii_hexdigit());
     line.match_indices(fact)
-        .filter(|(at, _)| !(joins && line[..*at].ends_with(word)))
+        .filter(|(at, _)| {
+            !line[..*at].ends_with(|c: char| word(c) || c == '.' || c == '-')
+                && (open_end || !line[at + fact.len()..].starts_with(word))
+        })
         .count()
 }
 
@@ -709,8 +713,10 @@ fn facts_md(rows: &[Row], corpus: &Corpus, sides: &[Side], facts_of: &[usize]) -
     let mut md = String::from(
         "No model is asked. Each command with a `keep` in corpus.toml lists facts its answer \
          needs, taken from its raw output: a chosen set, not all an answer could use. An \
-         output keeps a fact when one of its lines holds it with no letter, digit or `_` \
-         just before it, whitespace aside, and a fact the raw output has n times must be held \
+         output keeps a fact when one of its lines holds it whole (no letter, digit, `_`, `.` \
+         or `-` just before it, no letter, digit or `_` just after it, though a short hash may \
+         run on into its full hash), whitespace aside, and a fact the raw output has n times \
+         must be held \
          n times. A fact an output reworded counts as lost, so read the lost facts before \
          reading a loss as a defect. A way to recover is recognised by each tool's hint text, \
          not tried.\n\n\
