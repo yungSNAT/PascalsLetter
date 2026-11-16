@@ -134,6 +134,18 @@ fn ends_warning_block(line: &str, len: usize) -> bool {
         || trimmed.starts_with("Doc-tests ")
 }
 
+/// Whether a warning block is cargo's lint of a manifest, located (`-->`) in a
+/// `Cargo.toml`, rather than the compiler's. Cargo repeats it on every command,
+/// so a passing `cargo test` drops it, as upstream does.
+fn is_manifest_warning<'a>(mut block: impl Iterator<Item = &'a str>) -> bool {
+    block.any(|line| {
+        line.trim_start()
+            .strip_prefix("--> ")
+            .and_then(|location| location.rsplitn(3, ':').nth(2))
+            .is_some_and(|path| path.ends_with("Cargo.toml"))
+    })
+}
+
 struct CargoTestHandler {
     in_failure_section: bool,
     in_failure_names: bool,
@@ -283,11 +295,24 @@ impl BlockHandler for CargoTestHandler {
         if !self.in_failure_section
             && (line.starts_with("warning:") || line.starts_with("warning["))
         {
-            self.warnings += 1;
             self.in_warning_block = true;
             return true;
         }
         false
+    }
+
+    fn keep_block(&mut self, block: &[String]) -> bool {
+        let warning = block
+            .first()
+            .is_some_and(|line| line.starts_with("warning:") || line.starts_with("warning["));
+        if !warning {
+            return true;
+        }
+        if is_manifest_warning(block.iter().map(String::as_str)) {
+            return false;
+        }
+        self.warnings += 1;
+        true
     }
 
     fn is_block_continuation(&mut self, line: &str, block: &[String]) -> bool {
@@ -1300,6 +1325,7 @@ pub(crate) fn filter_cargo_test(output: &str) -> String {
     if !current_warning.is_empty() {
         warnings.push(current_warning.join("\n"));
     }
+    warnings.retain(|block| !is_manifest_warning(block.lines()));
 
     // Shown before the result. Kept out of `result` so the compile-error fallback
     // below still runs when only warnings came before the error.
@@ -2116,6 +2142,88 @@ test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
             "got: {}",
             summary
         );
+    }
+
+    /// Cargo 1.100's lint of a member's manifest (as on ripgrep 14.1.1), then a
+    /// compiler warning.
+    const PASSING_RUN_WITH_MANIFEST_LINT: &str = r#"warning: `package.homepage` is redundant with `package.repository`
+  --> crates/grep/Cargo.toml:9:12
+   |
+ 9 | homepage = "https://github.com/BurntSushi/ripgrep/tree/master/crates/grep"
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10 | repository = "https://github.com/BurntSushi/ripgrep/tree/master/crates/grep"
+   |              ---------------------------------------------------------------
+   |
+   = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+   Compiling failproj v0.1.0
+warning: function `unused_helper` is never used
+ --> src/lib.rs:9:4
+  |
+9 | fn unused_helper() -> i32 { 42 }
+  |    ^^^^^^^^^^^^^
+  |
+  = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `failproj` (lib) generated 1 warning
+    Finished test [unoptimized + debuginfo] target(s) in 0.05s
+     Running unittests src/lib.rs (target/debug/deps/failproj-abc123)
+
+running 3 tests
+test tests::test_pass ... ok
+test tests::test_pass2 ... ok
+test tests::test_pass3 ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+"#;
+
+    #[test]
+    fn test_filter_cargo_test_drops_a_manifest_lint_but_keeps_compiler_warnings() {
+        let result = filter_cargo_test(PASSING_RUN_WITH_MANIFEST_LINT);
+        assert!(!result.contains("package.homepage"), "got: {}", result);
+        assert!(result.contains("unused_helper"), "got: {}", result);
+        assert!(result.contains("[1 compiler warnings]"), "got: {}", result);
+    }
+
+    #[test]
+    fn test_streamed_cargo_test_drops_a_manifest_lint_but_keeps_compiler_warnings() {
+        use crate::core::stream::{BlockStreamFilter, StreamFilter};
+        let mut filter = BlockStreamFilter::new(CargoTestHandler::new());
+        let mut emitted = String::new();
+        for line in PASSING_RUN_WITH_MANIFEST_LINT.lines() {
+            if let Some(out) = filter.feed_line(line) {
+                emitted.push_str(&out);
+            }
+        }
+        emitted.push_str(&filter.flush());
+        let summary = filter
+            .on_exit(0, PASSING_RUN_WITH_MANIFEST_LINT)
+            .unwrap_or_default();
+        assert!(!emitted.contains("package.homepage"), "got: {}", emitted);
+        assert!(emitted.contains("unused_helper"), "got: {}", emitted);
+        assert!(
+            summary.contains("[1 compiler warnings]"),
+            "got: {}",
+            summary
+        );
+    }
+
+    #[test]
+    fn test_a_manifest_lint_is_told_by_its_location() {
+        let block = |location: &str| format!("warning: x\n{location}\n   |");
+        assert!(is_manifest_warning(
+            block("  --> crates/grep/Cargo.toml:9:12").lines()
+        ));
+        assert!(is_manifest_warning(
+            block(r" --> C:\w\Cargo.toml:1:1").lines()
+        ));
+        assert!(!is_manifest_warning(block(" --> src/lib.rs:9:4").lines()));
+        assert!(!is_manifest_warning(
+            block(" --> src/Cargo.toml.rs:9:4").lines()
+        ));
+        assert!(!is_manifest_warning(
+            "warning: unused manifest key: x".lines()
+        ));
     }
 
     #[test]
