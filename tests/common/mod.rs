@@ -106,18 +106,15 @@ pub fn claude_hook(mut rtk: Command, command: &str, cwd: &std::path::Path) -> St
         .stderr(Stdio::piped())
         .spawn()
         .expect("spawn rtk hook claude");
-    child
-        .stdin
-        .take()
-        .expect("stdin")
-        .write_all(payload.as_bytes())
-        .expect("write payload");
+    // Dropping stdin closes it, so the hook reads the whole payload and ends.
+    let mut stdin = child.stdin.take().expect("stdin");
+    stdin.write_all(payload.as_bytes()).expect("write payload");
+    drop(stdin);
     let out = child.wait_with_output().expect("wait rtk");
-    assert_eq!(
-        out.status.code(),
-        Some(0),
-        "rtk hook claude failed for {command:?}: {}",
-        String::from_utf8_lossy(&out.stderr)
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        out.status.success(),
+        "rtk hook claude failed for {command:?}: {stderr}"
     );
     String::from_utf8_lossy(&out.stdout).into_owned()
 }
