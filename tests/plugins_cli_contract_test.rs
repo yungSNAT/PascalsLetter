@@ -201,3 +201,28 @@ fn invalid_discovered_crate_is_rejected_before_host_creation() {
     assert!(!fixture.plugins().join(".host").exists());
     assert!(fixture.calls().is_empty());
 }
+
+#[test]
+fn legacy_plugin_generating_struct_self_is_refused_before_host_creation() {
+    // Before reserved names were refused, `rtk plugins new self_` wrote this crate.
+    for name in ["self_", "self-", "Self_", "self-_"] {
+        let fixture = Fixture::new();
+        let plugin = fixture.plugins().join(name);
+        fs::create_dir_all(plugin.join("src")).unwrap();
+        let manifest = format!("[package]\nname='{name}'\nversion='0.1.0'\n");
+        let lib = "struct Self;\n";
+        fs::write(plugin.join("Cargo.toml"), &manifest).unwrap();
+        fs::write(plugin.join("src/lib.rs"), lib).unwrap();
+
+        let result = fixture.run(&["build"], 0, 0);
+        assert!(!result.status.success(), "{name} reached cargo");
+        let stderr = String::from_utf8(result.stderr).unwrap();
+        assert!(stderr.contains(&plugin.display().to_string()), "{stderr}");
+        assert!(stderr.contains("reserved Rust type `Self`"), "{stderr}");
+        assert!(stderr.contains("rtk plugins new"), "{stderr}");
+        assert!(!fixture.plugins().join(".host").exists());
+        assert!(fixture.calls().is_empty());
+        assert_eq!(fs::read_to_string(plugin.join("Cargo.toml")).unwrap(), manifest);
+        assert_eq!(fs::read_to_string(plugin.join("src/lib.rs")).unwrap(), lib);
+    }
+}
