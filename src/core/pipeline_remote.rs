@@ -1172,6 +1172,24 @@ use  = ["dedup"]
     }
 
     #[test]
+    fn an_unpinned_install_drops_the_previous_sources_sha() {
+        let dir = crate::core::test_isolation::tempdir();
+        crate::core::test_isolation::with_root(dir.path(), || {
+            record_install("demo", "github:a/b", Some("x"));
+            record_publish("demo", "github:me/rtk-pipeline-demo");
+            record_install("demo", "https://example.com/demo.toml", None);
+
+            let origin = install_origin("demo").unwrap();
+            assert_eq!(origin.source, "https://example.com/demo.toml");
+            assert_eq!(origin.sha, None, "the URL install has no pin of its own");
+            assert_eq!(
+                published_source("demo").as_deref(),
+                Some("github:me/rtk-pipeline-demo")
+            );
+        });
+    }
+
+    #[test]
     fn urlencode_escapes_query_metacharacters() {
         assert_eq!(
             urlencode("topic:rtk-pipeline fast & lean"),
