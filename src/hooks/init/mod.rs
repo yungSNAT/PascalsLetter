@@ -3282,6 +3282,93 @@ level = "high"
     }
 
     #[test]
+    fn test_backup_and_atomic_write_replaces_hard_link_backup() {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("hooks.json");
+        let target = temp.path().join("unrelated.txt");
+        fs::write(&path, "old").unwrap();
+        fs::write(&target, "keep this file").unwrap();
+        let backup = backup_path_for(&path);
+        fs::hard_link(&target, &backup).unwrap();
+
+        assert_eq!(
+            backup_and_atomic_write(&path, "new").unwrap(),
+            Some(backup.clone())
+        );
+
+        assert_eq!(fs::read_to_string(&target).unwrap(), "keep this file");
+        assert_eq!(fs::read_to_string(&path).unwrap(), "new");
+        assert_eq!(fs::read_to_string(&backup).unwrap(), "old");
+        fs::write(&backup, "independent backup").unwrap();
+        assert_eq!(fs::read_to_string(target).unwrap(), "keep this file");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_backup_and_atomic_write_replaces_symlink_backup() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let project = temp.path().join("project");
+        fs::create_dir(&project).unwrap();
+        let path = project.join("hooks.json");
+        let target = temp.path().join("unrelated.txt");
+        fs::write(&path, "old").unwrap();
+        fs::write(&target, "keep this file").unwrap();
+        let backup = backup_path_for(&path);
+        symlink(&target, &backup).unwrap();
+
+        backup_and_atomic_write(&path, "new").unwrap();
+
+        assert_eq!(fs::read_to_string(target).unwrap(), "keep this file");
+        assert_eq!(fs::read_to_string(path).unwrap(), "new");
+        assert_eq!(fs::read_to_string(&backup).unwrap(), "old");
+        assert!(fs::symlink_metadata(backup).unwrap().file_type().is_file());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_backup_and_atomic_write_preserves_backup_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("hooks.json");
+        fs::write(&path, "old").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
+        let backup = backup_and_atomic_write(&path, "new").unwrap().unwrap();
+
+        assert_eq!(
+            fs::metadata(backup).unwrap().permissions().mode() & 0o777,
+            0o640
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_backup_and_atomic_write_preserves_readonly_backup_on_update_failure() {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("hooks.json");
+        fs::write(&path, "old").unwrap();
+        let original_permissions = fs::metadata(&path).unwrap().permissions();
+        let mut readonly = original_permissions.clone();
+        readonly.set_readonly(true);
+        fs::set_permissions(&path, readonly).unwrap();
+
+        let result = backup_and_atomic_write(&path, "new");
+        let backup = backup_path_for(&path);
+        let backup_permissions = fs::metadata(&backup).unwrap().permissions();
+        // Restore the owned files before assertions so Windows can remove the temp directory.
+        fs::set_permissions(&path, original_permissions.clone()).unwrap();
+        fs::set_permissions(&backup, original_permissions).unwrap();
+
+        let error = result.unwrap_err();
+        assert!(format!("{error:#}").contains("Failed to update JSON file"));
+        assert!(backup_permissions.readonly());
+        assert_eq!(fs::read_to_string(path).unwrap(), "old");
+        assert_eq!(fs::read_to_string(backup).unwrap(), "old");
+    }
+
+    #[test]
     fn test_backup_and_atomic_write_failure_preserves_original() {
         let temp = TempDir::new().unwrap();
         let path = temp.path().join("hooks.json");

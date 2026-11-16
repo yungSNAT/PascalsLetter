@@ -605,6 +605,42 @@ mod tests {
         assert_eq!(root, original);
     }
 
+    /// A link already at `hooks.json.bak` is replaced, never written through, on install and
+    /// on uninstall alike.
+    #[test]
+    fn test_trae_backups_replace_a_hard_link_instead_of_writing_through_it() {
+        let temp = TempDir::new().unwrap();
+        let unrelated = temp.path().join("unrelated.txt");
+        fs::write(&unrelated, "keep this file").unwrap();
+        let install = temp.path().join(".trae/hooks.json");
+        let uninstall = temp.path().join(".trae-cn/hooks.json");
+        let installed = serde_json::json!({ "version": 1, "hooks": { PRE_TOOL_USE_KEY: [{
+            "matcher": TRAE_RUN_COMMAND_MATCHER,
+            "hooks": [{ "type": "command", "command": TRAE_HOOK_COMMAND }]
+        }] } })
+        .to_string();
+        for (path, content) in [(&install, "{\"version\":1}"), (&uninstall, &installed)] {
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, content).unwrap();
+            fs::hard_link(&unrelated, path.with_extension("json.bak")).unwrap();
+        }
+
+        patch_trae_hooks_json_paths(std::slice::from_ref(&install), InitContext::default())
+            .unwrap();
+        remove_trae_hooks_json_paths(std::slice::from_ref(&uninstall), InitContext::default())
+            .unwrap();
+
+        assert_eq!(fs::read_to_string(&unrelated).unwrap(), "keep this file");
+        assert_eq!(
+            fs::read_to_string(install.with_extension("json.bak")).unwrap(),
+            "{\"version\":1}"
+        );
+        assert_eq!(
+            fs::read_to_string(uninstall.with_extension("json.bak")).unwrap(),
+            installed
+        );
+    }
+
     #[test]
     fn test_trae_uninstall_write_failure_reports_completed_targets() {
         let temp = TempDir::new().unwrap();

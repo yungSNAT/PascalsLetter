@@ -1816,6 +1816,64 @@ mod tests {
         });
     }
 
+    /// A link already at `settings.json.bak` is replaced when the hook is installed, never
+    /// written through.
+    #[test]
+    fn test_patch_settings_json_backup_replaces_a_hard_link() {
+        let tmp = test_isolation::tempdir();
+        with_claude_dir_override(&tmp, |claude_dir| {
+            let settings = claude_dir.join(SETTINGS_JSON);
+            let unrelated = tmp.path().join("unrelated.txt");
+            fs::write(&settings, "{}").unwrap();
+            fs::write(&unrelated, "keep this file").unwrap();
+            fs::hard_link(&unrelated, settings.with_extension("json.bak")).unwrap();
+
+            patch_settings_json_command(
+                CLAUDE_HOOK_COMMAND,
+                PatchMode::Auto,
+                false,
+                InitContext::default(),
+                HookInstallScope::UserGlobal,
+            )
+            .unwrap();
+
+            assert_eq!(fs::read_to_string(&unrelated).unwrap(), "keep this file");
+            assert_eq!(
+                fs::read_to_string(settings.with_extension("json.bak")).unwrap(),
+                "{}"
+            );
+        });
+    }
+
+    /// The same when a legacy `rtk-rewrite.sh` entry is removed.
+    #[test]
+    fn test_remove_legacy_settings_backup_replaces_a_hard_link() {
+        let tmp = test_isolation::tempdir();
+        with_claude_dir_override(&tmp, |claude_dir| {
+            let settings = claude_dir.join(SETTINGS_JSON);
+            let unrelated = tmp.path().join("unrelated.txt");
+            let legacy = serde_json::json!({ "hooks": { PRE_TOOL_USE_KEY: [{
+                "matcher": "Bash",
+                "hooks": [{ "type": "command", "command": "/home/user/.claude/hooks/rtk-rewrite.sh" }]
+            }] } })
+            .to_string();
+            fs::write(&settings, &legacy).unwrap();
+            fs::write(&unrelated, "keep this file").unwrap();
+            fs::hard_link(&unrelated, settings.with_extension("json.bak")).unwrap();
+
+            remove_legacy_settings_entries(InitContext::default()).unwrap();
+
+            assert_eq!(fs::read_to_string(&unrelated).unwrap(), "keep this file");
+            assert_eq!(
+                fs::read_to_string(settings.with_extension("json.bak")).unwrap(),
+                legacy
+            );
+            assert!(!fs::read_to_string(&settings)
+                .unwrap()
+                .contains("rtk-rewrite.sh"));
+        });
+    }
+
     #[test]
     fn test_global_uninstall_removes_artifacts() {
         let tmp = test_isolation::tempdir();
