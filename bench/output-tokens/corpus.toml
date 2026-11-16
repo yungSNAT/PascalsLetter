@@ -1,7 +1,7 @@
 # The fixed corpus: commands a coding agent commonly runs, on public
 # repositories pinned to full commits. Each setup adds one failing test, so
 # the test runs and `git status` and `git diff` show a failure and a change.
-# cargo, clippy and pytest output depends on the toolchain: run.sh records
+# cargo, clippy and pytest output depends on the toolchain: `published` records
 # the versions beside the results.
 
 [[repo]]
