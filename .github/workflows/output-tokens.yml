@@ -37,4 +37,4 @@ jobs:
       - run: cargo fmt --manifest-path bench/output-tokens/Cargo.toml --check
       - run: cargo clippy --manifest-path bench/output-tokens/Cargo.toml --locked --all-targets -- -D warnings
       - run: cargo test --manifest-path bench/output-tokens/Cargo.toml --locked
-      - run: bash -n bench/output-tokens/run.sh
+      - run: cargo run --manifest-path bench/output-tokens/Cargo.toml --locked --bin published -- --help
