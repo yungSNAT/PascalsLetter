@@ -226,7 +226,7 @@ fn run_generic(subcommand: &str, args: &[String], verbose: u8, full_sub: &str) -
 
     let mut has_output_flag = false;
     for arg in args {
-        if arg == "--output" {
+        if arg == "--output" || arg.starts_with("--output=") {
             has_output_flag = true;
         }
         cmd.arg(arg);
