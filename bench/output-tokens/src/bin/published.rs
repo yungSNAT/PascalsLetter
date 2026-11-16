@@ -53,6 +53,7 @@ fn fetch(url: &str, file: &Path) -> Result<()> {
     if fs::metadata(file).is_ok_and(|m| m.len() > 0) {
         return Ok(());
     }
+    // nosemgrep: interpreter-execution -- a benchmark, not rtk: downloads the published releases it measures
     run(Command::new("curl")
         .arg("-fsSL")
         .arg("-o")
@@ -257,6 +258,7 @@ fn main() -> Result<()> {
     let stamp = stdout(Command::new("date").arg("-u").arg("+%Y%m%dT%H%M%SZ"))?;
     let out = work.join(format!("run-{}", stamp.trim()));
     run(
+        // nosemgrep: dynamic-command-execution -- a benchmark, not rtk: runs the measurement binary it just built
         Command::new(work.join("target-bench/release/output-tokens"))
             .args(sides(here, &work, &out)),
     )?;
@@ -270,8 +272,10 @@ fn main() -> Result<()> {
         &["npm", "--version"],
         &["uv", "--version"],
     ] {
+        // nosemgrep: dynamic-command-execution -- a benchmark, not rtk: records the version of each tool the run used
         versions += &stdout(Command::new(probe[0]).args(&probe[1..]))?;
     }
+    // nosemgrep: dynamic-command-execution -- a benchmark, not rtk: records the version of the corpus's Python
     versions += &stdout(Command::new(&python).arg("--version"))?;
     versions += &stdout(Command::new("git").arg("--version"))?;
     let rg = stdout(Command::new("rg").arg("--version"))?;
