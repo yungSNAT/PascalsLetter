@@ -130,7 +130,10 @@ fn share_gist(pipelines: &[&str], gh: bool) -> (String, String) {
 #[test]
 fn a_gist_of_several_sources_offers_no_install_line() {
     let (stdout, argv) = share_gist(&["base", "overlay"], true);
-    assert!(argv.contains("rtk configuration reference (multiple sources)"), "{argv}");
+    assert!(
+        argv.contains("rtk configuration reference (multiple sources)"),
+        "{argv}"
+    );
     assert!(!argv.contains("install: rtk pipeline add"), "{argv}");
     assert!(
         stdout.contains("installation requires one complete pipeline TOML file"),
@@ -146,9 +149,14 @@ fn a_gist_of_several_sources_offers_no_install_line() {
 #[test]
 fn a_gist_of_one_source_keeps_its_install_line() {
     let (stdout, argv) = share_gist(&["solo"], true);
-    assert!(argv.contains("install: rtk pipeline add <this url>"), "{argv}");
     assert!(
-        stdout.contains("others install it with:  rtk pipeline add https://gist.github.com/example/0123"),
+        argv.contains("install: rtk pipeline add <this url>"),
+        "{argv}"
+    );
+    assert!(
+        stdout.contains(
+            "others install it with:  rtk pipeline add https://gist.github.com/example/0123"
+        ),
         "{stdout}"
     );
 
