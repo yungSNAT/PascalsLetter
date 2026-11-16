@@ -3317,10 +3317,13 @@ level = "high"
         assert_eq!(fs::read_to_string(target).unwrap(), "keep this file");
     }
 
-    #[cfg(unix)]
+    /// On Windows, creating the link needs Developer Mode or administrator rights.
     #[test]
     fn test_backup_and_atomic_write_replaces_symlink_backup() {
+        #[cfg(unix)]
         use std::os::unix::fs::symlink;
+        #[cfg(windows)]
+        use std::os::windows::fs::symlink_file as symlink;
 
         let temp = TempDir::new().unwrap();
         let project = temp.path().join("project");
