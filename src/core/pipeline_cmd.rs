@@ -1106,6 +1106,20 @@ impl CardData {
     }
 }
 
+fn builtin_share_source(name: &str) -> Option<(String, String)> {
+    // Built-in definitions are not user overlays: copying their rules would
+    // redeclare inherited names. Share a reference with an installable name.
+    builtin_text(name).map(|_| {
+        let portable = name.replace(':', "-");
+        (
+            format!("{name} (built-in reference)"),
+            format!(
+                "schema_version = 1\n\n[pipeline]\nname = \"{portable}\"\nextends = \"{name}\"\n"
+            ),
+        )
+    })
+}
+
 /// One collection pass for a share card; `None` means the name was unknown
 /// (the message is already printed).
 pub(crate) fn collect_card(name: Option<&str>) -> Result<Option<CardData>> {
@@ -1113,11 +1127,8 @@ pub(crate) fn collect_card(name: Option<&str>) -> Result<Option<CardData>> {
     let active = loaded.resolved.name.clone();
     let (display, sources) = match name {
         Some(n) => {
-            if let Some(text) = builtin_text(n) {
-                (
-                    n.to_string(),
-                    vec![(format!("{n} (built-in)"), text.to_string())],
-                )
+            if let Some(source) = builtin_share_source(n) {
+                (n.to_string(), vec![source])
             } else if n == active {
                 (active.clone(), active_sources(&active))
             } else {
@@ -1131,14 +1142,19 @@ pub(crate) fn collect_card(name: Option<&str>) -> Result<Option<CardData>> {
         }
         None => (active.clone(), active_sources(&active)),
     };
-    // The behaviour summary comes from the resolved rules, which describe the
-    // ACTIVE pipeline — a built-in shared by name keeps its own file comments
-    // as the summary instead of inheriting the active pipeline rules.
+    // The behaviour summary comes from resolved rules: the active pipeline's,
+    // or, for a built-in shared by name, those its reference resolves to (the
+    // card carries the reference, not the built-in's commented definition).
     let is_active = display == active;
     let what = if is_active {
         describe_rules(&loaded.resolved)
     } else {
-        Vec::new()
+        sources
+            .first()
+            .map(|(label, text)| {
+                describe_rules(&pipeline_config::load_candidate(text, label).resolved)
+            })
+            .unwrap_or_default()
     };
     let tracker = crate::core::tracking::Tracker::new().ok();
     // The PreTool rewrite (grep -> rtk grep, which compresses) is RTK's primary
@@ -1211,7 +1227,7 @@ pub fn run_share(name: Option<&str>, force_md: bool, gist: bool, force: bool) ->
 }
 
 /// The active pipeline's file set, labeled by scope; the compiled built-in
-/// text when no file is on disk.
+/// reference when no file is on disk.
 fn active_sources(active: &str) -> Vec<(String, String)> {
     let files: Vec<(String, String)> = pipeline_config::load_paths()
         .into_iter()
@@ -1232,10 +1248,7 @@ fn active_sources(active: &str) -> Vec<(String, String)> {
     if !files.is_empty() {
         return files;
     }
-    match builtin_text(active) {
-        Some(text) => vec![(format!("{active} (built-in)"), text.to_string())],
-        None => Vec::new(),
-    }
+    builtin_share_source(active).into_iter().collect()
 }
 
 /// A 10-step bar for a percentage, monospace-safe on every platform that
@@ -2286,6 +2299,122 @@ mod tests {
                 text.contains(&format!("name    = \"{name}\""))
                     || text.contains(&format!("name = \"{name}\""))
             );
+        }
+    }
+
+    /// The card carries only a reference to the built-in, so a built-in shared by name (not the
+    /// active pipeline) must still describe its own rules, and no two built-ins may share a name.
+    #[test]
+    fn a_builtin_shared_by_name_describes_its_own_rules_under_a_unique_name() {
+        use crate::core::{pipeline_config, test_isolation};
+
+        let root = test_isolation::tempdir();
+        test_isolation::with_root(root.path(), || {
+            let active = super::collect_card(None).unwrap().unwrap().display;
+            let mut described = 0;
+            let mut portable = std::collections::BTreeSet::new();
+            for name in BUILTIN_NAMES {
+                let card = super::collect_card(Some(name)).unwrap().unwrap();
+                portable.insert(pipeline_config::declared_name(&card.sources[0].1, name).unwrap());
+                if *name == active {
+                    continue;
+                }
+                let (expected, _) = resolve(&[SourceFile {
+                    scope: Scope::User,
+                    label: "owned reference".into(),
+                    file: rtk_engine::pipeline::PipelineFile {
+                        enabled: true,
+                        extends: vec![name.to_string()],
+                        ..Default::default()
+                    },
+                }]);
+                assert_eq!(card.what, super::describe_rules(&expected), "{name}");
+                described += usize::from(!card.what.is_empty());
+            }
+            assert!(
+                described > 0,
+                "no non-active built-in has rules to describe"
+            );
+            assert_eq!(portable.len(), BUILTIN_NAMES.len(), "{portable:?}");
+        });
+    }
+
+    #[test]
+    fn builtin_share_cards_install_without_redeclaring_inherited_behaviour() {
+        use crate::core::{pipeline_config, test_isolation};
+        use std::fs;
+
+        for name in BUILTIN_NAMES {
+            let root = test_isolation::tempdir();
+            test_isolation::with_root(root.path(), || {
+                let card = super::collect_card(Some(name)).unwrap().unwrap();
+                assert_eq!(card.display, *name);
+                assert_eq!(card.sources.len(), 1);
+                let text = &card.sources[0].1;
+                let portable = pipeline_config::declared_name(text, name).unwrap();
+                assert!(super::valid_pipeline_name(&portable), "{name}: {portable}");
+                if *name == "rtk:default" {
+                    assert_eq!(
+                        super::collect_card(None).unwrap().unwrap().sources,
+                        card.sources
+                    );
+                }
+                let shared = root.path().join("shared.md");
+                fs::write(&shared, card.card_md()).unwrap();
+                assert_eq!(
+                    super::run_add(shared.to_str().unwrap(), None, true, false).unwrap(),
+                    0
+                );
+                let installed = pipeline_config::user_pipelines_dir()
+                    .unwrap()
+                    .join(format!("{portable}.toml"));
+                assert_eq!(fs::read_to_string(installed).unwrap(), *text);
+                let actual = pipeline_config::load();
+                assert!(
+                    !has_errors(&actual.diagnostics),
+                    "{name}: {:?}",
+                    actual.diagnostics
+                );
+                assert_eq!(actual.resolved.name, portable);
+
+                // Compare with the engine's normal inheritance of the
+                // selected built-in, including its transitive definitions.
+                let (expected, diagnostics) = resolve(&[SourceFile {
+                    scope: Scope::User,
+                    label: "owned reference".into(),
+                    file: rtk_engine::pipeline::PipelineFile {
+                        enabled: true,
+                        extends: vec![name.to_string()],
+                        ..Default::default()
+                    },
+                }]);
+                assert!(!has_errors(&diagnostics), "{name}: {diagnostics:?}");
+                assert_eq!(actual.resolved.extends, expected.extends);
+                assert_eq!(actual.resolved.guards, expected.guards);
+                assert_eq!(actual.resolved.methods, expected.methods);
+                assert_eq!(actual.resolved.tasks, expected.tasks);
+                assert_eq!(actual.resolved.upstreams, expected.upstreams);
+                assert_eq!(actual.resolved.classifiers, expected.classifiers);
+                assert_eq!(actual.resolved.rules.len(), expected.rules.len());
+                for (position, wanted) in &expected.rules {
+                    let observed = &actual.resolved.rules[position];
+                    assert_eq!(observed.len(), wanted.len());
+                    for (observed, wanted) in observed.iter().zip(wanted) {
+                        assert_eq!(observed.name, wanted.name);
+                        assert_eq!(observed.def, wanted.def);
+                        assert_eq!(observed.scope, wanted.scope);
+                        assert_eq!(observed.origin, wanted.origin);
+                    }
+                }
+                assert_eq!(actual.resolved.directives.len(), expected.directives.len());
+                for (observed, wanted) in
+                    actual.resolved.directives.iter().zip(&expected.directives)
+                {
+                    assert_eq!(observed.def, wanted.def);
+                    assert_eq!(observed.scope, wanted.scope);
+                    assert_eq!(observed.origin, wanted.origin);
+                }
+            });
         }
     }
 
