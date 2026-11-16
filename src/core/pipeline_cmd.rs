@@ -237,22 +237,55 @@ fn gist_raw_url(source: &str) -> String {
     source.to_string()
 }
 
-fn extract_toml(raw: &str) -> String {
-    let mut lines = raw.lines();
-    while let Some(line) = lines.next() {
-        if line.trim_start().starts_with("```") && line.contains("toml") {
-            let mut body = String::new();
-            for inner in lines.by_ref() {
-                if inner.trim_start().starts_with("```") {
-                    return body;
-                }
-                body.push_str(inner);
+fn extract_toml(raw: &str) -> Result<String> {
+    // Examples inside a TOML multiline string are data, not share-card fences.
+    if toml::from_str::<toml::Value>(raw).is_ok() {
+        return Ok(raw.to_string());
+    }
+    let mut body = String::new();
+    let mut found = false;
+    let mut fence = None;
+    let mut in_toml = false;
+    for line in raw.lines() {
+        // As in CommonMark, a fence is indented at most 3 spaces; deeper is code.
+        let trimmed = line.trim_start_matches(' ');
+        let can_fence = line.len() - trimmed.len() <= 3;
+        if let Some((marker, length)) = fence {
+            let closing = trimmed.bytes().take_while(|&byte| byte == marker).count();
+            if can_fence && closing >= length && trimmed[closing..].trim().is_empty() {
+                fence = None;
+                in_toml = false;
+            } else if in_toml {
+                body.push_str(line);
                 body.push('\n');
             }
-            return body;
+            continue;
         }
+        let Some(marker @ (b'`' | b'~')) = trimmed.as_bytes().first().copied() else {
+            continue;
+        };
+        if !can_fence {
+            continue;
+        }
+        let length = trimmed.bytes().take_while(|&byte| byte == marker).count();
+        if length < 3 {
+            continue;
+        }
+        let info = trimmed[length..].trim();
+        if marker == b'`' && info.contains('`') {
+            continue;
+        }
+        in_toml = info.split_whitespace().next() == Some("toml");
+        if in_toml {
+            anyhow::ensure!(
+                !found,
+                "the source contains multiple TOML blocks; provide one complete pipeline TOML file — nothing to install"
+            );
+            found = true;
+        }
+        fence = Some((marker, length));
     }
-    raw.to_string()
+    Ok(if found { body } else { raw.to_string() })
 }
 
 fn valid_pipeline_name(name: &str) -> bool {
@@ -519,19 +552,29 @@ pub(crate) fn publish_gist(
     let file = std::env::temp_dir().join(format!("{safe}.md"));
     std::fs::write(&file, card_md).with_context(|| format!("write {}", file.display()))?;
 
+    let installable = sources.len() == 1;
     if !gh_available() {
         println!("The `gh` CLI is not available, so rtk cannot create the gist for you.");
         println!("Publish manually:");
         println!("  1. open https://gist.github.com");
         println!("  2. create a PUBLIC gist from: {}", file.display());
-        println!(
-            "  3. share the gist URL \u{2014} others install with: rtk pipeline add <gist-url>"
-        );
+        if installable {
+            println!(
+                "  3. share the gist URL \u{2014} others install with: rtk pipeline add <gist-url>"
+            );
+        } else {
+            println!(
+                "  3. share the gist URL as a configuration reference; installation requires one complete pipeline TOML file"
+            );
+        }
         return Ok(0);
     }
 
-    let desc =
-        format!("{name} \u{2014} rtk compression pipeline (install: rtk pipeline add <this url>)");
+    let desc = if installable {
+        format!("{name} \u{2014} rtk compression pipeline (install: rtk pipeline add <this url>)")
+    } else {
+        format!("{name}: rtk configuration reference (multiple sources)")
+    };
     let output = std::process::Command::new("gh")
         .args(["gist", "create"])
         .arg(&file)
@@ -547,7 +590,13 @@ pub(crate) fn publish_gist(
     crate::core::pipeline_remote::record_publish(name, &page_url);
     println!();
     println!("published \u{2192} {page_url}");
-    println!("others install it with:  rtk pipeline add {page_url}");
+    if installable {
+        println!("others install it with:  rtk pipeline add {page_url}");
+    } else {
+        println!(
+            "This card includes multiple configuration sources; installation requires one complete pipeline TOML file."
+        );
+    }
     Ok(0)
 }
 
@@ -569,7 +618,7 @@ pub fn run_add(
             (raw, origin)
         }
     };
-    let toml = extract_toml(&raw);
+    let toml = extract_toml(&raw)?;
     if toml.trim().is_empty() {
         anyhow::bail!("the source contains no pipeline TOML — nothing to install");
     }
@@ -1657,17 +1706,27 @@ fn share_card(
 
     // ---- the pipeline itself, paste-ready
     for (label, text) in sources {
-        out.push_str(&format!("## {label}\n\n```toml\n"));
+        // A fence longer than any backtick run in the text, so a fenced example
+        // inside a TOML string cannot close it.
+        let longest = text.split(|c| c != '`').map(str::len).max().unwrap_or(0);
+        let fence = "`".repeat(longest.max(2) + 1);
+        out.push_str(&format!("## {label}\n\n{fence}toml\n"));
         out.push_str(text);
         if !text.ends_with('\n') {
             out.push('\n');
         }
-        out.push_str("```\n\n");
+        out.push_str(&format!("{fence}\n\n"));
     }
     out.push_str(&format!(
         "Measured by [rtk](https://github.com/rtk-ai/rtk) v{version} on {date}.\n",
     ));
-    out.push_str("\nInstall this pipeline: `rtk pipeline add <url-of-this-card>`\n");
+    match sources.len() {
+        0 => {}
+        1 => out.push_str("\nInstall this pipeline: `rtk pipeline add <url-of-this-card>`\n"),
+        _ => out.push_str(
+            "\nThis card includes multiple configuration sources. To install a pipeline, provide one complete pipeline TOML file to `rtk pipeline add <file>`.\n",
+        ),
+    }
     out
 }
 
@@ -2181,13 +2240,127 @@ mod tests {
     #[test]
     fn extract_toml_pulls_the_fenced_block_from_a_share_card() {
         let card = "# rtk pipeline: demo\n\nprose\n\n```toml\n[pipeline]\nname = \"demo\"\n```\n\ntrailing";
-        assert_eq!(super::extract_toml(card), "[pipeline]\nname = \"demo\"\n");
+        assert_eq!(
+            super::extract_toml(card).unwrap(),
+            "[pipeline]\nname = \"demo\"\n"
+        );
     }
 
     #[test]
     fn extract_toml_passes_raw_toml_through_unchanged() {
         let raw = "[pipeline]\nname = \"demo\"\n";
-        assert_eq!(super::extract_toml(raw), raw);
+        assert_eq!(super::extract_toml(raw).unwrap(), raw);
+    }
+
+    #[test]
+    fn extract_toml_preserves_raw_toml_containing_fenced_examples() {
+        for fence in ["```", "~~~"] {
+            let example = format!("{fence}toml\n[pipeline]\nname = \"inner\"\n{fence}\n");
+            for text in [example.clone(), format!("{example}\n{example}")] {
+                let raw = format!(
+                    "[pipeline]\nname = \"outer\"\n\n[[directive]]\nchannel = \"session_start\"\ntext = '''\n{text}'''\n"
+                );
+                assert!(toml::from_str::<toml::Value>(&raw).is_ok(), "{raw}");
+                assert_eq!(super::extract_toml(&raw).unwrap(), raw);
+            }
+        }
+    }
+
+    #[test]
+    fn extract_toml_rejects_multiple_fenced_sources() {
+        for card in [
+            "```toml\na = 1\n```\n\n```toml\nb = 2\n```",
+            "```toml\n```\n~~~toml\nb = 2\n~~~",
+            "~~~toml\na = 1\n~~~\n````toml title=pipeline\nb = 2\n````",
+        ] {
+            let error = super::extract_toml(card).unwrap_err().to_string();
+            assert!(error.contains("multiple TOML blocks"), "{error}");
+        }
+    }
+
+    #[test]
+    fn extract_toml_respects_fence_boundaries_and_language_tokens() {
+        for prefix in [
+            "```text title=toml\nnot a pipeline\n```\n",
+            "````text\n```toml\nnot a pipeline\n```\n````\n",
+            "~~~text\n```toml\nnot a pipeline\n```\n~~~\n",
+            "``toml\n",
+            "```text `toml\n",
+        ] {
+            let card = format!("{prefix}\n```toml\na = 1\n```\nAfterword");
+            assert_eq!(super::extract_toml(&card).unwrap(), "a = 1\n", "{card}");
+        }
+        let raw = "```text title=toml\nnot a pipeline\n```";
+        assert_eq!(super::extract_toml(raw).unwrap(), raw);
+    }
+
+    #[test]
+    fn extract_toml_preserves_shorter_fences_and_nonclosing_lines_in_the_body() {
+        let card = "````toml\na = \"\"\"\n```\n```` text\n\"\"\"\n`````  \nAfterword";
+        assert_eq!(
+            super::extract_toml(card).unwrap(),
+            "a = \"\"\"\n```\n```` text\n\"\"\"\n"
+        );
+        assert_eq!(super::extract_toml("~~~toml\na = 1").unwrap(), "a = 1\n");
+    }
+
+    #[test]
+    fn extract_toml_treats_fences_indented_four_spaces_as_code() {
+        let readme = "```toml\na = 1\n```\n\nAnother example:\n\n    ```toml\n    b = 2\n    ```\n";
+        assert_eq!(super::extract_toml(readme).unwrap(), "a = 1\n");
+        let card = "```toml\na = '''\n    ```\n'''\n   ```\nAfterword";
+        assert_eq!(
+            super::extract_toml(card).unwrap(),
+            "a = '''\n    ```\n'''\n"
+        );
+    }
+
+    #[test]
+    fn a_single_source_card_round_trips_toml_holding_a_fenced_example() {
+        let source = "[pipeline]\nname = \"outer\"\n\n[[directive]]\nname = \"examples\"\ntext = '''\n````toml\n[pipeline]\nname = \"inner\"\n````\n'''\n";
+        let card = super::share_card(
+            "outer",
+            &[("user outer.toml".into(), source.into())],
+            &super::CardStats {
+                what: &[],
+                filtering: None,
+                hook: None,
+                hook_slices: &[],
+                tasks: &[],
+                proxy: None,
+            },
+            "1.0.0",
+            "2026-11-17",
+        );
+        assert_eq!(super::extract_toml(&card).unwrap(), source, "{card}");
+    }
+
+    #[test]
+    fn multi_source_share_card_explains_the_single_file_install_requirement() {
+        let card = super::share_card(
+            "merged",
+            &[
+                ("base".into(), "a = 1\n".into()),
+                ("overlay".into(), "b = 2\n".into()),
+            ],
+            &super::CardStats {
+                what: &[],
+                filtering: None,
+                hook: None,
+                hook_slices: &[],
+                tasks: &[],
+                proxy: None,
+            },
+            "1.0.0",
+            "2026-11-12",
+        );
+        assert!(card.contains("multiple configuration sources"), "{card}");
+        assert!(card.contains("one complete pipeline TOML file"), "{card}");
+        assert!(
+            !card.contains("rtk pipeline add <url-of-this-card>"),
+            "{card}"
+        );
+        assert!(super::extract_toml(&card).is_err());
     }
 
     #[test]
