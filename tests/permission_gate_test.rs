@@ -1,7 +1,7 @@
 //! The permission gate reads a command as the shell does before an allow rule
 //! may cover it, and reads the rules as Claude Code does. Each case goes through
 //! the binary (`rtk rewrite`, or `rtk hook claude` as Claude Code calls it), so
-//! `scripts/fork-proof.sh` can run it against upstream RTK.
+//! `tools/fork-proof` can run it against upstream RTK.
 
 mod common;
 

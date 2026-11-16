@@ -4,7 +4,7 @@
 //! Claude Code's worktree guard refuses `rtk` with a git-named word among its
 //! operands (rtk-ai/rtk#4591), so in a managed worktree the hook leaves such a
 //! command as written. Each case goes through the binary, so
-//! `scripts/fork-proof.sh` can run it against upstream RTK too.
+//! `tools/fork-proof` can run it against upstream RTK too.
 
 use std::process::Command;
 

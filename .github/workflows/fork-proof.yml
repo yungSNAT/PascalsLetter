@@ -32,9 +32,17 @@ jobs:
       - name: Install required search tools
         run: sudo apt-get update && sudo apt-get install -y ripgrep grep
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: clippy, rustfmt
+      # tools/fork-proof is its own workspace, so ci.yml's workspace jobs do not see it.
+      - name: Lint and test the proof tool
+        run: |
+          cargo fmt --manifest-path tools/fork-proof/Cargo.toml --check
+          cargo clippy --manifest-path tools/fork-proof/Cargo.toml --locked --all-targets -- -D warnings
+          cargo test --manifest-path tools/fork-proof/Cargo.toml --locked
       - name: Prove each README row against upstream
         run: |
           status=0
-          bash scripts/fork-proof.sh > proof.md || status=$?
+          cargo run --quiet --locked --manifest-path tools/fork-proof/Cargo.toml > proof.md || status=$?
           cat proof.md >> "$GITHUB_STEP_SUMMARY"
           exit "$status"

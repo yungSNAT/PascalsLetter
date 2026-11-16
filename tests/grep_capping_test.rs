@@ -7,7 +7,7 @@
 mod common;
 
 /// A local run may skip a search case whose engine is missing. CI must not, nor may
-/// `scripts/fork-proof.sh`, where a skipped test would print `ok` and read as proof.
+/// `tools/fork-proof`, where a skipped test would print `ok` and read as proof.
 fn may_skip() -> bool {
     std::env::var_os("CI").is_none() && std::env::var_os("RTK_PROOF").is_none()
 }
