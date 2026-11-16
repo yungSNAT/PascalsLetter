@@ -2297,6 +2297,43 @@ mod tests {
         }
     }
 
+    /// The card carries only a reference to the built-in, so a built-in shared by name (not the
+    /// active pipeline) must still describe its own rules, and no two built-ins may share a name.
+    #[test]
+    fn a_builtin_shared_by_name_describes_its_own_rules_under_a_unique_name() {
+        use crate::core::{pipeline_config, test_isolation};
+
+        let root = test_isolation::tempdir();
+        test_isolation::with_root(root.path(), || {
+            let active = super::collect_card(None).unwrap().unwrap().display;
+            let mut described = 0;
+            let mut portable = std::collections::BTreeSet::new();
+            for name in BUILTIN_NAMES {
+                let card = super::collect_card(Some(name)).unwrap().unwrap();
+                portable.insert(pipeline_config::declared_name(&card.sources[0].1, name).unwrap());
+                if *name == active {
+                    continue;
+                }
+                let (expected, _) = resolve(&[SourceFile {
+                    scope: Scope::User,
+                    label: "owned reference".into(),
+                    file: rtk_engine::pipeline::PipelineFile {
+                        enabled: true,
+                        extends: vec![name.to_string()],
+                        ..Default::default()
+                    },
+                }]);
+                assert_eq!(card.what, super::describe_rules(&expected), "{name}");
+                described += usize::from(!card.what.is_empty());
+            }
+            assert!(
+                described > 0,
+                "no non-active built-in has rules to describe"
+            );
+            assert_eq!(portable.len(), BUILTIN_NAMES.len(), "{portable:?}");
+        });
+    }
+
     #[test]
     fn builtin_share_cards_install_without_redeclaring_inherited_behaviour() {
         use crate::core::{pipeline_config, test_isolation};
