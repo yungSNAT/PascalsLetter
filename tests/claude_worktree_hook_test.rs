@@ -6,8 +6,7 @@
 //! command as written. Each case goes through the binary, so
 //! `scripts/fork-proof.sh` can run it against upstream RTK too.
 
-use std::io::Write;
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 mod common;
 
@@ -18,34 +17,8 @@ fn hook(command: &str, cwd: &std::path::Path) -> Option<String> {
 }
 
 /// [`hook`], run by `rtk`.
-fn hook_with(mut rtk: Command, command: &str, cwd: &std::path::Path) -> Option<String> {
-    let payload = serde_json::json!({
-        "tool_name": "Bash",
-        "tool_input": { "command": command },
-        "cwd": cwd,
-    })
-    .to_string();
-    let mut child = rtk
-        .args(["hook", "claude"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("spawn rtk hook claude");
-    child
-        .stdin
-        .take()
-        .expect("stdin")
-        .write_all(payload.as_bytes())
-        .expect("write payload");
-    let out = child.wait_with_output().expect("wait rtk");
-    assert_eq!(
-        out.status.code(),
-        Some(0),
-        "rtk hook claude failed for {command:?}: {}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&out.stdout);
+fn hook_with(rtk: Command, command: &str, cwd: &std::path::Path) -> Option<String> {
+    let stdout = common::claude_hook(rtk, command, cwd);
     if stdout.trim().is_empty() {
         return None;
     }
