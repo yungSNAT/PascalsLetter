@@ -100,17 +100,13 @@ fn mismatches(rows: &[(String, String)], claims: &[Claim]) -> Vec<String> {
     problems
 }
 
-/// The test result lines of a cargo test run's stdout, as `test name` to `ok` or `FAILED`.
-fn results(stdout: &str) -> Vec<(String, String)> {
-    stdout
-        .lines()
-        .filter_map(|line| {
-            let rest = line.strip_prefix("test ")?;
-            let (name, result) = rest.split_once(" ... ")?;
-            (!name.is_empty() && !name.contains(' ') && matches!(result, "ok" | "FAILED"))
-                .then(|| (name.to_string(), result.to_string()))
-        })
-        .collect()
+/// A libtest result line of a cargo test run's stdout (`test name ... ok` or
+/// `... FAILED`), as the test's name and result.
+fn result_line(line: &str) -> Option<(String, String)> {
+    let rest = line.strip_prefix("test ")?;
+    let (name, result) = rest.split_once(" ... ")?;
+    (!name.is_empty() && !name.contains(' ') && matches!(result, "ok" | "FAILED"))
+        .then(|| (name.to_string(), result.to_string()))
 }
 
 /// The first result for `test` in `target`, or `MISSING` when it did not compile or run.
@@ -153,20 +149,17 @@ fn run_tests(
             cargo.env("CARGO_TARGET_DIR", target_dir);
         }
         let mut child = cargo.spawn().context("running cargo test")?;
-        let mut stdout = String::new();
-        for line in BufReader::new(child.stdout.take().context("cargo's stdout")?).lines() {
+        // Split on bytes, so a test printing invalid UTF-8 cannot end the read.
+        for line in BufReader::new(child.stdout.take().context("cargo's stdout")?).split(b'\n') {
             let line = line?;
+            let line = String::from_utf8_lossy(&line);
             eprintln!("{line}");
-            stdout.push_str(&line);
-            stdout.push('\n');
+            if let Some((test, result)) = result_line(&line) {
+                found.push((target.to_string(), test, result));
+            }
         }
         // A failing test exits non-zero; its result lines say which.
         child.wait()?;
-        found.extend(
-            results(&stdout)
-                .into_iter()
-                .map(|(test, result)| (target.to_string(), test, result)),
-        );
     }
     Ok(found)
 }
@@ -382,8 +375,11 @@ fn main() -> ExitCode {
         eprintln!("error: usage: fork-proof");
         return ExitCode::FAILURE;
     }
-    let upstream_ref =
-        std::env::var("UPSTREAM_REF").unwrap_or_else(|_| "upstream/develop".to_string());
+    // Empty counts as unset, as `${UPSTREAM_REF:-...}` reads it.
+    let upstream_ref = std::env::var("UPSTREAM_REF")
+        .ok()
+        .filter(|r| !r.is_empty())
+        .unwrap_or_else(|| "upstream/develop".to_string());
     match run(&upstream_ref) {
         Ok(true) => ExitCode::SUCCESS,
         Ok(false) => ExitCode::FAILURE,
@@ -457,7 +453,7 @@ mod tests {
         let stdout = "running 2 tests\ntest a ... ok\ntest b ... FAILED\ntest c ... ignored\n\
                       test result: FAILED. 1 passed\ntest d e ... ok\n";
         assert_eq!(
-            results(stdout),
+            stdout.lines().filter_map(result_line).collect::<Vec<_>>(),
             [
                 ("a".to_string(), "ok".to_string()),
                 ("b".into(), "FAILED".into())
