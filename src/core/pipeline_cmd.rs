@@ -2290,6 +2290,85 @@ mod tests {
     }
 
     #[test]
+    fn builtin_share_cards_install_without_redeclaring_inherited_behaviour() {
+        use crate::core::{pipeline_config, test_isolation};
+        use std::fs;
+
+        for name in BUILTIN_NAMES {
+            let root = test_isolation::tempdir();
+            test_isolation::with_root(root.path(), || {
+                let card = super::collect_card(Some(name)).unwrap().unwrap();
+                assert_eq!(card.display, *name);
+                assert_eq!(card.sources.len(), 1);
+                let text = &card.sources[0].1;
+                let portable = pipeline_config::declared_name(text, name).unwrap();
+                assert!(super::valid_pipeline_name(&portable), "{name}: {portable}");
+                if *name == "rtk:default" {
+                    assert_eq!(
+                        super::collect_card(None).unwrap().unwrap().sources,
+                        card.sources
+                    );
+                }
+                let shared = root.path().join("shared.md");
+                fs::write(&shared, card.card_md()).unwrap();
+                assert_eq!(
+                    super::run_add(shared.to_str().unwrap(), None, true, false).unwrap(),
+                    0
+                );
+                let installed = pipeline_config::user_pipelines_dir()
+                    .unwrap()
+                    .join(format!("{portable}.toml"));
+                assert_eq!(fs::read_to_string(installed).unwrap(), *text);
+                let actual = pipeline_config::load();
+                assert!(
+                    !has_errors(&actual.diagnostics),
+                    "{name}: {:?}",
+                    actual.diagnostics
+                );
+                assert_eq!(actual.resolved.name, portable);
+
+                // Compare with the engine's normal inheritance of the
+                // selected built-in, including its transitive definitions.
+                let (expected, diagnostics) = resolve(&[SourceFile {
+                    scope: Scope::User,
+                    label: "owned reference".into(),
+                    file: rtk_engine::pipeline::PipelineFile {
+                        enabled: true,
+                        extends: vec![name.to_string()],
+                        ..Default::default()
+                    },
+                }]);
+                assert!(!has_errors(&diagnostics), "{name}: {diagnostics:?}");
+                assert_eq!(actual.resolved.extends, expected.extends);
+                assert_eq!(actual.resolved.guards, expected.guards);
+                assert_eq!(actual.resolved.methods, expected.methods);
+                assert_eq!(actual.resolved.tasks, expected.tasks);
+                assert_eq!(actual.resolved.upstreams, expected.upstreams);
+                assert_eq!(actual.resolved.classifiers, expected.classifiers);
+                assert_eq!(actual.resolved.rules.len(), expected.rules.len());
+                for (position, wanted) in &expected.rules {
+                    let observed = &actual.resolved.rules[position];
+                    assert_eq!(observed.len(), wanted.len());
+                    for (observed, wanted) in observed.iter().zip(wanted) {
+                        assert_eq!(observed.name, wanted.name);
+                        assert_eq!(observed.def, wanted.def);
+                        assert_eq!(observed.scope, wanted.scope);
+                        assert_eq!(observed.origin, wanted.origin);
+                    }
+                }
+                assert_eq!(actual.resolved.directives.len(), expected.directives.len());
+                for (observed, wanted) in
+                    actual.resolved.directives.iter().zip(&expected.directives)
+                {
+                    assert_eq!(observed.def, wanted.def);
+                    assert_eq!(observed.scope, wanted.scope);
+                    assert_eq!(observed.origin, wanted.origin);
+                }
+            });
+        }
+    }
+
+    #[test]
     fn example_pipelines_validate_without_errors() {
         let examples = [
             (
