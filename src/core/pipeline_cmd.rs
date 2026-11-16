@@ -1106,6 +1106,20 @@ impl CardData {
     }
 }
 
+fn builtin_share_source(name: &str) -> Option<(String, String)> {
+    // Built-in definitions are not user overlays: copying their rules would
+    // redeclare inherited names. Share a reference with an installable name.
+    builtin_text(name).map(|_| {
+        let portable = name.replace(':', "-");
+        (
+            format!("{name} (built-in reference)"),
+            format!(
+                "schema_version = 1\n\n[pipeline]\nname = \"{portable}\"\nextends = \"{name}\"\n"
+            ),
+        )
+    })
+}
+
 /// One collection pass for a share card; `None` means the name was unknown
 /// (the message is already printed).
 pub(crate) fn collect_card(name: Option<&str>) -> Result<Option<CardData>> {
@@ -1113,11 +1127,8 @@ pub(crate) fn collect_card(name: Option<&str>) -> Result<Option<CardData>> {
     let active = loaded.resolved.name.clone();
     let (display, sources) = match name {
         Some(n) => {
-            if let Some(text) = builtin_text(n) {
-                (
-                    n.to_string(),
-                    vec![(format!("{n} (built-in)"), text.to_string())],
-                )
+            if let Some(source) = builtin_share_source(n) {
+                (n.to_string(), vec![source])
             } else if n == active {
                 (active.clone(), active_sources(&active))
             } else {
@@ -1211,7 +1222,7 @@ pub fn run_share(name: Option<&str>, force_md: bool, gist: bool, force: bool) ->
 }
 
 /// The active pipeline's file set, labeled by scope; the compiled built-in
-/// text when no file is on disk.
+/// reference when no file is on disk.
 fn active_sources(active: &str) -> Vec<(String, String)> {
     let files: Vec<(String, String)> = pipeline_config::load_paths()
         .into_iter()
@@ -1232,10 +1243,7 @@ fn active_sources(active: &str) -> Vec<(String, String)> {
     if !files.is_empty() {
         return files;
     }
-    match builtin_text(active) {
-        Some(text) => vec![(format!("{active} (built-in)"), text.to_string())],
-        None => Vec::new(),
-    }
+    builtin_share_source(active).into_iter().collect()
 }
 
 /// A 10-step bar for a percentage, monospace-safe on every platform that
