@@ -201,4 +201,3 @@ fn invalid_discovered_crate_is_rejected_before_host_creation() {
     assert!(!fixture.plugins().join(".host").exists());
     assert!(fixture.calls().is_empty());
 }
-
