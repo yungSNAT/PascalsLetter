@@ -262,3 +262,56 @@ fn crate_names(crates: &[(String, PathBuf)]) -> String {
         .collect::<Vec<_>>()
         .join(", ")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::test_isolation;
+    use std::path::Path;
+
+    fn in_owned_home(f: impl FnOnce(&Path)) {
+        let root = test_isolation::tempdir();
+        test_isolation::with_root(root.path(), || {
+            let source = root.path().join("PUBLIC-upstream");
+            user_env::with_path("RTK_PLUGIN_SOURCE", Some(&source), || f(root.path()));
+        });
+    }
+
+    #[test]
+    fn reserved_rust_plugin_names_are_rejected_before_scaffolding() {
+        in_owned_home(|_| {
+            let plugins = plugins_dir().unwrap();
+            for name in [
+                "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else",
+                "enum", "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop", "match",
+                "mod", "move", "mut", "pub", "ref", "return", "self", "Self", "static", "struct",
+                "super", "trait", "true", "type", "unsafe", "use", "where", "while", "abstract",
+                "become", "box", "do", "final", "macro", "override", "priv", "try", "typeof",
+                "unsized", "virtual", "yield", "self_", "self-",
+            ] {
+                assert!(run_new(name).is_err(), "{name:?} generates invalid Rust");
+                assert!(!plugins.exists(), "{name:?} wrote invalid Rust");
+            }
+        });
+    }
+
+    #[test]
+    fn edition_2021_names_and_host_dependency_names_can_still_be_scaffolded() {
+        in_owned_home(|_| {
+            for name in [
+                "gen",
+                "union",
+                "raw",
+                "safe",
+                "macro_rules",
+                "rtk",
+                "rtk-plugin",
+                "rtk_plugin",
+                "std",
+                "public--tag_",
+            ] {
+                assert_eq!(run_new(name).unwrap(), 0, "{name}");
+            }
+        });
+    }
+}
