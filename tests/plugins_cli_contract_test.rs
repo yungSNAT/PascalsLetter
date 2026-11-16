@@ -222,7 +222,10 @@ fn legacy_plugin_generating_struct_self_is_refused_before_host_creation() {
         assert!(stderr.contains("rtk plugins new"), "{stderr}");
         assert!(!fixture.plugins().join(".host").exists());
         assert!(fixture.calls().is_empty());
-        assert_eq!(fs::read_to_string(plugin.join("Cargo.toml")).unwrap(), manifest);
+        assert_eq!(
+            fs::read_to_string(plugin.join("Cargo.toml")).unwrap(),
+            manifest
+        );
         assert_eq!(fs::read_to_string(plugin.join("src/lib.rs")).unwrap(), lib);
     }
 }
