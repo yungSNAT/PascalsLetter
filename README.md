@@ -95,7 +95,7 @@ If the hook rewrote the command, `rtk gain --history` lists `rtk git status` und
 
 ## What PascalsLetter changes
 
-CI runs [`scripts/fork-proof.sh`](scripts/fork-proof.sh) weekly and on every pull request. It checks the Upstream column: each row's tests must pass here and fail on upstream RTK, so the job fails once upstream fixes the bug too. It runs on Linux, so the 2 rows whose bug shows only on Windows are not proved.
+CI runs [`tools/fork-proof`](tools/fork-proof/src/main.rs) weekly and on every pull request. It checks the Upstream column: each row's tests must pass here and fail on upstream RTK, so the job fails once upstream fixes the bug too. It runs on Linux, so the 2 rows whose bug shows only on Windows are not proved.
 
 | Area | Upstream | Change |
 | --- | --- | --- |
@@ -378,7 +378,7 @@ PascalsLetter is built on [RTK](https://github.com/rtk-ai/rtk) by rtk-ai, founde
 
 The banner's lettering and emblem are drawn from Cascadia Mono and Besley glyphs (SIL OFL 1.1).
 
-[`scripts/fork-proof.sh`](scripts/fork-proof.sh) is adapted from [kylehgc/rtk](https://github.com/kylehgc/rtk/blob/6fb87aa9591f03815fe8932b7f241820e2bc9374/scripts/fork-proof.sh) (Apache-2.0).
+[`tools/fork-proof`](tools/fork-proof/src/main.rs) is adapted from the `scripts/fork-proof.sh` of [kylehgc/rtk](https://github.com/kylehgc/rtk/blob/6fb87aa9591f03815fe8932b7f241820e2bc9374/scripts/fork-proof.sh) (Apache-2.0).
 
 Report PascalsLetter problems in [this repository's issues](https://github.com/yungSNAT/PascalsLetter/issues). For RTK itself, use [rtk-ai/rtk](https://github.com/rtk-ai/rtk) or its [Discord](https://discord.gg/RySmvNF5kF).
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Rewrites a hook would run in place of the command the agent wrote. Each case
-//! goes through the binary, so `scripts/fork-proof.sh` can run it against
+//! goes through the binary, so `tools/fork-proof` can run it against
 //! upstream RTK too.
 
 mod common;
