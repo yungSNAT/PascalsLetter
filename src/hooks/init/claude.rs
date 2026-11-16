@@ -1868,9 +1868,11 @@ mod tests {
                 fs::read_to_string(settings.with_extension("json.bak")).unwrap(),
                 legacy
             );
-            assert!(!fs::read_to_string(&settings)
-                .unwrap()
-                .contains("rtk-rewrite.sh"));
+            assert!(
+                !fs::read_to_string(&settings)
+                    .unwrap()
+                    .contains("rtk-rewrite.sh")
+            );
         });
     }
 
