@@ -452,6 +452,14 @@ fn run_outdated(args: &[String], verbose: u8) -> Result<i32> {
 
     // Parse output using PnpmOutdatedParser
     let parse_result = PnpmOutdatedParser::parse(&result.stdout);
+    // Status 1 also signals outdated dependencies; only recognised JSON is safe to compact then.
+    if !result.success()
+        && (result.exit_code != 1 || !matches!(&parse_result, ParseResult::Full(_)))
+    {
+        print!("{}", result.stdout);
+        eprint!("{}", result.stderr);
+        return Ok(result.exit_code);
+    }
     let mode = FormatMode::from_verbosity(verbose);
 
     let filtered = match parse_result {
@@ -478,12 +486,18 @@ fn run_outdated(args: &[String], verbose: u8) -> Result<i32> {
     } else {
         filtered.clone()
     };
-    let shown = never_worse(&combined, &display);
+    let shown = never_worse(&result.stdout, &display);
     println!("{}", shown);
+    eprint!("{}", result.stderr);
 
-    timer.track("pnpm outdated", "rtk pnpm outdated", &combined, shown);
+    timer.track(
+        "pnpm outdated",
+        "rtk pnpm outdated",
+        &combined,
+        &format!("{shown}\n{}", result.stderr),
+    );
 
-    Ok(0)
+    Ok(result.exit_code)
 }
 
 fn run_install(args: &[String], verbose: u8) -> Result<i32> {
