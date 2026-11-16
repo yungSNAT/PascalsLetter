@@ -89,6 +89,6 @@ fn an_outdated_report_keeps_status_one_and_its_warnings_on_stderr() {
 fn an_up_to_date_project_keeps_the_shorter_native_report() {
     let output = outdated(&[], "{}\n", "", 0);
     assert!(output.status.success(), "{output:?}");
-    assert_eq!(String::from_utf8(output.stdout).unwrap(), "{}\n\n");
     assert!(output.stderr.is_empty(), "{output:?}");
+    assert_eq!(String::from_utf8(output.stdout).unwrap(), "{}\n\n");
 }
