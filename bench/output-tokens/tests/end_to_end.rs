@@ -57,6 +57,171 @@ process.stdin.on('end', () => {
 });
 "#;
 
+// Stands in for a Claude Code plugin: logs each event it is given, starts the
+// session with plain text, rewrites `echo long`, refuses `rm -rf x` by exit 2,
+// replaces the notes and adds context to a failed call.
+const FAKE_PLUGIN_HOOK: &str = r#"let input = '';
+process.stdin.on('data', (chunk) => { input += chunk; });
+process.stdin.on('end', () => {
+  const e = JSON.parse(input);
+  require('fs').appendFileSync(process.env.CLAUDE_PLUGIN_DATA + '/events.log',
+    `${e.hook_event_name} ${e.tool_input ? e.tool_input.command : e.source}\n`);
+  const reply = (o) => process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: e.hook_event_name, ...o } }));
+  switch (e.hook_event_name) {
+    case 'SessionStart': process.stdout.write('session hello'); break;
+    case 'PreToolUse':
+      if (e.tool_input.command === 'echo long') reply({ permissionDecision: 'allow', updatedInput: { command: 'echo short' } });
+      if (e.tool_input.command === 'rm -rf x') { process.stderr.write('refused'); process.exit(2); }
+      break;
+    case 'PostToolUse':
+      if (e.tool_response.stdout.startsWith('one two')) reply({ updatedToolOutput: { stdout: 'cut', stderr: '', interrupted: false }, additionalContext: 'see notes' });
+      break;
+    case 'PostToolUseFailure': reply({ additionalContext: 'failed: ' + e.error.split('\n')[0] }); break;
+  }
+});
+"#;
+
+// Exec and shell forms, matchers that select Bash and one that does not (its
+// prompt hook would be refused if it were picked), and a hook that outlives
+// its timeout, whose reply is dropped.
+const FAKE_PLUGIN_HOOKS: &str = r#"{"hooks": {
+  "SessionStart": [{"hooks": [{"type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/hook.js"]}]}],
+  "PreToolUse": [
+    {"matcher": "^(Bash|Read)$", "hooks": [{"type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hook.js\""}]},
+    {"matcher": "Read", "hooks": [{"type": "prompt", "prompt": "x"}]}
+  ],
+  "PostToolUse": [{"matcher": "Edit|Bash", "hooks": [
+    {"type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/hook.js"]},
+    {"type": "command", "command": "sleep 3; echo late", "timeout": 1}
+  ]}],
+  "PostToolUseFailure": [{"hooks": [{"type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/hook.js"]}]}],
+  "Stop": [{"hooks": [{"type": "prompt", "prompt": "x"}]}]
+}}"#;
+
+#[test]
+fn a_plugin_side_gets_its_hooks_as_claude_code_runs_them() {
+    let root = scratch();
+    let upstream = root.join("upstream");
+    fs::create_dir_all(&upstream).unwrap();
+    git(&upstream, &["init", "--quiet"]);
+    fs::write(upstream.join("notes.txt"), "one two three four\n").unwrap();
+    git(&upstream, &["add", "notes.txt"]);
+    git(&upstream, &["commit", "--quiet", "-m", "pinned"]);
+    let rev = git(&upstream, &["rev-parse", "HEAD"]);
+
+    let plugin = root.join("plugin");
+    fs::create_dir_all(plugin.join(".claude-plugin")).unwrap();
+    fs::create_dir_all(plugin.join("hooks")).unwrap();
+    fs::write(
+        plugin.join(".claude-plugin/plugin.json"),
+        r#"{"name": "fake", "hooks": "./hooks/claude.json"}"#,
+    )
+    .unwrap();
+    fs::write(plugin.join("hooks/claude.json"), FAKE_PLUGIN_HOOKS).unwrap();
+    fs::write(plugin.join("hook.js"), FAKE_PLUGIN_HOOK).unwrap();
+    let corpus = root.join("corpus.toml");
+    fs::write(
+        &corpus,
+        format!(
+            "[[repo]]\nname = \"demo\"\nurl = \"{}\"\nrev = \"{rev}\"\n\n\
+             [[command]]\nrepo = \"demo\"\nrun = \"cat notes.txt\"\n\
+             question = \"What do the notes say?\"\nkeep = [\"three four\"]\n\n\
+             [[command]]\nrepo = \"demo\"\nrun = \"echo long\"\nbefore = \"echo x >> before.log\"\n\n\
+             [[command]]\nrepo = \"demo\"\nrun = \"printf oops; exit 2\"\n\n\
+             [[command]]\nrepo = \"demo\"\nrun = \"rm -rf x\"\n",
+            upstream.display()
+        ),
+    )
+    .unwrap();
+
+    let out = root.join("out");
+    let run = Command::new(env!("CARGO_BIN_EXE_output-tokens"))
+        .arg("--corpus")
+        .arg(&corpus)
+        .arg("--work")
+        .arg(root.join("work"))
+        .arg("--out")
+        .arg(&out)
+        .arg("--claude-plugin")
+        .arg(format!("fake plugin={}", plugin.display()))
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+
+    let output =
+        |n: u32| fs::read_to_string(out.join(format!("outputs/{n:03}-fake-plugin.txt"))).unwrap();
+    // A replaced output, with the context its hook added after it.
+    assert_eq!(output(1), "cut\nsee notes");
+    // A rewritten command runs after `before`, in place of the raw one.
+    assert_eq!(output(2), "short\n");
+    assert_eq!(
+        fs::read_to_string(root.join("work/demo/before.log")).unwrap(),
+        "x\nx\n"
+    );
+    // A failed call keeps its output; its failure hook can only add to it.
+    assert_eq!(output(3), "oops\nfailed: Exit code 2");
+    // A refused call never runs: the agent reads the refusal.
+    assert_eq!(output(4), "refused");
+    assert_eq!(
+        fs::read_to_string(out.join("outputs/000-fake-plugin-session-start.txt")).unwrap(),
+        "session hello"
+    );
+
+    let csv = fs::read_to_string(out.join("results.csv")).unwrap();
+    let rows: Vec<&str> = csv
+        .lines()
+        .filter(|l| l.contains(",fake plugin,"))
+        .collect();
+    assert_eq!(rows.len(), 4, "{csv}");
+    assert!(
+        rows[1].starts_with("2,demo,echo long,fake plugin,echo short,0,"),
+        "{}",
+        rows[1]
+    );
+    assert!(rows[2].contains(",fake plugin,,2,"), "{}", rows[2]);
+    assert!(
+        rows[3].starts_with("4,demo,rm -rf x,fake plugin,,none,"),
+        "{}",
+        rows[3]
+    );
+
+    // PostToolUse gets the command that ran; a failed call gets PostToolUseFailure only.
+    let data = out.join("homes/fake-plugin/.claude/plugins/data/output-tokens-fake-plugin");
+    assert_eq!(
+        fs::read_to_string(data.join("events.log")).unwrap(),
+        "SessionStart startup\n\
+         PreToolUse cat notes.txt\nPostToolUse cat notes.txt\n\
+         PreToolUse echo long\nPostToolUse echo short\n\
+         PreToolUse printf oops; exit 2\nPostToolUseFailure printf oops; exit 2\n\
+         PreToolUse rm -rf x\n"
+    );
+    let log = fs::read_to_string(out.join("hooks/fake-plugin.jsonl")).unwrap();
+    assert_eq!(
+        log.lines().filter(|l| l.contains("timed out")).count(),
+        2,
+        "{log}"
+    );
+
+    let summary = fs::read_to_string(out.join("summary.md")).unwrap();
+    assert!(
+        summary.contains("- fake plugin: its SessionStart hooks give the agent "),
+        "{summary}"
+    );
+    let facts = fs::read_to_string(out.join("facts.md")).unwrap();
+    assert!(
+        facts
+            .lines()
+            .any(|l| l == "| fake plugin | 0 of 1 | 1 | 0 |"),
+        "{facts}"
+    );
+
+    fs::remove_dir_all(&root).unwrap();
+}
+
 #[test]
 fn every_side_runs_from_the_pinned_commit_in_its_own_home() {
     let root = scratch();

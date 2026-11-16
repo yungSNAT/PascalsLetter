@@ -5,6 +5,7 @@
 
 use anyhow::{Context, Result, bail, ensure};
 use clap::Parser;
+use regex::Regex;
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
@@ -12,6 +13,7 @@ use std::fs;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 #[derive(Parser)]
 #[command(about = "Count the tokens in each tool's output for a fixed command corpus")]
@@ -36,6 +38,10 @@ struct Args {
     /// LABEL=PATH.
     #[arg(long, value_name = "LABEL=PATH", value_parser = label_value)]
     chisle: Option<(String, String)>,
+    /// A Claude Code plugin whose Bash hooks are driven as Claude Code drives
+    /// them: LABEL=DIR, where DIR holds .claude-plugin/plugin.json.
+    #[arg(long = "claude-plugin", value_name = "LABEL=DIR", value_parser = label_value)]
+    claude_plugin: Vec<(String, String)>,
 }
 
 #[derive(Deserialize)]
@@ -99,6 +105,64 @@ enum Kind {
     Rtk(PathBuf),
     Wrap(String),
     Chisle(PathBuf),
+    Plugin(Plugin),
+}
+
+/// The hooks a Claude Code plugin runs around a Bash call, from its hooks file.
+struct Plugin {
+    root: PathBuf,
+    session_start: Vec<Hook>,
+    pre: Vec<Hook>,
+    post: Vec<Hook>,
+    failure: Vec<Hook>,
+}
+
+/// A command hook: exec form when it has `args`, else a shell command.
+struct Hook {
+    command: String,
+    args: Option<Vec<String>>,
+    timeout: Duration,
+}
+
+#[derive(Deserialize)]
+struct HooksFile {
+    hooks: HashMap<String, Vec<HookGroup>>,
+}
+
+#[derive(Deserialize)]
+struct HookGroup {
+    matcher: Option<String>,
+    hooks: Vec<HookEntry>,
+}
+
+#[derive(Deserialize)]
+struct HookEntry {
+    #[serde(rename = "type")]
+    kind: String,
+    command: Option<String>,
+    args: Option<Vec<String>>,
+    /// Seconds.
+    timeout: Option<f64>,
+}
+
+/// What one hook run returned; `exit` is None when it timed out or was killed.
+struct HookRun {
+    exit: Option<i32>,
+    stdout: String,
+    stderr: String,
+}
+
+/// What hook replies give the agent or change, as Claude Code reads them.
+#[derive(Default)]
+struct Reply {
+    /// Text added beside the tool result.
+    context: Vec<String>,
+    /// Why the command was refused; the agent reads this instead of output.
+    deny: Option<String>,
+    /// A command to run instead (`updatedInput.command`).
+    command: Option<String>,
+    /// Output to show instead (`updatedToolOutput`).
+    output: Option<String>,
 }
 
 struct Side {
@@ -282,6 +346,8 @@ fn names_a_recovery(text: &str) -> bool {
         "[full diff: ",
         "tokenade expand-ref ",
         "Full patch: ",
+        "ctx_search(",
+        "full output: Read ",
     ]
     .iter()
     .any(|hint| text.contains(hint))
@@ -314,6 +380,14 @@ fn sides(args: &Args) -> Result<Vec<Side>> {
         sides.push(Side {
             label: label.clone(),
             kind: Kind::Chisle(hook),
+        });
+    }
+    for (label, dir) in &args.claude_plugin {
+        let root = fs::canonicalize(dir).with_context(|| format!("Claude Code plugin {dir}"))?;
+        let plugin = load_plugin(root).with_context(|| format!("--claude-plugin {label}"))?;
+        sides.push(Side {
+            label: label.clone(),
+            kind: Kind::Plugin(plugin),
         });
     }
     let mut slugs = HashSet::new();
@@ -382,6 +456,321 @@ fn chisle_reply(stdout: &str, raw: &str) -> Result<String> {
     match reply["modifiedResult"]["textResultForLlm"].as_str() {
         Some(text) => Ok(text.to_string()),
         None => bail!("Chisle replied without modifiedResult.textResultForLlm: {stdout}"),
+    }
+}
+
+#[derive(Clone, Copy)]
+enum Event {
+    SessionStart,
+    PreToolUse,
+    PostToolUse,
+    PostToolUseFailure,
+}
+
+impl Event {
+    fn name(self) -> &'static str {
+        match self {
+            Event::SessionStart => "SessionStart",
+            Event::PreToolUse => "PreToolUse",
+            Event::PostToolUse => "PostToolUse",
+            Event::PostToolUseFailure => "PostToolUseFailure",
+        }
+    }
+}
+
+/// Whether a hook group's matcher selects `value`, by Claude Code's rules: none, "" or "*"
+/// selects everything; only letters, digits, `_` and `|` lists exact values; anything else
+/// is a regular expression (Claude Code's are JavaScript's; this reads them with `regex`).
+fn matcher_selects(matcher: Option<&str>, value: &str) -> Result<bool> {
+    match matcher {
+        None | Some("" | "*") => Ok(true),
+        Some(m)
+            if m.chars()
+                .all(|c| c.is_ascii_alphanumeric() || "_|".contains(c)) =>
+        {
+            Ok(m.split('|').any(|v| v == value))
+        }
+        Some(m) => Ok(Regex::new(m)
+            .with_context(|| format!("matcher '{m}'"))?
+            .is_match(value)),
+    }
+}
+
+/// Reads the hooks file a plugin's manifest names in `hooks`, or else its
+/// `hooks/hooks.json`, and keeps the hooks Claude Code runs at session start
+/// and around a Bash call.
+fn load_plugin(root: PathBuf) -> Result<Plugin> {
+    let manifest = root.join(".claude-plugin/plugin.json");
+    let manifest: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(&manifest)
+            .with_context(|| format!("reading {}", manifest.display()))?,
+    )
+    .context("parsing .claude-plugin/plugin.json")?;
+    let file = match &manifest["hooks"] {
+        serde_json::Value::Null => root.join("hooks/hooks.json"),
+        serde_json::Value::String(path) => root.join(path),
+        other => bail!("plugin.json 'hooks' must be a path in the plugin, got {other}"),
+    };
+    let text = fs::read_to_string(&file).with_context(|| format!("reading {}", file.display()))?;
+    let hooks: HooksFile =
+        serde_json::from_str(&text).with_context(|| format!("parsing {}", file.display()))?;
+    let pick = |event: Event, value: &str| -> Result<Vec<Hook>> {
+        let mut picked = Vec::new();
+        for group in hooks.hooks.get(event.name()).into_iter().flatten() {
+            if !matcher_selects(group.matcher.as_deref(), value)? {
+                continue;
+            }
+            for entry in &group.hooks {
+                let event = event.name();
+                ensure!(
+                    entry.kind == "command",
+                    "{event}: only command hooks can run here, not '{}'",
+                    entry.kind
+                );
+                picked.push(Hook {
+                    command: entry
+                        .command
+                        .clone()
+                        .with_context(|| format!("{event}: a command hook with no command"))?,
+                    args: entry.args.clone(),
+                    // Claude Code's default for a command hook.
+                    timeout: Duration::try_from_secs_f64(entry.timeout.unwrap_or(600.0))
+                        .with_context(|| format!("{event}: timeout {:?}", entry.timeout))?,
+                });
+            }
+        }
+        Ok(picked)
+    };
+    Ok(Plugin {
+        session_start: pick(Event::SessionStart, "startup")?,
+        pre: pick(Event::PreToolUse, "Bash")?,
+        post: pick(Event::PostToolUse, "Bash")?,
+        failure: pick(Event::PostToolUseFailure, "Bash")?,
+        root,
+    })
+}
+
+/// Bash's output shape in `updatedToolOutput` (string `stdout` and `stderr`, boolean
+/// `interrupted`, `isImage` absent or boolean), as the agent would read it; Claude Code
+/// ignores a value of any other shape.
+fn bash_output(value: &serde_json::Value) -> Option<String> {
+    let stdout = value["stdout"].as_str()?;
+    let stderr = value["stderr"].as_str()?;
+    value["interrupted"].as_bool()?;
+    if !value
+        .get("isImage")
+        .is_none_or(serde_json::Value::is_boolean)
+    {
+        return None;
+    }
+    Some(if stderr.is_empty() {
+        stdout.to_string()
+    } else {
+        format!("{stdout}\n{stderr}")
+    })
+}
+
+/// What Claude Code takes from one hook run. Exit 0 gives the JSON reply's fields (for
+/// SessionStart, plain stdout too); exit 2 gives stderr to the agent, refusing the call when
+/// it comes before it (not at session start, where only the user sees it); any other exit,
+/// or a timeout, reaches only the user.
+fn read_reply(event: Event, run: &HookRun) -> Reply {
+    let mut reply = Reply::default();
+    match (run.exit, event) {
+        (Some(2), Event::PreToolUse) => reply.deny = Some(run.stderr.clone()),
+        (Some(2), Event::PostToolUse | Event::PostToolUseFailure) => {
+            reply.context.push(run.stderr.clone());
+        }
+        (Some(0), _) => {
+            let text = run.stdout.trim();
+            let json = match serde_json::from_str::<serde_json::Value>(text) {
+                Ok(json) if json.is_object() => json,
+                _ => {
+                    if matches!(event, Event::SessionStart) && !text.is_empty() {
+                        reply.context.push(text.to_string());
+                    }
+                    return reply;
+                }
+            };
+            let specific = &json["hookSpecificOutput"];
+            if let Some(extra) = specific["additionalContext"].as_str() {
+                reply.context.push(extra.to_string());
+            }
+            match event {
+                Event::PreToolUse if specific["permissionDecision"] == "deny" => {
+                    let reason = specific["permissionDecisionReason"].as_str();
+                    reply.deny = Some(reason.unwrap_or_default().to_string());
+                }
+                Event::PreToolUse => {
+                    reply.command = specific["updatedInput"]["command"]
+                        .as_str()
+                        .map(str::to_string);
+                }
+                Event::PostToolUse => {
+                    reply.output = bash_output(&specific["updatedToolOutput"]);
+                    if json["decision"] == "block" {
+                        let reason = json["reason"].as_str();
+                        reply.context.push(reason.unwrap_or_default().to_string());
+                    }
+                }
+                _ => {}
+            }
+        }
+        _ => {}
+    }
+    reply
+}
+
+/// Reads a pipe to its end on a thread of its own, so a full pipe cannot stall the child.
+fn drain(mut pipe: impl std::io::Read + Send + 'static) -> std::thread::JoinHandle<String> {
+    std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        let _ = pipe.read_to_end(&mut bytes);
+        String::from_utf8_lossy(&bytes).into_owned()
+    })
+}
+
+/// A tool result with each piece of hook context after it, on a line of its own.
+fn with_context(mut text: String, context: &[String]) -> String {
+    for extra in context {
+        if !text.is_empty() && !text.ends_with('\n') {
+            text.push('\n');
+        }
+        text.push_str(extra);
+    }
+    text
+}
+
+/// One plugin side's session: where its hooks run, and the log of every run.
+struct HookSession<'a> {
+    plugin: &'a Plugin,
+    id: String,
+    home: &'a Path,
+    dir: &'a Path,
+    first: &'a [PathBuf],
+    log: PathBuf,
+}
+
+impl HookSession<'_> {
+    /// Runs `hooks` for `event` in turn, with `fields` added to the common input, and
+    /// merges their replies; a refusal wins, as in Claude Code.
+    fn fire(
+        &self,
+        n: usize,
+        event: Event,
+        hooks: &[Hook],
+        fields: serde_json::Value,
+    ) -> Result<Reply> {
+        let mut input = serde_json::json!({
+            "session_id": self.id,
+            "transcript_path": self.home.join("transcript.jsonl"),
+            "cwd": self.dir,
+            "permission_mode": "default",
+            "hook_event_name": event.name(),
+        });
+        if let (Some(input), serde_json::Value::Object(fields)) = (input.as_object_mut(), fields) {
+            input.extend(fields);
+        }
+        let mut merged = Reply::default();
+        for hook in hooks {
+            let run = self.run(hook, &input)?;
+            let mut log = fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&self.log)?;
+            writeln!(
+                log,
+                "{}",
+                serde_json::json!({
+                    "command": n, "event": event.name(), "hook": hook.command,
+                    "exit": run.exit, "stdout": run.stdout, "stderr": run.stderr,
+                })
+            )?;
+            let reply = read_reply(event, &run);
+            merged.context.extend(reply.context);
+            merged.deny = merged.deny.or(reply.deny);
+            for (kept, new, what) in [
+                (&mut merged.command, reply.command, "rewrote the command"),
+                (&mut merged.output, reply.output, "replaced the output"),
+            ] {
+                if new.is_some() {
+                    ensure!(kept.is_none(), "{}: 2 hooks {what}", event.name());
+                    *kept = new;
+                }
+            }
+        }
+        Ok(merged)
+    }
+
+    /// Runs a hook as Claude Code does: the input as JSON on stdin, in the session's
+    /// directory, with the plugin's placeholders filled in; one still running at its
+    /// timeout is killed and its reply dropped.
+    fn run(&self, hook: &Hook, input: &serde_json::Value) -> Result<HookRun> {
+        let data = self.home.join(".claude/plugins/data").join(&self.id);
+        fs::create_dir_all(&data)?;
+        let vars = [
+            ("CLAUDE_PLUGIN_ROOT", self.plugin.root.as_path()),
+            ("CLAUDE_PLUGIN_DATA", data.as_path()),
+            ("CLAUDE_PROJECT_DIR", self.dir),
+        ];
+        let fill = |text: &str| {
+            vars.iter().fold(text.to_string(), |text, (var, value)| {
+                text.replace(&format!("${{{var}}}"), &value.to_string_lossy())
+            })
+        };
+        let mut cmd = match &hook.args {
+            Some(args) => {
+                // nosemgrep: dynamic-command-execution -- a benchmark, not rtk: runs a hook of the plugin under test (--claude-plugin)
+                let mut cmd = Command::new(fill(&hook.command));
+                cmd.args(args.iter().map(|arg| fill(arg)));
+                cmd
+            }
+            None => {
+                // nosemgrep: interpreter-execution -- a benchmark, not rtk: runs a shell-form hook of the plugin under test (--claude-plugin)
+                let mut cmd = Command::new("sh");
+                cmd.arg("-c").arg(fill(&hook.command));
+                cmd
+            }
+        };
+        cmd.current_dir(self.dir)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        side_env(&mut cmd, self.home, self.first)?;
+        for (var, value) in vars {
+            cmd.env(var, value);
+        }
+        let mut child = cmd
+            .spawn()
+            .with_context(|| format!("starting hook {}", hook.command))?;
+        let mut stdin = child.stdin.take().context("hook stdin")?;
+        let text = input.to_string();
+        // A hook may exit without reading its input, so a failed write is no error.
+        let writer = std::thread::spawn(move || stdin.write_all(text.as_bytes()));
+        let stdout = drain(child.stdout.take().context("hook stdout")?);
+        let stderr = drain(child.stderr.take().context("hook stderr")?);
+        let deadline = Instant::now() + hook.timeout;
+        loop {
+            if let Some(status) = child.try_wait()? {
+                let _ = writer.join();
+                return Ok(HookRun {
+                    exit: status.code(),
+                    stdout: stdout.join().unwrap_or_default(),
+                    stderr: stderr.join().unwrap_or_default(),
+                });
+            }
+            if Instant::now() >= deadline {
+                child.kill()?;
+                child.wait()?;
+                eprintln!("hook {} timed out after {:?}", hook.command, hook.timeout);
+                return Ok(HookRun {
+                    exit: None,
+                    stdout: String::new(),
+                    stderr: format!("timed out after {:?}", hook.timeout),
+                });
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
     }
 }
 
@@ -518,12 +907,53 @@ impl Layout {
     fn shim(&self, side: &Side) -> PathBuf {
         self.out.join("shims").join(slug(&side.label))
     }
+    /// A plugin side's session, in `dir` with `first` ahead on PATH.
+    fn session<'a>(
+        &self,
+        side: &Side,
+        plugin: &'a Plugin,
+        home: &'a Path,
+        dir: &'a Path,
+        first: &'a [PathBuf],
+    ) -> HookSession<'a> {
+        HookSession {
+            plugin,
+            id: format!("output-tokens-{}", slug(&side.label)),
+            home,
+            dir,
+            first,
+            log: self
+                .out
+                .join("hooks")
+                .join(format!("{}.jsonl", slug(&side.label))),
+        }
+    }
+}
+
+/// What the agent reads once a plugin side's SessionStart hooks have run.
+fn start_session(
+    side: &Side,
+    plugin: &Plugin,
+    layout: &Layout,
+    dir: &Path,
+    first: &[PathBuf],
+) -> Result<String> {
+    let home = layout.home(side);
+    fs::write(home.join("transcript.jsonl"), "")?;
+    let session = layout.session(side, plugin, &home, dir, first);
+    let reply = session.fire(
+        0,
+        Event::SessionStart,
+        &plugin.session_start,
+        serde_json::json!({ "source": "startup" }),
+    )?;
+    Ok(with_context(String::new(), &reply.context))
 }
 
 fn run_side(
     side: &Side,
     layout: &Layout,
-    command: &CorpusCommand,
+    (n, command): (usize, &CorpusCommand),
     dir: &Path,
     repo_first: &[PathBuf],
     raw: &Outcome,
@@ -589,6 +1019,66 @@ fn run_side(
                 rewritten: None,
             })
         }
+        Kind::Plugin(plugin) => {
+            let session = layout.session(side, plugin, &home, dir, repo_first);
+            let mut input = serde_json::json!({ "command": command.run });
+            if let Some(question) = &command.question {
+                input["description"] = question.as_str().into();
+            }
+            let tool = |input: &serde_json::Value| {
+                serde_json::json!({
+                    "tool_name": "Bash",
+                    "tool_input": input,
+                    "tool_use_id": format!("toolu_{:03}", n + 1),
+                })
+            };
+            let pre = session.fire(n + 1, Event::PreToolUse, &plugin.pre, tool(&input))?;
+            let mut context = pre.context;
+            if let Some(reason) = pre.deny {
+                // The command never runs, so there is no exit code.
+                return Ok(Outcome {
+                    text: with_context(reason, &context),
+                    exit: None,
+                    rewritten: None,
+                });
+            }
+            let outcome = match pre.command {
+                Some(rewritten) => {
+                    before(repo_first)?;
+                    input["command"] = rewritten.as_str().into();
+                    let mut outcome = run_shell(&rewritten, dir, &home, repo_first)?;
+                    outcome.rewritten = Some(rewritten);
+                    outcome
+                }
+                None => Outcome {
+                    text: raw.text.clone(),
+                    exit: raw.exit,
+                    rewritten: None,
+                },
+            };
+            let mut fields = tool(&input);
+            // shortcut: every non-zero exit counts as a failed call. Claude Code also lets
+            // exit 1 pass as success from grep, rg, find, diff, test and `git diff`; no
+            // corpus command exits 1 from those, and a new one would need that rule here.
+            let after = if outcome.exit == Some(0) {
+                fields["tool_response"] = serde_json::json!({
+                    "stdout": outcome.text, "stderr": "", "interrupted": false, "isImage": false,
+                });
+                session.fire(n + 1, Event::PostToolUse, &plugin.post, fields)?
+            } else {
+                // A failed call shows the agent its error, and these hooks can only add to it.
+                fields["error"] =
+                    format!("Exit code {}\n{}", exit_text(outcome.exit), outcome.text).into();
+                fields["is_interrupt"] = false.into();
+                session.fire(n + 1, Event::PostToolUseFailure, &plugin.failure, fields)?
+            };
+            context.extend(after.context);
+            Ok(Outcome {
+                text: with_context(after.output.unwrap_or(outcome.text), &context),
+                exit: outcome.exit,
+                rewritten: outcome.rewritten,
+            })
+        }
     }
 }
 
@@ -600,8 +1090,9 @@ fn csv_field(field: &str) -> String {
     }
 }
 
+/// An exit code, or 'none' for a command killed by a signal or refused by a hook.
 fn exit_text(exit: Option<i32>) -> String {
-    exit.map_or_else(|| "signal".to_string(), |code| code.to_string())
+    exit.map_or_else(|| "none".to_string(), |code| code.to_string())
 }
 
 fn results_csv(rows: &[Row], corpus: &Corpus, sides: &[Side]) -> String {
@@ -637,7 +1128,15 @@ fn markdown_cell(text: &str) -> String {
     text.replace('|', "\\|").replace('`', "'")
 }
 
-fn summary_md(rows: &[Row], corpus: &Corpus, sides: &[Side], versions: &[String]) -> String {
+/// `versions` and `session_start` (the tokens a plugin side's SessionStart hooks give the
+/// agent once) hold one entry per side.
+fn summary_md(
+    rows: &[Row],
+    corpus: &Corpus,
+    sides: &[Side],
+    versions: &[String],
+    session_start: &[usize],
+) -> String {
     let cell = |command: usize, side: usize| {
         rows.iter()
             .find(|r| r.command == command && r.side == side)
@@ -647,6 +1146,16 @@ fn summary_md(rows: &[Row], corpus: &Corpus, sides: &[Side], versions: &[String]
     for (side, version) in sides.iter().zip(versions) {
         if !version.is_empty() {
             let _ = writeln!(md, "- {}: `{}`", side.label, markdown_cell(version));
+        }
+    }
+    for (side, tokens) in sides.iter().zip(session_start) {
+        if matches!(side.kind, Kind::Plugin(_)) {
+            let _ = writeln!(
+                md,
+                "- {}: its SessionStart hooks give the agent {tokens} tokens once a session, \
+                 not counted below",
+                markdown_cell(&side.label)
+            );
         }
     }
     md.push_str("\n| # | Repository | Command |");
@@ -691,7 +1200,7 @@ fn summary_md(rows: &[Row], corpus: &Corpus, sides: &[Side], versions: &[String]
             .filter(|r| r.exit != cell(r.command, 0).exit)
             .count();
         let rewritten = match side.kind {
-            Kind::Rtk(_) => side_rows
+            Kind::Rtk(_) | Kind::Plugin(_) => side_rows
                 .iter()
                 .filter(|r| r.rewritten.is_some())
                 .count()
@@ -839,16 +1348,34 @@ fn main() -> Result<()> {
         eprintln!("checking out {} at {}", repo.name, repo.rev);
         dirs.push(checkout(repo, &work, &setup_home)?);
     }
+    fs::create_dir_all(layout.out.join("hooks"))?;
+    let repo_of = |command: &CorpusCommand| {
+        corpus
+            .repo
+            .iter()
+            .position(|r| r.name == command.repo)
+            .expect("validated")
+    };
+    // A plugin side's session starts in the first command's repository.
+    let mut session_start = Vec::new();
+    for side in &sides {
+        let Kind::Plugin(plugin) = &side.kind else {
+            session_start.push(0);
+            continue;
+        };
+        let index = corpus.command.first().map_or(0, repo_of);
+        let first = repo_path(&dirs[index], &corpus.repo[index]);
+        let text = start_session(side, plugin, &layout, &dirs[index], &first)?;
+        let file = format!("000-{}-session-start.txt", slug(&side.label));
+        fs::write(layout.out.join("outputs").join(file), &text)?;
+        session_start.push(count_tokens(&text));
+    }
 
     let mut rows = Vec::new();
     // Per command, how many facts its `keep` names.
     let mut facts_of = Vec::new();
     for (n, command) in corpus.command.iter().enumerate() {
-        let index = corpus
-            .repo
-            .iter()
-            .position(|r| r.name == command.repo)
-            .expect("validated");
+        let index = repo_of(command);
         let (repo, dir) = (&corpus.repo[index], &dirs[index]);
         let first = repo_path(dir, repo);
         eprintln!(
@@ -869,7 +1396,7 @@ fn main() -> Result<()> {
         };
         let mut outcomes = Vec::with_capacity(sides.len());
         for side in &sides[1..] {
-            outcomes.push(run_side(side, &layout, command, dir, &first, &raw)?);
+            outcomes.push(run_side(side, &layout, (n, command), dir, &first, &raw)?);
         }
         outcomes.insert(0, raw);
         for (index, outcome) in outcomes.into_iter().enumerate() {
@@ -896,7 +1423,7 @@ fn main() -> Result<()> {
         layout.out.join("results.csv"),
         results_csv(&rows, &corpus, &sides),
     )?;
-    let summary = summary_md(&rows, &corpus, &sides, &versions);
+    let summary = summary_md(&rows, &corpus, &sides, &versions, &session_start);
     fs::write(layout.out.join("summary.md"), &summary)?;
     print!("{summary}");
     Ok(())
@@ -1023,6 +1550,12 @@ mod tests {
         assert!(names_a_recovery(
             "diffstat only. Full patch: git show -p <rev>"
         ));
+        assert!(names_a_recovery(
+            "ctx_search({queries:[\"q\"], source:\"s1\"}) searches the whole output"
+        ));
+        assert!(names_a_recovery(
+            "[token-optimizer: 4 KB output compacted; full output: Read /h/.t/o.log]"
+        ));
         assert!(!names_a_recovery("... more matches"));
     }
 
@@ -1078,6 +1611,151 @@ mod tests {
         assert_eq!(chisle_reply(reply, "raw").unwrap(), "cut");
         assert!(chisle_reply(r#"{"other":1}"#, "raw").is_err());
         assert!(chisle_reply("not json", "raw").is_err());
+    }
+
+    #[test]
+    fn matchers_follow_claude_codes_rules() {
+        for all in [None, Some(""), Some("*")] {
+            assert!(matcher_selects(all, "Bash").unwrap());
+        }
+        assert!(matcher_selects(Some("Bash"), "Bash").unwrap());
+        assert!(matcher_selects(Some("Read|Bash"), "Bash").unwrap());
+        assert!(!matcher_selects(Some("Bash2"), "Bash").unwrap());
+        // Only letters, digits, `_` and `|`: exact names, so no prefix matches.
+        assert!(!matcher_selects(Some("mcp__memory"), "mcp__memory__read").unwrap());
+        assert!(matcher_selects(Some("^(Bash|Read)$"), "Bash").unwrap());
+        assert!(matcher_selects(Some("Edit|Ba.h"), "Bash").unwrap());
+        assert!(!matcher_selects(Some("^Notebook"), "Bash").unwrap());
+        assert!(matcher_selects(Some("("), "Bash").is_err());
+    }
+
+    fn run(exit: Option<i32>, stdout: &str, stderr: &str) -> HookRun {
+        HookRun {
+            exit,
+            stdout: stdout.into(),
+            stderr: stderr.into(),
+        }
+    }
+
+    #[test]
+    fn hook_replies_are_read_as_claude_code_reads_them() {
+        let pre = |r: &HookRun| read_reply(Event::PreToolUse, r);
+        let post = |r: &HookRun| read_reply(Event::PostToolUse, r);
+        // Exit 2 refuses before the call and adds stderr after it; at session start
+        // only the user sees it. Other exits and timeouts reach only the user.
+        assert_eq!(pre(&run(Some(2), "", "no")).deny.as_deref(), Some("no"));
+        assert_eq!(post(&run(Some(2), "", "late")).context, ["late"]);
+        assert!(
+            read_reply(Event::SessionStart, &run(Some(2), "", "x"))
+                .context
+                .is_empty()
+        );
+        for quiet in [run(Some(1), "{}", "x"), run(None, "", "")] {
+            let reply = pre(&quiet);
+            assert!(reply.deny.is_none() && reply.context.is_empty());
+        }
+        // Plain stdout counts at session start only.
+        assert_eq!(
+            read_reply(Event::SessionStart, &run(Some(0), "hi\n", "")).context,
+            ["hi"]
+        );
+        assert!(pre(&run(Some(0), "hi", "")).context.is_empty());
+
+        let deny = r#"{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"use rg","updatedInput":{"command":"x"}}}"#;
+        let reply = pre(&run(Some(0), deny, ""));
+        assert_eq!(
+            (reply.deny.as_deref(), reply.command),
+            (Some("use rg"), None)
+        );
+        let rewrite = r#"{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","updatedInput":{"command":"cat o"},"additionalContext":"outline"}}"#;
+        let reply = pre(&run(Some(0), rewrite, ""));
+        assert_eq!(reply.command.as_deref(), Some("cat o"));
+        assert_eq!(reply.context, ["outline"]);
+
+        let replace = r#"{"decision":"block","reason":"why","hookSpecificOutput":{"hookEventName":"PostToolUse","updatedToolOutput":{"stdout":"cut","stderr":"","interrupted":false,"isImage":false}}}"#;
+        let reply = post(&run(Some(0), replace, ""));
+        assert_eq!(reply.output.as_deref(), Some("cut"));
+        assert_eq!(reply.context, ["why"]);
+        // A failure hook cannot replace what the agent reads.
+        assert!(
+            read_reply(Event::PostToolUseFailure, &run(Some(0), replace, ""))
+                .output
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn a_replacement_needs_bashs_output_shape() {
+        let shape = |v: serde_json::Value| bash_output(&v);
+        assert_eq!(
+            shape(serde_json::json!({"stdout": "a", "stderr": "", "interrupted": false})),
+            Some("a".into())
+        );
+        assert_eq!(
+            shape(
+                serde_json::json!({"stdout": "a", "stderr": "b", "interrupted": false, "isImage": false})
+            ),
+            Some("a\nb".into())
+        );
+        assert_eq!(
+            shape(serde_json::json!({"stdout": "a", "interrupted": false})),
+            None
+        );
+        assert_eq!(
+            shape(serde_json::json!({"stdout": "a", "stderr": "", "interrupted": "no"})),
+            None
+        );
+        assert_eq!(
+            shape(
+                serde_json::json!({"stdout": "a", "stderr": "", "interrupted": false, "isImage": null})
+            ),
+            None
+        );
+        assert_eq!(shape(serde_json::json!("a")), None);
+    }
+
+    #[test]
+    fn hook_context_follows_the_result_on_lines_of_its_own() {
+        assert_eq!(
+            with_context("out".into(), &["a".into(), "b".into()]),
+            "out\na\nb"
+        );
+        assert_eq!(with_context("out\n".into(), &["a".into()]), "out\na");
+        assert_eq!(with_context(String::new(), &["a".into()]), "a");
+    }
+
+    #[test]
+    fn a_plugin_names_its_hooks_file_or_uses_the_default() {
+        let root =
+            std::env::temp_dir().join(format!("output-tokens-plugin-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join(".claude-plugin")).unwrap();
+        fs::create_dir_all(root.join("hooks")).unwrap();
+        let hooks = r#"{"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "a", "timeout": 5}]}],
+            "PostToolUse": [{"matcher": "Read", "hooks": [{"type": "command", "command": "b"}]}]}}"#;
+        fs::write(root.join("hooks/hooks.json"), hooks).unwrap();
+        fs::write(root.join(".claude-plugin/plugin.json"), "{}").unwrap();
+        let plugin = load_plugin(root.clone()).unwrap();
+        assert_eq!(plugin.pre.len(), 1);
+        assert_eq!(plugin.pre[0].timeout, Duration::from_secs(5));
+        assert!(plugin.post.is_empty() && plugin.session_start.is_empty());
+        fs::write(
+            root.join(".claude-plugin/plugin.json"),
+            r#"{"hooks": "./hooks/other.json"}"#,
+        )
+        .unwrap();
+        assert!(
+            load_plugin(root.clone()).is_err(),
+            "the named file is missing"
+        );
+        fs::write(root.join("hooks/other.json"), r#"{"hooks": {}}"#).unwrap();
+        assert!(load_plugin(root.clone()).unwrap().pre.is_empty());
+        fs::write(root.join(".claude-plugin/plugin.json"), r#"{"hooks": {}}"#).unwrap();
+        assert!(
+            load_plugin(root.clone()).is_err(),
+            "inline hooks are refused"
+        );
+        fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
