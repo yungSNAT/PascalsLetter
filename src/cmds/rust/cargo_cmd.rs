@@ -97,6 +97,11 @@ impl BlockHandler for CargoBuildHandler {
         !(line.trim().is_empty() && block.len() > 3)
     }
 
+    fn keep_block(&mut self, block: &mut Vec<String>) -> bool {
+        shorten_manifest_warning(block);
+        true
+    }
+
     fn format_summary(&self, exit_code: i32, raw: &str) -> Option<String> {
         if self.error_count == 0 && self.warnings == 0 && exit_code == 0 {
             let summary =
@@ -144,6 +149,26 @@ fn is_manifest_warning<'a>(mut block: impl Iterator<Item = &'a str>) -> bool {
             .and_then(|location| location.rsplitn(3, ':').nth(2))
             .is_some_and(|path| path.ends_with("Cargo.toml"))
     })
+}
+
+/// Drops a manifest lint's source snippet. Its headline, `-->` location, notes and
+/// help say what to change and where, and cargo repeats the lint on every
+/// command, so the snippet costs the most tokens for the least news.
+fn shorten_manifest_warning(block: &mut Vec<String>) {
+    if is_manifest_warning(block.iter().map(String::as_str)) {
+        block.retain(|line| !is_snippet_line(line));
+    }
+}
+
+/// A diagnostic gutter line with no label of its own: a numbered source line, or
+/// a `|` line holding only markers such as `^^^^` or `----`.
+fn is_snippet_line(line: &str) -> bool {
+    let rest = line.trim_start();
+    let unnumbered = rest.trim_start_matches(|c: char| c.is_ascii_digit());
+    let Some(after) = unnumbered.trim_start().strip_prefix('|') else {
+        return false;
+    };
+    unnumbered.len() != rest.len() || !after.chars().any(char::is_alphanumeric)
 }
 
 struct CargoTestHandler {
@@ -301,7 +326,7 @@ impl BlockHandler for CargoTestHandler {
         false
     }
 
-    fn keep_block(&mut self, block: &[String]) -> bool {
+    fn keep_block(&mut self, block: &mut Vec<String>) -> bool {
         let warning = block
             .first()
             .is_some_and(|line| line.starts_with("warning:") || line.starts_with("warning["));
@@ -1111,6 +1136,7 @@ fn filter_cargo_build_labeled(output: &str, label: &'static str, exit_code: i32)
         blocks.push(current_block);
     }
 
+    blocks.iter_mut().for_each(shorten_manifest_warning);
     let json = extract_json_diagnostics(output);
     let (errors, warnings) = merge_diag_counts(handler.error_count, handler.warnings, &json);
 
@@ -2206,6 +2232,89 @@ test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
             "got: {}",
             summary
         );
+    }
+
+    /// `cargo build` on ripgrep 14.1.1 with cargo 1.100: a manifest lint, then a
+    /// compiler warning.
+    const BUILD_WITH_MANIFEST_LINT: &str = r#"warning: `package.homepage` is redundant with `package.repository`
+  --> crates/grep/Cargo.toml:9:12
+   |
+ 9 | homepage = "https://github.com/BurntSushi/ripgrep/tree/master/crates/grep"
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10 | repository = "https://github.com/BurntSushi/ripgrep/tree/master/crates/grep"
+   |              ---------------------------------------------------------------
+   |
+   = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `grep` (manifest) generated 1 warning
+   Compiling failproj v0.1.0
+warning: function `unused_helper` is never used
+ --> src/lib.rs:9:4
+  |
+9 | fn unused_helper() -> i32 { 42 }
+  |    ^^^^^^^^^^^^^
+  |
+  = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `failproj` (lib) generated 1 warning
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.00s
+"#;
+
+    /// A manifest lint keeps what to change and where; the compiler warning keeps
+    /// its snippet.
+    fn assert_manifest_lint_shortened(out: &str) {
+        for kept in [
+            "warning: `package.homepage` is redundant with `package.repository`",
+            "--> crates/grep/Cargo.toml:9:12",
+            "= note: `cargo::redundant_homepage` is set to `warn` by default",
+            "help: consider removing `package.homepage`",
+            "9 | fn unused_helper() -> i32 { 42 }",
+        ] {
+            assert!(out.contains(kept), "lost {kept:?} from: {out}");
+        }
+        assert!(!out.contains("homepage = "), "got: {out}");
+        assert!(!out.contains("repository = "), "got: {out}");
+    }
+
+    #[test]
+    fn test_streamed_cargo_build_shortens_a_manifest_lint() {
+        use crate::core::stream::{BlockStreamFilter, StreamFilter};
+        let mut filter = BlockStreamFilter::new(CargoBuildHandler::with_label("build"));
+        let mut emitted = String::new();
+        for line in BUILD_WITH_MANIFEST_LINT.lines() {
+            if let Some(out) = filter.feed_line(line) {
+                emitted.push_str(&out);
+            }
+        }
+        emitted.push_str(&filter.flush());
+        assert_manifest_lint_shortened(&emitted);
+    }
+
+    #[test]
+    fn test_filter_cargo_build_shortens_a_manifest_lint() {
+        assert_manifest_lint_shortened(&filter_cargo_build(BUILD_WITH_MANIFEST_LINT));
+    }
+
+    #[test]
+    fn test_a_snippet_line_is_a_gutter_line_without_a_label() {
+        for line in [
+            "   |",
+            " 9 | homepage = \"x\"",
+            "10 | repository = \"x\"",
+            "   |            ^^^^^^",
+            "   |              ------",
+        ] {
+            assert!(is_snippet_line(line), "{line:?}");
+        }
+        for line in [
+            "   |            ^^^^^^ this is redundant",
+            "  --> crates/grep/Cargo.toml:9:12",
+            "   = note: `cargo::redundant_homepage` is set to `warn` by default",
+            "help: consider removing `package.homepage`",
+            "warning: x | y",
+        ] {
+            assert!(!is_snippet_line(line), "{line:?}");
+        }
     }
 
     #[test]

@@ -100,8 +100,9 @@ pub trait BlockHandler {
     fn should_skip(&mut self, line: &str) -> bool;
     fn is_block_start(&mut self, line: &str) -> bool;
     fn is_block_continuation(&mut self, line: &str, block: &[String]) -> bool;
-    /// Whether to emit a finished block; a block is judged whole once it ends.
-    fn keep_block(&mut self, _block: &[String]) -> bool {
+    /// Whether to emit a finished block; a block is judged whole once it ends,
+    /// and the handler may shorten it first.
+    fn keep_block(&mut self, _block: &mut Vec<String>) -> bool {
         true
     }
     fn format_summary(&self, exit_code: i32, raw: &str) -> Option<String>;
@@ -125,8 +126,8 @@ impl<H: BlockHandler> BlockStreamFilter<H> {
     }
 
     fn emit_block(&mut self) -> Option<String> {
-        let block = std::mem::take(&mut self.current_block);
-        if block.is_empty() || !self.handler.keep_block(&block) {
+        let mut block = std::mem::take(&mut self.current_block);
+        if block.is_empty() || !self.handler.keep_block(&mut block) {
             return None;
         }
         let block = block.join("\n");

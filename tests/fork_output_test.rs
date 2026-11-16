@@ -147,6 +147,49 @@ exit 101",
 
 #[cfg(unix)]
 #[test]
+fn cargo_build_keeps_a_manifest_lints_location_not_its_snippet() {
+    let bin = common::tempdir();
+    fake_tool(
+        bin.path(),
+        "cargo",
+        r#"cat >&2 <<'EOF'
+warning: `package.homepage` is redundant with `package.repository`
+  --> crates/grep/Cargo.toml:9:12
+   |
+ 9 | homepage = "https://github.com/BurntSushi/ripgrep/tree/master/crates/grep"
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10 | repository = "https://github.com/BurntSushi/ripgrep/tree/master/crates/grep"
+   |              ---------------------------------------------------------------
+   |
+   = note: `cargo::redundant_homepage` is set to `warn` by default
+help: consider removing `package.homepage`
+warning: `grep` (manifest) generated 1 warning
+   Compiling ripgrep v14.1.1
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.00s
+EOF"#,
+    );
+    let out = common::rtk_command()
+        .args(["cargo", "build"])
+        .env("PATH", format!("{}:/usr/bin:/bin", bin.path().display()))
+        .output()
+        .expect("run rtk cargo build");
+    let shown = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    assert!(shown.contains("--> crates/grep/Cargo.toml:9:12"), "{shown}");
+    assert!(shown.contains("`cargo::redundant_homepage`"), "{shown}");
+    assert!(
+        shown.contains("help: consider removing `package.homepage`"),
+        "{shown}"
+    );
+    assert!(!shown.contains("homepage = "), "{shown}");
+}
+
+#[cfg(unix)]
+#[test]
 fn cc_economics_npx_fallback_names_an_exact_ccusage_release() {
     let bin = common::tempdir();
     let calls = bin.path().join("calls");

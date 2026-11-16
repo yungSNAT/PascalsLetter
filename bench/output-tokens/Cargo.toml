@@ -10,6 +10,8 @@ edition = "2024"
 rust-version = "1.91"
 license = "Apache-2.0"
 publish = false
+# src/bin/published.rs repeats the published run; plain `cargo run` measures.
+default-run = "output-tokens"
 
 [dependencies]
 anyhow = "1"

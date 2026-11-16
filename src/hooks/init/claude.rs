@@ -397,7 +397,7 @@ fn patch_settings_json_command(
     // Backup original
     if settings_path.exists() {
         let backup_path = settings_path.with_extension("json.bak");
-        fs::copy(&settings_path, &backup_path)
+        write_backup(&settings_path, &backup_path)
             .with_context(|| format!("Failed to backup to {}", backup_path.display()))?;
         if verbose > 0 {
             eprintln!("Backup: {}", backup_path.display());
@@ -841,7 +841,7 @@ fn remove_legacy_settings_entries(ctx: InitContext) -> Result<()> {
 
     // Backup before modifying
     let backup_path = settings_path.with_extension("json.bak");
-    fs::copy(&settings_path, &backup_path)
+    write_backup(&settings_path, &backup_path)
         .with_context(|| format!("Failed to backup to {}", backup_path.display()))?;
 
     let serialized =
@@ -1812,6 +1812,66 @@ mod tests {
                 result.is_ok(),
                 "BOM-only settings.json must be treated as empty: {:?}",
                 result.err()
+            );
+        });
+    }
+
+    /// A link already at `settings.json.bak` is replaced when the hook is installed, never
+    /// written through.
+    #[test]
+    fn test_patch_settings_json_backup_replaces_a_hard_link() {
+        let tmp = test_isolation::tempdir();
+        with_claude_dir_override(&tmp, |claude_dir| {
+            let settings = claude_dir.join(SETTINGS_JSON);
+            let unrelated = tmp.path().join("unrelated.txt");
+            fs::write(&settings, "{}").unwrap();
+            fs::write(&unrelated, "keep this file").unwrap();
+            fs::hard_link(&unrelated, settings.with_extension("json.bak")).unwrap();
+
+            patch_settings_json_command(
+                CLAUDE_HOOK_COMMAND,
+                PatchMode::Auto,
+                false,
+                InitContext::default(),
+                HookInstallScope::UserGlobal,
+            )
+            .unwrap();
+
+            assert_eq!(fs::read_to_string(&unrelated).unwrap(), "keep this file");
+            assert_eq!(
+                fs::read_to_string(settings.with_extension("json.bak")).unwrap(),
+                "{}"
+            );
+        });
+    }
+
+    /// The same when a legacy `rtk-rewrite.sh` entry is removed.
+    #[test]
+    fn test_remove_legacy_settings_backup_replaces_a_hard_link() {
+        let tmp = test_isolation::tempdir();
+        with_claude_dir_override(&tmp, |claude_dir| {
+            let settings = claude_dir.join(SETTINGS_JSON);
+            let unrelated = tmp.path().join("unrelated.txt");
+            let legacy = serde_json::json!({ "hooks": { PRE_TOOL_USE_KEY: [{
+                "matcher": "Bash",
+                "hooks": [{ "type": "command", "command": "/home/user/.claude/hooks/rtk-rewrite.sh" }]
+            }] } })
+            .to_string();
+            fs::write(&settings, &legacy).unwrap();
+            fs::write(&unrelated, "keep this file").unwrap();
+            fs::hard_link(&unrelated, settings.with_extension("json.bak")).unwrap();
+
+            remove_legacy_settings_entries(InitContext::default()).unwrap();
+
+            assert_eq!(fs::read_to_string(&unrelated).unwrap(), "keep this file");
+            assert_eq!(
+                fs::read_to_string(settings.with_extension("json.bak")).unwrap(),
+                legacy
+            );
+            assert!(
+                !fs::read_to_string(&settings)
+                    .unwrap()
+                    .contains("rtk-rewrite.sh")
             );
         });
     }
