@@ -397,7 +397,7 @@ fn patch_settings_json_command(
     // Backup original
     if settings_path.exists() {
         let backup_path = settings_path.with_extension("json.bak");
-        fs::copy(&settings_path, &backup_path)
+        write_backup(&settings_path, &backup_path)
             .with_context(|| format!("Failed to backup to {}", backup_path.display()))?;
         if verbose > 0 {
             eprintln!("Backup: {}", backup_path.display());
@@ -841,7 +841,7 @@ fn remove_legacy_settings_entries(ctx: InitContext) -> Result<()> {
 
     // Backup before modifying
     let backup_path = settings_path.with_extension("json.bak");
-    fs::copy(&settings_path, &backup_path)
+    write_backup(&settings_path, &backup_path)
         .with_context(|| format!("Failed to backup to {}", backup_path.display()))?;
 
     let serialized =

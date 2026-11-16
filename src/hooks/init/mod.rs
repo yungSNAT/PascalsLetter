@@ -826,11 +826,25 @@ pub(super) fn update_json_file(
     Ok(())
 }
 
+/// Copy `path` to `backup_path` through a new temporary file renamed over the backup entry,
+/// keeping `path`'s permissions. A symlink or hard link already at `backup_path` is replaced,
+/// never written through, so it cannot carry the copy onto an unrelated file.
+pub(super) fn write_backup(path: &Path, backup_path: &Path) -> Result<()> {
+    let mut original = fs::File::open(path)?;
+    let parent = backup_path.parent().unwrap_or_else(|| Path::new("."));
+    let mut backup = NamedTempFile::new_in(parent)?;
+    std::io::copy(&mut original, &mut backup)?;
+    backup
+        .persist(backup_path)?
+        .set_permissions(original.metadata()?.permissions())?;
+    Ok(())
+}
+
 /// Back up an existing JSON file before replacing it atomically.
 fn backup_and_atomic_write(path: &Path, content: &str) -> Result<Option<PathBuf>> {
     let backup_path = if path.exists() {
         let backup_path = backup_path_for(path);
-        fs::copy(path, &backup_path).with_context(|| {
+        write_backup(path, &backup_path).with_context(|| {
             format!(
                 "Failed to backup {} to {}",
                 path.display(),

@@ -570,9 +570,9 @@ pub(super) fn run_codex_mode(global: bool, ctx: InitContext) -> Result<()> {
         // text, where `.codex/hooks.json` is a hook that runs shell commands, and RTK creates
         // `.codex` itself rather than following something the user put there.
         //
-        // Its backup sibling is vouched for as well: `fs::copy` follows a symlink at the
-        // destination, so a planted `hooks.json.bak` carried the existing hooks.json out of
-        // the project even when `.codex` itself was a real directory.
+        // Its backup sibling is vouched for as well: a planted `hooks.json.bak` link that
+        // leads out of the project is refused outright, even when `.codex` itself is a real
+        // directory. (The backup write replaces such a link rather than following it.)
         ensure_inside_project(&paths.2)?;
         ensure_inside_project(&backup_path_for(&paths.2))?;
         paths
@@ -1641,8 +1641,8 @@ mod tests {
         );
     }
 
-    /// `fs::copy` follows a symlink at the destination, so the backup sibling carries the
-    /// existing hooks out of the project while `.codex` itself is an ordinary directory.
+    /// A backup sibling that links out of the project is refused while `.codex` itself is an
+    /// ordinary directory.
     #[cfg(unix)]
     #[test]
     fn test_the_backup_destination_must_stay_inside_the_project_too() {
@@ -2040,9 +2040,8 @@ mod tests {
         );
     }
 
-    /// Uninstall rewrites `hooks.json` through [`backup_and_atomic_write`], whose `fs::copy`
-    /// follows a symlink at the destination, so its backup sibling needs vouching for even
-    /// when `.codex` itself is an ordinary directory.
+    /// Uninstall rewrites `hooks.json` through [`backup_and_atomic_write`], so its backup
+    /// sibling is vouched for even when `.codex` itself is an ordinary directory.
     #[cfg(unix)]
     #[test]
     fn test_uninstall_refuses_a_backup_sibling_that_leaves_the_project() {
@@ -2161,8 +2160,7 @@ mod tests {
         );
     }
 
-    /// The same, for the backup sibling: `fs::copy` follows a symlink at the destination, so
-    /// vouching only for `hooks.json` leaves the existing hooks free to travel.
+    /// The same, for the backup sibling: install vouches for it as well as for `hooks.json`.
     #[cfg(unix)]
     #[test]
     fn test_install_refuses_a_backup_sibling_that_leaves_the_project() {
