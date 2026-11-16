@@ -47,3 +47,20 @@ fn whitespace_bash_does_not_split_at_is_not_rewritten() {
         assert_eq!(rewrite(command), "", "{command:?}");
     }
 }
+
+#[test]
+fn a_line_continuation_inside_a_word_joins_it_as_bash_does() {
+    // bash runs `git status`; splitting at the continuation ran `git sta tus`.
+    assert_eq!(rewrite("git sta\\\ntus"), "rtk git status");
+}
+
+#[test]
+fn a_heredoc_with_a_descriptor_keeps_its_body() {
+    // The body is the data `cat` reads, not commands to rewrite.
+    for command in [
+        "cat 3<<EOF\ngit status && git log\nEOF",
+        "cat 0<<-EOF\ngit status\nEOF",
+    ] {
+        assert_eq!(rewrite(command), "", "{command:?}");
+    }
+}
