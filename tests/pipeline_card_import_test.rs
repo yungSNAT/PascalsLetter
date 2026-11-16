@@ -57,6 +57,13 @@ fn raw_toml_whose_strings_hold_a_fenced_example_installs_whole() {
 #[test]
 fn a_card_with_more_than_one_toml_block_installs_nothing() {
     let root = common::tempdir();
+    let pipelines = root.path().join("config").join("pipelines");
+    std::fs::create_dir_all(&pipelines).unwrap();
+    let base = "[pipeline]
+name = \"base\"
+extends = \"rtk:default\"
+";
+    std::fs::write(pipelines.join("base.toml"), base).unwrap();
     let card = root.path().join("card.md");
     std::fs::write(
         &card,
@@ -73,7 +80,11 @@ fn a_card_with_more_than_one_toml_block_installs_nothing() {
     assert!(!output.status.success(), "{output:?}");
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("multiple TOML blocks"), "{stderr}");
-    assert!(installed(root.path()).is_empty());
+    assert_eq!(installed(root.path()), ["base.toml"]);
+    assert_eq!(
+        std::fs::read_to_string(pipelines.join("base.toml")).unwrap(),
+        base
+    );
 }
 
 /// Shares the active pipeline as a gist with `pipelines` installed. With

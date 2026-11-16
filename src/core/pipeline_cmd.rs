@@ -2296,6 +2296,37 @@ mod tests {
     }
 
     #[test]
+    fn extract_toml_treats_fences_indented_four_spaces_as_code() {
+        let readme = "```toml\na = 1\n```\n\nAnother example:\n\n    ```toml\n    b = 2\n    ```\n";
+        assert_eq!(super::extract_toml(readme).unwrap(), "a = 1\n");
+        let card = "```toml\na = '''\n    ```\n'''\n   ```\nAfterword";
+        assert_eq!(
+            super::extract_toml(card).unwrap(),
+            "a = '''\n    ```\n'''\n"
+        );
+    }
+
+    #[test]
+    fn a_single_source_card_round_trips_toml_holding_a_fenced_example() {
+        let source = "[pipeline]\nname = \"outer\"\n\n[[directive]]\nname = \"examples\"\ntext = '''\n````toml\n[pipeline]\nname = \"inner\"\n````\n'''\n";
+        let card = super::share_card(
+            "outer",
+            &[("user outer.toml".into(), source.into())],
+            &super::CardStats {
+                what: &[],
+                filtering: None,
+                hook: None,
+                hook_slices: &[],
+                tasks: &[],
+                proxy: None,
+            },
+            "1.0.0",
+            "2026-11-17",
+        );
+        assert_eq!(super::extract_toml(&card).unwrap(), source, "{card}");
+    }
+
+    #[test]
     fn multi_source_share_card_explains_the_single_file_install_requirement() {
         let card = super::share_card(
             "merged",
