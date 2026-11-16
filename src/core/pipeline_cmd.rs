@@ -247,10 +247,12 @@ fn extract_toml(raw: &str) -> Result<String> {
     let mut fence = None;
     let mut in_toml = false;
     for line in raw.lines() {
-        let trimmed = line.trim_start();
+        // As in CommonMark, a fence is indented at most 3 spaces; deeper is code.
+        let trimmed = line.trim_start_matches(' ');
+        let can_fence = line.len() - trimmed.len() <= 3;
         if let Some((marker, length)) = fence {
             let closing = trimmed.bytes().take_while(|&byte| byte == marker).count();
-            if closing >= length && trimmed[closing..].trim().is_empty() {
+            if can_fence && closing >= length && trimmed[closing..].trim().is_empty() {
                 fence = None;
                 in_toml = false;
             } else if in_toml {
@@ -262,6 +264,9 @@ fn extract_toml(raw: &str) -> Result<String> {
         let Some(marker @ (b'`' | b'~')) = trimmed.as_bytes().first().copied() else {
             continue;
         };
+        if !can_fence {
+            continue;
+        }
         let length = trimmed.bytes().take_while(|&byte| byte == marker).count();
         if length < 3 {
             continue;
@@ -1701,12 +1706,16 @@ fn share_card(
 
     // ---- the pipeline itself, paste-ready
     for (label, text) in sources {
-        out.push_str(&format!("## {label}\n\n```toml\n"));
+        // A fence longer than any backtick run in the text, so a fenced example
+        // inside a TOML string cannot close it.
+        let longest = text.split(|c| c != '`').map(str::len).max().unwrap_or(0);
+        let fence = "`".repeat(longest.max(2) + 1);
+        out.push_str(&format!("## {label}\n\n{fence}toml\n"));
         out.push_str(text);
         if !text.ends_with('\n') {
             out.push('\n');
         }
-        out.push_str("```\n\n");
+        out.push_str(&format!("{fence}\n\n"));
     }
     out.push_str(&format!(
         "Measured by [rtk](https://github.com/rtk-ai/rtk) v{version} on {date}.\n",
