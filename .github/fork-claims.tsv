@@ -49,6 +49,7 @@ Windows arguments	windows	-	-	# MSYS quoting runs only on Windows; its tests are
 `rtk session`	linux	tests/session_tool_output_test.rs	share_counts_every_tool_in_both_content_forms_and_sessions_without_bash
 `cargo test`	linux	tests/fork_output_test.rs	cargo_test_keeps_compiler_warnings_on_a_passing_run
 `cargo clippy`	linux	tests/fork_output_test.rs	clippy_leaves_out_a_lint_link_its_note_already_names
+`cargo build` and `cargo check`	linux	tests/fork_output_test.rs	cargo_build_keeps_a_manifest_lints_location_not_its_snippet
 Progress output	linux	tests/fork_output_test.rs	a_progress_redraw_reaches_the_filter_as_its_last_state
 `rtk gain`	linux	tests/fork_output_test.rs	gain_counts_an_oversized_row_at_the_cap_and_nets_a_worse_one
 `rtk cc-economics`	linux	tests/fork_output_test.rs	cc_economics_npx_fallback_names_an_exact_ccusage_release
