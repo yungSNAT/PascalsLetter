@@ -97,6 +97,11 @@ impl BlockHandler for CargoBuildHandler {
         !(line.trim().is_empty() && block.len() > 3)
     }
 
+    fn keep_block(&mut self, block: &mut Vec<String>) -> bool {
+        shorten_manifest_warning(block);
+        true
+    }
+
     fn format_summary(&self, exit_code: i32, raw: &str) -> Option<String> {
         if self.error_count == 0 && self.warnings == 0 && exit_code == 0 {
             let summary =
@@ -321,7 +326,7 @@ impl BlockHandler for CargoTestHandler {
         false
     }
 
-    fn keep_block(&mut self, block: &[String]) -> bool {
+    fn keep_block(&mut self, block: &mut Vec<String>) -> bool {
         let warning = block
             .first()
             .is_some_and(|line| line.starts_with("warning:") || line.starts_with("warning["));
@@ -1131,6 +1136,7 @@ fn filter_cargo_build_labeled(output: &str, label: &'static str, exit_code: i32)
         blocks.push(current_block);
     }
 
+    blocks.iter_mut().for_each(shorten_manifest_warning);
     let json = extract_json_diagnostics(output);
     let (errors, warnings) = merge_diag_counts(handler.error_count, handler.warnings, &json);
 
