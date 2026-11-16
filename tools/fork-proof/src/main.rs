@@ -153,7 +153,9 @@ fn run_tests(
         for line in BufReader::new(child.stdout.take().context("cargo's stdout")?).split(b'\n') {
             let line = line?;
             let line = String::from_utf8_lossy(&line);
-            eprintln!("{line}");
+            // One write a line: cargo writes to the same stderr, and `eprintln!`'s
+            // separate writes let its lines land inside ours.
+            std::io::stderr().write_all(format!("{line}\n").as_bytes())?;
             if let Some((test, result)) = result_line(&line) {
                 found.push((target.to_string(), test, result));
             }
