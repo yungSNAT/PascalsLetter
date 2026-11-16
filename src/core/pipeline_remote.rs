@@ -150,7 +150,7 @@ fn read_ledger() -> toml::Table {
 
 /// Merge updates into a ledger entry, keeping keys the update does not name —
 /// an install must not erase the publish record and vice versa.
-fn ledger_upsert(table: &mut toml::Table, name: &str, updates: &[(&str, String)]) {
+fn ledger_upsert(table: &mut toml::Table, name: &str, updates: &[(&str, Option<String>)]) {
     let entry = table
         .entry(name.to_string())
         .or_insert_with(|| toml::Value::Table(toml::Table::new()));
@@ -159,7 +159,11 @@ fn ledger_upsert(table: &mut toml::Table, name: &str, updates: &[(&str, String)]
     }
     if let Some(entry) = entry.as_table_mut() {
         for (key, value) in updates {
-            entry.insert(key.to_string(), toml::Value::String(value.clone()));
+            if let Some(value) = value {
+                entry.insert(key.to_string(), toml::Value::String(value.clone()));
+            } else {
+                entry.remove(*key);
+            }
         }
     }
 }
@@ -167,7 +171,7 @@ fn ledger_upsert(table: &mut toml::Table, name: &str, updates: &[(&str, String)]
 /// Best-effort: the ledger is advisory (it powers the diff/pin display, the
 /// fork offer, and the card's publish CTA), so a failed write warns and
 /// never blocks anything.
-fn ledger_write(name: &str, updates: &[(&str, String)]) {
+fn ledger_write(name: &str, updates: &[(&str, Option<String>)]) {
     let Some(path) = pipeline_config::installs_ledger_path() else {
         return;
     };
@@ -182,20 +186,23 @@ fn ledger_write(name: &str, updates: &[(&str, String)]) {
 }
 
 pub fn record_install(name: &str, source: &str, sha: Option<&str>) {
-    let mut updates = vec![
-        ("source", source.to_string()),
-        ("date", chrono::Local::now().format("%Y-%m-%d").to_string()),
-    ];
-    if let Some(sha) = sha {
-        updates.push(("sha", sha.to_string()));
-    }
-    ledger_write(name, &updates);
+    ledger_write(
+        name,
+        &[
+            ("source", Some(source.to_string())),
+            (
+                "date",
+                Some(chrono::Local::now().format("%Y-%m-%d").to_string()),
+            ),
+            ("sha", sha.map(str::to_string)),
+        ],
+    );
 }
 
 /// Where this pipeline was published, as the install source others run
 /// (`github:owner/repo`, or a gist URL).
 pub fn record_publish(name: &str, install_source: &str) {
-    ledger_write(name, &[("published", install_source.to_string())]);
+    ledger_write(name, &[("published", Some(install_source.to_string()))]);
 }
 
 pub fn published_source(name: &str) -> Option<String> {
@@ -1152,16 +1159,16 @@ use  = ["dedup"]
             &mut table,
             "demo",
             &[
-                ("source", "github:a/b".to_string()),
-                ("sha", "x".to_string()),
+                ("source", Some("github:a/b".to_string())),
+                ("sha", Some("x".to_string())),
             ],
         );
         ledger_upsert(
             &mut table,
             "demo",
-            &[("published", "github:me/rtk-pipeline-demo".to_string())],
+            &[("published", Some("github:me/rtk-pipeline-demo".to_string()))],
         );
-        ledger_upsert(&mut table, "demo", &[("sha", "y".to_string())]);
+        ledger_upsert(&mut table, "demo", &[("sha", Some("y".to_string()))]);
         let entry = table.get("demo").unwrap().as_table().unwrap();
         assert_eq!(entry.get("source").unwrap().as_str(), Some("github:a/b"));
         assert_eq!(entry.get("sha").unwrap().as_str(), Some("y"));
@@ -1169,6 +1176,24 @@ use  = ["dedup"]
             entry.get("published").unwrap().as_str(),
             Some("github:me/rtk-pipeline-demo")
         );
+    }
+
+    #[test]
+    fn an_unpinned_install_drops_the_previous_sources_sha() {
+        let dir = crate::core::test_isolation::tempdir();
+        crate::core::test_isolation::with_root(dir.path(), || {
+            record_install("demo", "github:a/b", Some("x"));
+            record_publish("demo", "github:me/rtk-pipeline-demo");
+            record_install("demo", "https://example.com/demo.toml", None);
+
+            let origin = install_origin("demo").unwrap();
+            assert_eq!(origin.source, "https://example.com/demo.toml");
+            assert_eq!(origin.sha, None, "the URL install has no pin of its own");
+            assert_eq!(
+                published_source("demo").as_deref(),
+                Some("github:me/rtk-pipeline-demo")
+            );
+        });
     }
 
     #[test]
