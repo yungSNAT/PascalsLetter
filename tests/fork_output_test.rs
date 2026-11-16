@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Output PascalsLetter keeps or counts where upstream RTK did not. Each case
-//! goes through the binary, so `scripts/fork-proof.sh` can run it against
+//! goes through the binary, so `tools/fork-proof` can run it against
 //! upstream RTK too.
 
 use std::io::Write;

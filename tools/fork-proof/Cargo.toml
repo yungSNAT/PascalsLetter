@@ -1,0 +1,15 @@
+# Proves README's 'What PascalsLetter changes' rows against upstream RTK (see
+# src/main.rs). Its own workspace root, like bench/output-tokens, so it stays
+# out of the CLI's dependency graph and lockfile.
+[workspace]
+
+[package]
+name = "fork-proof"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.91"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+anyhow = "1"

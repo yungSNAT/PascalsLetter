@@ -1,5 +1,5 @@
 # Proof of each row of README's 'What PascalsLetter changes' table, run by
-# scripts/fork-proof.sh. One line per proving test, tab-separated:
+# tools/fork-proof. One line per proving test, tab-separated:
 #   area      the README row's first cell, verbatim
 #   platform  linux, windows, macos or none; only linux tests run today
 #   target    the test file; proxy/tests/... runs in the proxy crate
