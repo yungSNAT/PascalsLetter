@@ -1142,14 +1142,19 @@ pub(crate) fn collect_card(name: Option<&str>) -> Result<Option<CardData>> {
         }
         None => (active.clone(), active_sources(&active)),
     };
-    // The behaviour summary comes from the resolved rules, which describe the
-    // ACTIVE pipeline — a built-in shared by name keeps its own file comments
-    // as the summary instead of inheriting the active pipeline rules.
+    // The behaviour summary comes from resolved rules: the active pipeline's,
+    // or, for a built-in shared by name, those its reference resolves to (the
+    // card carries the reference, not the built-in's commented definition).
     let is_active = display == active;
     let what = if is_active {
         describe_rules(&loaded.resolved)
     } else {
-        Vec::new()
+        sources
+            .first()
+            .map(|(label, text)| {
+                describe_rules(&pipeline_config::load_candidate(text, label).resolved)
+            })
+            .unwrap_or_default()
     };
     let tracker = crate::core::tracking::Tracker::new().ok();
     // The PreTool rewrite (grep -> rtk grep, which compresses) is RTK's primary
