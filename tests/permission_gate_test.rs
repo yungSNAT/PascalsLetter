@@ -3,9 +3,6 @@
 //! the binary (`rtk rewrite`, or `rtk hook claude` as Claude Code calls it), so
 //! `scripts/fork-proof.sh` can run it against upstream RTK.
 
-use std::io::Write;
-use std::process::Stdio;
-
 mod common;
 
 /// `rtk` started in a project whose `.claude/settings.json` holds only the given
@@ -58,34 +55,8 @@ fn rewrite_exit(command: &str, deny: &[&str], allow: &[&str]) -> Option<i32> {
 /// without asking), `prompt` for a rewrite left to Claude Code's own prompt,
 /// or `native` when the hook leaves the command to Claude Code untouched.
 fn hook_decision(command: &str, deny: &[&str], ask: &[&str], allow: &[&str]) -> String {
-    let (root, mut cmd) = with_rules(deny, ask, allow);
-    let payload = serde_json::json!({
-        "tool_name": "Bash",
-        "tool_input": { "command": command },
-        "cwd": root.path().join("project"),
-    })
-    .to_string();
-    let mut child = cmd
-        .args(["hook", "claude"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("spawn rtk hook claude");
-    child
-        .stdin
-        .take()
-        .expect("stdin")
-        .write_all(payload.as_bytes())
-        .expect("write payload");
-    let out = child.wait_with_output().expect("wait rtk");
-    assert_eq!(
-        out.status.code(),
-        Some(0),
-        "rtk hook claude failed for {command:?}: {}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&out.stdout);
+    let (root, cmd) = with_rules(deny, ask, allow);
+    let stdout = common::claude_hook(cmd, command, &root.path().join("project"));
     if stdout.trim().is_empty() {
         return "native".into();
     }
