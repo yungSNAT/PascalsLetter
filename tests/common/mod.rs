@@ -87,3 +87,34 @@ pub fn tempdir() -> tempfile::TempDir {
 pub fn temp_git_repo() -> tempfile::TempDir {
     scratch::temp_git_repo()
 }
+
+/// What `rtk hook claude`, run by `rtk`, prints for a Bash call of `command` in
+/// `cwd`, sent as Claude Code sends it. The hook must exit 0 whatever it decides.
+pub fn claude_hook(mut rtk: Command, command: &str, cwd: &std::path::Path) -> String {
+    use std::io::Write;
+    use std::process::Stdio;
+    let payload = serde_json::json!({
+        "tool_name": "Bash",
+        "tool_input": { "command": command },
+        "cwd": cwd,
+    })
+    .to_string();
+    let mut child = rtk
+        .args(["hook", "claude"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn rtk hook claude");
+    // Dropping stdin closes it, so the hook reads the whole payload and ends.
+    let mut stdin = child.stdin.take().expect("stdin");
+    stdin.write_all(payload.as_bytes()).expect("write payload");
+    drop(stdin);
+    let out = child.wait_with_output().expect("wait rtk");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        out.status.success(),
+        "rtk hook claude failed for {command:?}: {stderr}"
+    );
+    String::from_utf8_lossy(&out.stdout).into_owned()
+}
