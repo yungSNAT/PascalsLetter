@@ -85,23 +85,28 @@ fn verify(expected: &[String], file: &str, actual: &str) -> Result<()> {
     Ok(())
 }
 
-/// Fetches `archive` and its checksum file `sums` from `base` into `dir`, checks the
-/// archive and unpacks it. `per_file` marks a checksum file that holds only the
-/// archive's hash, rather than a list.
-fn release(dir: &Path, base: &str, sums: &str, archive: &str, per_file: bool) -> Result<()> {
-    fs::create_dir_all(dir)?;
-    fetch(&format!("{base}/{sums}"), &dir.join(sums))?;
-    fetch(&format!("{base}/{archive}"), &dir.join(archive))?;
-    let list = fs::read_to_string(dir.join(sums)).with_context(|| format!("reading {sums}"))?;
-    let expected = if per_file {
-        list.split_whitespace()
+/// The hashes a checksum file gives for `archive`. `per_file` marks a file that
+/// holds only the archive's hash, rather than a list.
+fn expected(sums: &str, archive: &str, per_file: bool) -> Vec<String> {
+    if per_file {
+        sums.split_whitespace()
             .next()
             .map(str::to_string)
             .into_iter()
             .collect()
     } else {
-        listed(&list, archive)
-    };
+        listed(sums, archive)
+    }
+}
+
+/// Fetches `archive` and its checksum file `sums` from `base` into `dir`, checks the
+/// archive and unpacks it. `per_file` as for `expected`.
+fn release(dir: &Path, base: &str, sums: &str, archive: &str, per_file: bool) -> Result<()> {
+    fs::create_dir_all(dir)?;
+    fetch(&format!("{base}/{sums}"), &dir.join(sums))?;
+    fetch(&format!("{base}/{archive}"), &dir.join(archive))?;
+    let list = fs::read_to_string(dir.join(sums)).with_context(|| format!("reading {sums}"))?;
+    let expected = expected(&list, archive, per_file);
     let sum = stdout(
         Command::new("sha256sum")
             .arg("-b")
@@ -298,6 +303,37 @@ mod tests {
         assert!(verify(&[EMPTY.into(), "00".into()], "a", EMPTY).is_err());
         // A failed hash gives no text, which matches nothing.
         assert!(verify(&[EMPTY.into()], "a", "").is_err());
+    }
+
+    #[test]
+    fn a_per_file_checksum_gives_every_line_hash() {
+        let sums = format!("{EMPTY}  a.tar.gz\nffff  a.tar.gz\n");
+        assert_eq!(expected(&sums, "a.tar.gz", true), [EMPTY, "ffff"]);
+        assert!(verify(&expected(&sums, "a.tar.gz", true), "a.tar.gz", EMPTY).is_err());
+        assert_eq!(expected(&format!("{EMPTY}\n"), "a.tar.gz", true), [EMPTY]);
+    }
+
+    /// A cached archive is checked again, and one that no longer matches is never
+    /// unpacked. Needs sha256sum, as the runner does.
+    #[cfg(unix)]
+    #[test]
+    fn a_cached_archive_that_does_not_match_is_refused_before_tar() {
+        let dir = std::env::temp_dir().join(format!("published-cache-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("a.tar.gz"), "not the published archive").unwrap();
+        fs::write(dir.join("checksums.txt"), format!("{EMPTY}  a.tar.gz\n")).unwrap();
+        // Both files are cached, so nothing is fetched from this address.
+        let error = release(
+            &dir,
+            "http://127.0.0.1:9",
+            "checksums.txt",
+            "a.tar.gz",
+            false,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(error.starts_with("a.tar.gz: SHA-256 "), "{error}");
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
