@@ -86,13 +86,13 @@ fn verify(expected: &[String], file: &str, actual: &str) -> Result<()> {
 }
 
 /// The hashes a checksum file gives for `archive`. `per_file` marks a file that
-/// holds only the archive's hash, rather than a list.
+/// holds only the archive's hash, rather than a list: each line's first field then
+/// counts, so a second, different hash fails `verify` rather than going unread.
 fn expected(sums: &str, archive: &str, per_file: bool) -> Vec<String> {
     if per_file {
-        sums.split_whitespace()
-            .next()
+        sums.lines()
+            .filter_map(|line| line.split_whitespace().next())
             .map(str::to_string)
-            .into_iter()
             .collect()
     } else {
         listed(sums, archive)

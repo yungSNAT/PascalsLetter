@@ -28,7 +28,7 @@ Fewer tokens is not better on its own: a side that drops the line the agent need
 cargo run --release --locked --manifest-path bench/output-tokens/Cargo.toml --bin published -- ~/output-tokens-work
 ```
 
-[`published`](src/bin/published.rs) downloads each published release and checks it against its published checksum, clones Chisle at its tag, installs the plugins from npm, builds this checkout's rtk, then runs the corpus. Linux x86_64; needs git, curl, tar, sha256sum, cargo, node, npm, uv and rg. Each run writes `outputs/`, `results.csv`, `summary.md` and `facts.md` to a new `run-<UTC time>` folder.
+[`published`](src/bin/published.rs) downloads each published release and checks it against its published checksum, clones Chisle at its tag, installs the plugins from npm, builds this checkout's rtk, then runs the corpus. Linux x86_64; needs git, curl, tar, sha256sum, cargo, node, npm, uv and rg. Each run writes `outputs/`, `results.csv`, `summary.md`, `facts.md` and `toolchain.txt` (the tool versions) to a new `run-<UTC time>` folder.
 
 To measure other builds, run the binary directly:
 
