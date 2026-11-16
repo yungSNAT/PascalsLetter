@@ -48,10 +48,6 @@ fn to_struct_name(method: &str) -> String {
         .collect()
 }
 
-fn crate_ident(name: &str) -> String {
-    name.replace('-', "_")
-}
-
 fn is_valid_name(name: &str) -> bool {
     !name.is_empty()
         && name
@@ -60,9 +56,31 @@ fn is_valid_name(name: &str) -> bool {
         && name.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
 }
 
-pub fn run_new(name: &str) -> Result<i32> {
+/// Rust 2021's strict and reserved keywords, which no generated crate or type may be named.
+/// `gen` and the weak keywords (`union`, `raw`, `safe`, `macro_rules`) stay valid.
+const RUST_KEYWORDS: &[&str] = &[
+    "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum", "extern",
+    "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub",
+    "ref", "return", "self", "Self", "static", "struct", "super", "trait", "true", "type",
+    "unsafe", "use", "where", "while", "abstract", "become", "box", "do", "final", "macro",
+    "override", "priv", "try", "typeof", "unsized", "virtual", "yield",
+];
+
+fn validate_crate_name(name: &str) -> Result<()> {
     if !is_valid_name(name) {
         bail!("plugin name must be alphanumeric with - or _, starting with a letter: `{name}`");
+    }
+    if RUST_KEYWORDS.contains(&name) {
+        bail!("plugin name `{name}` is a reserved Rust keyword; choose another name");
+    }
+    Ok(())
+}
+
+pub fn run_new(name: &str) -> Result<i32> {
+    validate_crate_name(name)?;
+    let struct_name = to_struct_name(name);
+    if struct_name == "Self" {
+        bail!("plugin name `{name}` generates the reserved Rust type `Self`; choose another name");
     }
     let dir = plugins_dir()?.join(name);
     if dir.exists() {
@@ -86,7 +104,6 @@ pub fn run_new(name: &str) -> Result<i32> {
     );
     std::fs::write(dir.join("Cargo.toml"), cargo).context("write Cargo.toml")?;
 
-    let struct_name = to_struct_name(name);
     let lib = format!(
         "use rtk_plugin::{{rtk_plugin, Block, Method, MethodCtx, MethodInfo, Outcome}};\n\
          \n\
@@ -188,6 +205,9 @@ pub fn run_build() -> Result<i32> {
     if crates.is_empty() {
         bail!("no plugins to build — scaffold one with `rtk plugins new <name>`");
     }
+    for (name, _) in &crates {
+        validate_crate_name(name)?;
+    }
     let host = plugins_dir()?.join(".host");
     std::fs::create_dir_all(host.join("src")).context("create host dir")?;
 
@@ -196,9 +216,9 @@ pub fn run_build() -> Result<i32> {
     deps.push('\n');
     deps.push_str(&dep_line("rtk-plugin", "plugin"));
     deps.push('\n');
-    for (name, path) in &crates {
+    for (index, (name, path)) in crates.iter().enumerate() {
         deps.push_str(&format!(
-            "{name} = {{ path = {:?} }}\n",
+            "plugin_{index} = {{ package = {name:?}, path = {:?} }}\n",
             path.display().to_string()
         ));
     }
@@ -220,8 +240,8 @@ pub fn run_build() -> Result<i32> {
     std::fs::write(host.join("Cargo.toml"), cargo).context("write host Cargo.toml")?;
 
     let mut main = String::from("fn main() {\n");
-    for (name, _) in &crates {
-        let ident = crate_ident(name);
+    for (index, _) in crates.iter().enumerate() {
+        let ident = format!("plugin_{index}");
         main.push_str(&format!(
             "    for m in {ident}::__rtk_plugin_methods() {{\n        let _ = rtk_plugin::register(m);\n    }}\n    for k in {ident}::__rtk_plugin_kinds() {{\n        let _ = rtk_plugin::register_kind(k);\n    }}\n"
         ));
