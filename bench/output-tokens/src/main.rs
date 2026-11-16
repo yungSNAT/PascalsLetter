@@ -780,11 +780,14 @@ fn count_tokens(text: &str) -> usize {
         .len()
 }
 
-/// The environment every side's command runs in: a home of its own, so no
-/// tool reads configuration from the user's home or another side's, and PATH
-/// with `first` ahead of the user's. The repositories and Cargo's build
-/// artefacts are shared.
+/// The environment every side's command runs in: a home and a temporary
+/// directory of its own, so no tool reads configuration or a cache from the
+/// user's home, another side's or an earlier run's, and PATH with `first` ahead
+/// of the user's. The repositories and Cargo's build artefacts are shared.
 fn side_env(cmd: &mut Command, home: &Path, first: &[PathBuf]) -> Result<()> {
+    let tmp = home.join("tmp");
+    fs::create_dir_all(&tmp)?;
+    cmd.env("TMPDIR", tmp);
     let user_home = std::env::var_os("HOME").context("HOME is not set")?;
     for (var, dir) in [("CARGO_HOME", ".cargo"), ("RUSTUP_HOME", ".rustup")] {
         if std::env::var_os(var).is_none() {
@@ -1756,6 +1759,24 @@ mod tests {
             "inline hooks are refused"
         );
         fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn a_side_gets_a_temporary_directory_of_its_own() {
+        // A plugin keeps state in its temporary directory (token-optimizer-mcp
+        // marks each command it has seen there), so a shared one carries it from
+        // one run or side to the next.
+        let home = std::env::temp_dir().join(format!("output-tokens-home-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&home);
+        let mut cmd = Command::new("true");
+        side_env(&mut cmd, &home, &[]).unwrap();
+        let tmp = cmd
+            .get_envs()
+            .find(|(var, _)| *var == "TMPDIR")
+            .and_then(|(_, value)| value);
+        assert_eq!(tmp, Some(home.join("tmp").as_os_str()));
+        assert!(home.join("tmp").is_dir());
+        fs::remove_dir_all(&home).unwrap();
     }
 
     #[test]
