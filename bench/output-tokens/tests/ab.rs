@@ -222,6 +222,13 @@ fn an_error_result_is_charged_and_the_plan_goes_on() {
             .all(|r| r.contains(r#","error","false","overloaded","#)
                 && r.contains(r#","0.500000","#))
     );
+    // The result gave a cost but no usage: the usage columns are blank, not zeros that
+    // would read as a measured nothing.
+    assert!(
+        rows.iter()
+            .all(|r| r.contains(r#","","","","","0.500000","#)),
+        "{csv}"
+    );
 }
 
 #[test]
