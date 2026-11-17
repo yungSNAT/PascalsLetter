@@ -157,7 +157,13 @@ fn npm_plugin(locked: &Path, prefix: &Path, package: &str, version: &str) -> Res
             .with_context(|| format!("copy {}", locked.join(file).display()))?;
     }
     run(Command::new("npm")
-        .args(["ci", "--ignore-scripts", "--no-audit", "--no-fund", "--prefix"])
+        .args([
+            "ci",
+            "--ignore-scripts",
+            "--no-audit",
+            "--no-fund",
+            "--prefix",
+        ])
         .arg(prefix)
         .stdout(Stdio::null()))?;
     holds(prefix, package, version)
@@ -246,7 +252,12 @@ fn main() -> Result<()> {
     release(&t.join("snip"), SNIP, "checksums.txt", snip, false)?;
     chisle(&t.join("chisle"))?;
     for (dir, package, version) in PLUGINS {
-        npm_plugin(&here.join("plugins").join(dir), &t.join(dir), package, version)?;
+        npm_plugin(
+            &here.join("plugins").join(dir),
+            &t.join(dir),
+            package,
+            version,
+        )?;
     }
 
     // This checkout's full edition, as `cargo install --git` builds it.
@@ -372,7 +383,10 @@ mod tests {
             assert_eq!(read("package.json")["dependencies"][package], version);
             let lock = read("package-lock.json");
             let packages = lock["packages"].as_object().unwrap();
-            assert_eq!(packages[&format!("node_modules/{package}")]["version"], version);
+            assert_eq!(
+                packages[&format!("node_modules/{package}")]["version"],
+                version
+            );
             for (path, entry) in packages.iter().filter(|(path, _)| !path.is_empty()) {
                 assert!(
                     entry["integrity"]
