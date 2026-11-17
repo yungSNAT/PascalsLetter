@@ -54,9 +54,10 @@ fn repo(root: &Path, commits: usize) -> (std::path::PathBuf, std::path::PathBuf)
     (path, home)
 }
 
-fn rtk_git_log(repo: &Path, home: &Path, stdout: Stdio) -> Output {
+fn rtk_git_log(repo: &Path, home: &Path, args: &[&str], stdout: Stdio) -> Output {
     let mut cmd = common::rtk_command();
-    cmd.args(["git", "log", "-p"])
+    cmd.arg("git")
+        .args(args)
         .current_dir(repo)
         .stdout(stdout)
         .stderr(Stdio::piped());
@@ -73,6 +74,7 @@ fn a_command_redirected_to_a_file_writes_its_own_output() {
     let out = rtk_git_log(
         &repo,
         &home,
+        &["log", "-p"],
         Stdio::from(File::create(&target).expect("create log.txt")),
     );
     assert!(
@@ -95,12 +97,38 @@ fn a_command_redirected_to_a_file_writes_its_own_output() {
     );
 }
 
+/// `--skip-env` is rtk's own flag wherever it is written, so git never sees it.
+#[test]
+fn rtks_own_flag_after_the_command_stays_out_of_the_programs_arguments() {
+    let root = common::tempdir();
+    let (repo, home) = repo(root.path(), 3);
+    let target = root.path().join("log.txt");
+
+    let out = rtk_git_log(
+        &repo,
+        &home,
+        &["log", "--skip-env", "-p"],
+        Stdio::from(File::create(&target).expect("create log.txt")),
+    );
+    assert!(
+        out.status.success(),
+        "rtk git log --skip-env failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let written = std::fs::read(&target).expect("read log.txt");
+    let native = git(&repo, &home, &["log", "-p"]).stdout;
+    assert_eq!(
+        String::from_utf8_lossy(&written),
+        String::from_utf8_lossy(&native)
+    );
+}
+
 #[test]
 fn a_command_read_through_a_pipe_is_still_filtered() {
     let root = common::tempdir();
     let (repo, home) = repo(root.path(), 12);
 
-    let out = rtk_git_log(&repo, &home, Stdio::piped());
+    let out = rtk_git_log(&repo, &home, &["log", "-p"], Stdio::piped());
     assert!(out.status.success(), "rtk git log failed");
     let shown = String::from_utf8_lossy(&out.stdout);
     let commits = shown.lines().filter(|l| l.starts_with("commit ")).count();

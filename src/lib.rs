@@ -4295,6 +4295,14 @@ mod tests {
         // `rtk npm build` runs `npm run build`; `rtk read` is rtk's own view.
         assert!(!namesake(&["rtk", "npm", "build"]));
         assert!(!namesake(&["rtk", "read", "a.txt"]));
+        // Docker, kubectl and oc subcommands are the program's own, except the
+        // `pods` and `services` shorthands for `get pods` and `get services`.
+        assert!(namesake(&["rtk", "docker", "ps", "-a"]));
+        assert!(namesake(&["rtk", "docker", "compose", "logs", "web"]));
+        assert!(namesake(&["rtk", "kubectl", "get", "pods"]));
+        assert!(namesake(&["rtk", "oc", "logs", "p", "-c", "c"]));
+        assert!(!namesake(&["rtk", "kubectl", "pods"]));
+        assert!(!namesake(&["rtk", "oc", "services"]));
     }
 
     #[test]
