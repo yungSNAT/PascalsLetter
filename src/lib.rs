@@ -4284,7 +4284,13 @@ mod tests {
         assert!(namesake(&["rtk", "diff", "a.txt", "b.txt"]));
         // Forms only rtk accepts, which the program itself would refuse or read otherwise.
         assert!(!namesake(&["rtk", "grep", "--max", "5", "fn new", "src"]));
-        assert!(!namesake(&["rtk", "grep", "--context-only", "fn new", "src"]));
+        assert!(!namesake(&[
+            "rtk",
+            "grep",
+            "--context-only",
+            "fn new",
+            "src"
+        ]));
         assert!(!namesake(&["rtk", "diff", "-"]));
         // `rtk npm build` runs `npm run build`; `rtk read` is rtk's own view.
         assert!(!namesake(&["rtk", "npm", "build"]));
