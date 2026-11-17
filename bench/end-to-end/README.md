@@ -24,11 +24,13 @@ Published runs: [`results/`](results/), the first on [17 November 2026](results/
 Linux x86_64, with an Anthropic API key. The 17 November run of the 8 tasks cost US$49.02 at the list prices; `--budget-usd` starts no run once the runs so far in that launch cost that much.
 
 ```bash
-# The 2 rtk binaries: rtk 1.2.0 checked against its checksums, and this checkout built, so
-# check out the commit to measure first (578b0c0e for the 17 November results) and set
-# version_pin in thol/pascalsletter.json to match.
-git checkout --detach 578b0c0eb28e29c6b1e085b5f039395aed470eb8
-cargo run --release --locked --manifest-path bench/output-tokens/Cargo.toml --bin published -- ~/ot-work
+# Run from the root of this checkout, which holds the manifests. The 2 rtk binaries: rtk
+# 1.2.0 checked against its checksums, and a build of the commit to measure (578b0c0e for
+# the 17 November results) from a worktree of its own; set version_pin in
+# thol/pascalsletter.json to match.
+MANIFESTS=$PWD/bench/end-to-end/thol
+git worktree add --detach ~/pl-measured 578b0c0eb28e29c6b1e085b5f039395aed470eb8
+cargo run --release --locked --manifest-path ~/pl-measured/bench/output-tokens/Cargo.toml --bin published -- ~/ot-work
 mkdir -p ~/arms/rtk-1.2.0 ~/arms/pascalsletter
 ln -s ~/ot-work/tools/rtk/rtk ~/arms/rtk-1.2.0/rtk
 ln -s ~/ot-work/target-rtk/release/rtk ~/arms/pascalsletter/rtk
@@ -48,7 +50,7 @@ mkdir -p .claude-pin && ln -s ~/cc206/node_modules/.bin/claude .claude-pin/claud
 for arm in rtk-1.2.0 pascalsletter; do
   mkdir -p competitors/$arm
   sed -e "s|@RTK_DIR@|$HOME/arms/$arm|" -e "s|@PIN@|$PWD/.claude-pin|" -e "s|@PATH@|$PATH|" \
-    /path/to/PascalsLetter/bench/end-to-end/thol/$arm.json > competitors/$arm/manifest.json
+    "$MANIFESTS/$arm.json" > competitors/$arm/manifest.json
 done
 
 # The runs. An empty HOME keeps your own Claude Code login out of the sandboxes.

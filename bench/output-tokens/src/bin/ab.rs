@@ -146,10 +146,11 @@ struct Session {
     is_error: bool,
     turns: u64,
     cost_usd: f64,
-    input: u64,
-    output: u64,
-    cache_write: u64,
-    cache_read: u64,
+    // None when the result reports no usage: unknown, not zero.
+    input: Option<u64>,
+    output: Option<u64>,
+    cache_write: Option<u64>,
+    cache_read: Option<u64>,
     model_usage: String,
     tool_calls: usize,
     commands: Vec<String>,
@@ -213,10 +214,11 @@ fn parse(transcript: &str) -> Option<Session> {
     s.is_error = r["is_error"].as_bool().unwrap_or(false);
     s.turns = n("/num_turns");
     s.cost_usd = r["total_cost_usd"].as_f64()?;
-    s.input = n("/usage/input_tokens");
-    s.output = n("/usage/output_tokens");
-    s.cache_write = n("/usage/cache_creation_input_tokens");
-    s.cache_read = n("/usage/cache_read_input_tokens");
+    let usage = |p: &str| r.pointer(p).and_then(Value::as_u64);
+    s.input = usage("/usage/input_tokens");
+    s.output = usage("/usage/output_tokens");
+    s.cache_write = usage("/usage/cache_creation_input_tokens");
+    s.cache_read = usage("/usage/cache_read_input_tokens");
     s.model_usage = r
         .get("modelUsage")
         .map(Value::to_string)
@@ -360,6 +362,11 @@ fn claude(
         }
         std::thread::sleep(Duration::from_millis(200));
     }
+}
+
+/// A count as a CSV field, or an empty one when it is unknown.
+fn blank_if_none(n: Option<u64>) -> String {
+    n.map(|n| n.to_string()).unwrap_or_default()
 }
 
 fn csv(fields: &[String]) -> String {
@@ -567,10 +574,10 @@ fn main() -> Result<()> {
                     session.commands.join(" ; "),
                     session.tool_result_chars.to_string(),
                     session.tool_result_tokens.to_string(),
-                    session.input.to_string(),
-                    session.output.to_string(),
-                    session.cache_write.to_string(),
-                    session.cache_read.to_string(),
+                    blank_if_none(session.input),
+                    blank_if_none(session.output),
+                    blank_if_none(session.cache_write),
+                    blank_if_none(session.cache_read),
                     if priced {
                         format!("{:.6}", session.cost_usd)
                     } else {
@@ -691,7 +698,7 @@ mod tests {
         assert_eq!(s.answer, "a.rs");
         assert_eq!(
             (s.turns, s.input, s.output, s.cache_write, s.cache_read),
-            (2, 3, 4, 5, 6)
+            (2, Some(3), Some(4), Some(5), Some(6))
         );
         assert_eq!(s.tool_calls, 1);
         assert_eq!(s.commands, ["git status"]);
