@@ -1,8 +1,8 @@
 # end-to-end
 
-Billed Claude Code sessions on coding tasks: no tool, rtk's release and PascalsLetter, each with rtk's own Claude Code hook. It measures what a task costs at the API's prices and whether the task was done, which [`output-tokens`](../output-tokens) does not. It runs [THOL](https://github.com/pi-infected/token-harness-optimizer-leaderboard) (token-harness-optimizer-leaderboard, MIT), unchanged apart from 2 competitor manifests.
+Billed Claude Code sessions on coding tasks: no tool, then rtk's release and PascalsLetter, each behind rtk's own Claude Code hook. It measures what a task costs at the API's prices and whether the task was done, which [`output-tokens`](../output-tokens) does not. It runs [THOL](https://github.com/pi-infected/token-harness-optimizer-leaderboard) (token-harness-optimizer-leaderboard, MIT), unchanged apart from 2 competitor manifests.
 
-Published runs: [`results/`](results/).
+Published runs: [`results/`](results/), the first on [17 November 2026](results/2026-11-17.md).
 
 ## Method
 
@@ -21,7 +21,7 @@ Published runs: [`results/`](results/).
 
 ## Run it
 
-Linux x86_64, with an Anthropic API key. A full run of the 8 tasks costs about US$45 at the list prices.
+Linux x86_64, with an Anthropic API key. The 17 November run of the 8 tasks cost US$49.02 at the list prices; `--budget-usd` starts no run once the runs so far cost that much.
 
 ```bash
 # The 2 rtk binaries: rtk 1.2.0 checked against its checksums, and this checkout built, so
@@ -56,7 +56,7 @@ mkdir -p ~/empty-home
 HOME=~/empty-home THOL_CAMPAIGN=2.1.206 ANTHROPIC_API_KEY=... python3 runner.py run \
   -c control,rtk-1.2.0,pascalsletter \
   -t code-bugfix-py,code-debug-pipeline-py,code-feature-js,code-iterate-tests,code-migration-py-xl,code-refactor-split-py,log-needle-zh,seo-audit \
-  --reps 10 --keep-workspaces --budget-usd 48
+  --reps 10 --keep-workspaces --budget-usd 55
 
 # The statistic, against control and against rtk.
 THOL_CAMPAIGN=2.1.206 python3 leaderboard.py
