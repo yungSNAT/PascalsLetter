@@ -38,7 +38,7 @@ def load_plugin_module(path=PLUGIN_PATH, module_name="rtk_rewrite_plugin"):
     return module
 
 
-def write_fake_rtk(bin_dir):
+def write_fake_rtk(bin_dir, rewritten="rtk git status"):
     fake_rtk = bin_dir / "rtk"
     fake_rtk.write_text(
         "\n".join(
@@ -46,7 +46,7 @@ def write_fake_rtk(bin_dir):
                 f"#!{sys.executable}",
                 "import sys",
                 "if sys.argv[1:] == ['rewrite', 'git status']:",
-                "    print('rtk git status')",
+                f"    print({rewritten!r})",
                 "    raise SystemExit(0)",
                 "print('unexpected rtk args:', sys.argv[1:], file=sys.stderr)",
                 "raise SystemExit(1)",
@@ -129,6 +129,36 @@ class RtkRewritePluginTest(unittest.TestCase):
             self.assertTrue(module._check_rtk())
 
         which.assert_called_once_with("rtk")
+
+    @unittest.skipIf(os.name == "nt", "the fake rtk is a script run by its shebang")
+    def test_rtk_runs_only_from_an_absolute_path_entry(self):
+        with tempfile.TemporaryDirectory() as root:
+            work, real = Path(root) / "work", Path(root) / "real"
+            (work / "rel").mkdir(parents=True)
+            real.mkdir()
+            write_fake_rtk(work, "decoy in the working folder")
+            write_fake_rtk(work / "rel", "decoy in a relative PATH entry")
+            write_fake_rtk(real)
+            self.addCleanup(os.chdir, os.getcwd())
+            os.chdir(work)
+
+            for entries, expected in (
+                (["rel", "", ".", str(real)], "rtk git status"),
+                (["rel", "", "."], None),
+            ):
+                with self.subTest(entries=entries):
+                    os.environ["PATH"] = os.pathsep.join(entries)
+                    module = load_plugin_module()
+                    ctx = FakeContext()
+                    with mock.patch.object(module.sys, "stderr", new_callable=io.StringIO):
+                        module.register(ctx)
+
+                    if expected is None:
+                        self.assertNotIn("pre_tool_call", ctx.hooks)
+                        continue
+                    args = {"command": "git status"}
+                    ctx.hooks["pre_tool_call"](tool_name="terminal", args=args)
+                    self.assertEqual({"command": expected}, args)
 
     def test_rewrite_updates_payload_without_returning_a_directive(self):
         for returncode in (0, 3):
