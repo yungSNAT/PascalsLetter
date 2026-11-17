@@ -16,7 +16,7 @@ use tempfile::NamedTempFile;
 use crate::core::utils::{from_json_str, strip_leading_bom};
 
 use super::integrity;
-use super::is_claude_hook_entry;
+use super::{is_claude_hook_entry, is_legacy_rewrite_hook};
 use crate::core::config::AwarenessLevel;
 #[cfg(test)]
 use crate::core::test_isolation;
