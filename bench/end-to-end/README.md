@@ -6,14 +6,14 @@ Published runs: [`results/`](results/), the first on [17 November 2026](results/
 
 ## Method
 
-- **Harness:** THOL at commit `5ee6ea7f81dc21db1aae8d359cda3e1f7ded6dde`. Each run is one headless Claude Code session in a fresh sandbox (its own `HOME`, `CLAUDE_CONFIG_DIR` and task workspace), with the Claude Code version and model THOL pins: Claude Code 2.1.206 and `claude-sonnet-4-6` (`bench.config.json`). The task's `verify.py` scores the workspace afterwards; no model grades anything. A run succeeds when THOL's success rule says so.
+- **Harness:** THOL at commit `5ee6ea7f81dc21db1aae8d359cda3e1f7ded6dde`. Each run is one headless Claude Code session in a fresh sandbox (its own `HOME`, `CLAUDE_CONFIG_DIR` and task workspace), with Claude Code 2.1.206, the newer of the 2 campaigns in THOL's published database (its `CAMPAIGN` file still names 2.1.183), and the model THOL pins in `bench.config.json`, `claude-sonnet-4-6`. The task's `verify.py` scores the workspace afterwards; no model grades anything. A run succeeds when THOL's success rule says so.
 - **Arms:**
   - `control`: Claude Code alone.
   - `rtk-1.2.0`: rtk's release v1.2.0 (`rtk-x86_64-unknown-linux-musl`, checked against the release's `checksums.txt`).
   - `pascalsletter`: a release build of this repository's `develop` at the commit the results file names (full edition).
 
   Both rtk arms use THOL's own rtk manifest ([`thol/`](thol/)): `rtk init -g` in the sandbox's home, then rtk's PreToolUse Bash hook (`rtk hook claude`). They differ only in which `rtk` is first on `PATH`.
-- **Tasks:** 8 of THOL's 18, chosen before the run from THOL's published control rows: no web access, and a control cost coefficient of variation of at most 0.20, so 10 repetitions can separate a difference of about 10%. They are `code-bugfix-py`, `code-debug-pipeline-py`, `code-feature-js`, `code-iterate-tests`, `code-migration-py-xl`, `code-refactor-split-py`, `log-needle-zh` and `seo-audit`. A result covers these 8 only, not THOL's long sessions or its web task.
+- **Tasks:** 8 of THOL's 17, chosen before the run from THOL's published control rows: no web access, and a control cost coefficient of variation of at most 0.20, so 10 repetitions can separate a difference of about 10%. They are `code-bugfix-py`, `code-debug-pipeline-py`, `code-feature-js`, `code-iterate-tests`, `code-migration-py-xl`, `code-refactor-split-py`, `log-needle-zh` and `seo-audit`. A result covers these 8 only, not THOL's long sessions or its web task.
 - **Repetitions:** 10 per arm and task. THOL's runner interleaves the arms within each task and repetition.
 - **Cost:** each run's `total_cost_usd` from Claude Code, which matches the API's per-request usage priced at the model's list prices (fresh input, 5-minute cache writes, cache reads and output).
 - **Statistic:** THOL's `leaderboard.py`: per task, the mean cost of an arm's successful runs over control's, then the geometric mean over tasks, with a 95% bootstrap interval (10,000 draws, seed 1234) that resamples tasks and the runs within each. An interval that excludes 1.00 differs from control. PascalsLetter against rtk is the same script on a copy of the database with rtk's rows standing as control.
@@ -21,7 +21,7 @@ Published runs: [`results/`](results/), the first on [17 November 2026](results/
 
 ## Run it
 
-Linux x86_64, with an Anthropic API key. The 17 November run of the 8 tasks cost US$49.02 at the list prices; `--budget-usd` starts no run once the runs so far cost that much.
+Linux x86_64, with an Anthropic API key. The 17 November run of the 8 tasks cost US$49.02 at the list prices; `--budget-usd` starts no run once the runs so far in that launch cost that much.
 
 ```bash
 # The 2 rtk binaries: rtk 1.2.0 checked against its checksums, and this checkout built, so
