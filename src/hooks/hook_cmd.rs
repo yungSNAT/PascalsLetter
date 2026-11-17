@@ -648,7 +648,7 @@ fn audit_log_inner(action: &str, original: &str, rewritten: &str) -> Option<()> 
         &path,
     )
     .ok()?;
-    let ts = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S");
+    let ts = jiff::ZonedDateTime::now().strftime("%Y-%m-%dT%H:%M:%S");
     writeln!(
         file,
         "{} | {} | {} | {}",

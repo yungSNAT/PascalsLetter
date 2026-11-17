@@ -69,7 +69,7 @@ pub fn set_enabled(on: bool) -> std::io::Result<()> {
 }
 
 pub fn now_ts() -> String {
-    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+    jiff::Timestamp::now().strftime("%Y-%m-%dT%H:%M:%SZ").to_string()
 }
 
 /// Append one entry. Silent and fail-open: the log is a side channel and

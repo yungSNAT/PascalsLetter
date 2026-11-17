@@ -65,7 +65,7 @@ fn filter_since_days(entries: &[AuditEntry], days: u64) -> Vec<&AuditEntry> {
     // with the same "DateTime - TimeDelta overflowed" panic `rtk discover --since`
     // did (rtk-ai/rtk#3206 review).
     let cutoff = crate::core::utils::days_ago_cutoff(days);
-    let cutoff_str = cutoff.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let cutoff_str = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ").to_string();
 
     entries
         .iter()

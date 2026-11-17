@@ -10,7 +10,7 @@ use crate::core::test_isolation;
 use crate::core::user_dirs;
 use crate::core::user_env;
 use anyhow::{Context, Result};
-use chrono::{DateTime, Utc};
+use jiff::{SignedDuration, Timestamp, tz::Offset};
 use serde_json::Value;
 use std::ffi::OsStr;
 use std::fs;
@@ -75,20 +75,32 @@ pub(crate) fn decode_backslashes(s: &str, ansi_c: bool) -> Option<String> {
 /// Compute `days` ago from now, clamped instead of panicking on overflow.
 ///
 /// `days` is typically user-supplied (`--since <days>`) and unbounded. Naively
-/// building `chrono::Duration::days(days as i64)` and subtracting it from
-/// `Utc::now()` panics for a large enough value ("DateTime - TimeDelta
+/// building a duration of `days as i64` days and subtracting it from now
+/// panicked for a large enough value (chrono's "DateTime - TimeDelta
 /// overflowed") — this happened identically in `rtk discover --since` and `rtk
 /// hook audit --since` before both were routed through this helper. `days` is
 /// capped to `i64::MAX` before the `as i64` cast (a `u64` past `i64::MAX` would
 /// otherwise reinterpret as negative, turning "look back" into "look forward"),
-/// and any remaining overflow building or applying the `Duration` falls back to
-/// `DateTime::<Utc>::MIN_UTC` — an arbitrarily distant cutoff means "no lower
+/// and any remaining overflow building or applying the duration falls back to
+/// `Timestamp::MIN` — an arbitrarily distant cutoff means "no lower
 /// bound", which is exactly what an absurdly large `--since` should behave like.
-pub fn days_ago_cutoff(days: u64) -> DateTime<Utc> {
+pub fn days_ago_cutoff(days: u64) -> Timestamp {
     let days = days.min(i64::MAX as u64) as i64;
-    chrono::Duration::try_days(days)
-        .and_then(|d| Utc::now().checked_sub_signed(d))
-        .unwrap_or(DateTime::<Utc>::MIN_UTC)
+    days.checked_mul(86_400)
+        .and_then(|secs| Timestamp::now().checked_sub(SignedDuration::from_secs(secs)).ok())
+        .unwrap_or(Timestamp::MIN)
+}
+
+/// RFC 3339 in UTC, spelt as the tracking database has always stored it: `+00:00`,
+/// and the fraction in groups of 3 digits, left out when it is zero.
+pub fn rfc3339(ts: Timestamp) -> String {
+    let digits = match ts.subsec_nanosecond() {
+        0 => 0,
+        n if n % 1_000_000 == 0 => 3,
+        n if n % 1_000 == 0 => 6,
+        _ => 9,
+    };
+    format!("{:.digits$}", ts.display_with_offset(Offset::UTC))
 }
 
 pub use rtk_text::{strip_ansi, truncate};
@@ -1071,7 +1083,7 @@ mod tests {
     #[test]
     fn test_days_ago_cutoff_normal_value_is_in_the_past() {
         let cutoff = days_ago_cutoff(30);
-        assert!(cutoff < Utc::now());
+        assert!(cutoff < Timestamp::now());
     }
 
     #[test]
@@ -1079,19 +1091,18 @@ mod tests {
         // rtk-ai/rtk#3206 review: `rtk discover --since 100000000` and `rtk hook
         // audit --since 100000000` both panicked with "DateTime - TimeDelta
         // overflowed". Must clamp instead of crashing.
-        assert_eq!(days_ago_cutoff(100_000_000), DateTime::<Utc>::MIN_UTC);
+        assert_eq!(days_ago_cutoff(100_000_000), Timestamp::MIN);
     }
 
     #[test]
     fn test_days_ago_cutoff_does_not_panic_on_u64_max() {
-        assert_eq!(days_ago_cutoff(u64::MAX), DateTime::<Utc>::MIN_UTC);
+        assert_eq!(days_ago_cutoff(u64::MAX), Timestamp::MIN);
     }
 
     /// The tracking database compares these strings with `<` and `>=`, so new rows
     /// must keep the spelling older rows were written in.
     #[test]
     fn test_rfc3339_keeps_the_stored_timestamp_format() {
-        use chrono::TimeZone;
         for (nanos, expected) in [
             (0, "2026-07-21T04:30:00+00:00"),
             (120_000_000, "2026-07-21T04:30:00.120+00:00"),
@@ -1099,8 +1110,8 @@ mod tests {
             (123_456_700, "2026-07-21T04:30:00.123456700+00:00"),
             (1, "2026-07-21T04:30:00.000000001+00:00"),
         ] {
-            let ts = Utc.timestamp_opt(1_784_608_200, nanos).unwrap();
-            assert_eq!(ts.to_rfc3339(), expected);
+            let ts = Timestamp::new(1_784_608_200, nanos).unwrap();
+            assert_eq!(rfc3339(ts), expected);
         }
     }
 

@@ -35,7 +35,8 @@ use crate::core::user_env;
 // The shared shell lexer lives in `discover`.
 use crate::discover::lexer::shell_split;
 use anyhow::{Context, Result};
-use chrono::{DateTime, Utc};
+use crate::core::utils::{days_ago_cutoff, rfc3339};
+use jiff::{SignedDuration, Timestamp};
 use rusqlite::{Connection, params};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -108,7 +109,7 @@ pub struct Tracker {
 #[derive(Debug)]
 pub struct CommandRecord {
     /// UTC timestamp when command was executed
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: Timestamp,
     /// RTK command that was executed (e.g., "rtk ls")
     pub rtk_cmd: String,
     /// Number of tokens saved (input - output)
@@ -855,7 +856,7 @@ impl Tracker {
             "INSERT INTO commands (timestamp, original_cmd, rtk_cmd, project_path, input_tokens, output_tokens, saved_tokens, savings_pct, exec_time_ms)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)", // added: project_path
             params![
-                Utc::now().to_rfc3339(),
+                rfc3339(Timestamp::now()),
                 original_cmd,
                 rtk_cmd,
                 project_path, // added
@@ -890,7 +891,7 @@ impl Tracker {
     pub fn classifier_cache_put(&self, key: &str, answer: &str) -> Result<()> {
         self.conn.execute(
             "INSERT OR REPLACE INTO classifier_cache (key, answer, ts) VALUES (?1, ?2, ?3)",
-            params![key, answer, Utc::now().to_rfc3339()],
+            params![key, answer, rfc3339(Timestamp::now())],
         )?;
         Ok(())
     }
@@ -904,7 +905,7 @@ impl Tracker {
         tokens_in: usize,
         tokens_out: usize,
     ) -> Result<()> {
-        let day = Utc::now().format("%Y-%m-%d").to_string();
+        let day = Timestamp::now().strftime("%Y-%m-%d").to_string();
         self.conn
             .execute(
                 "INSERT INTO engine_attribution (day, site, kind, name, calls, tokens_in, tokens_out)
@@ -938,8 +939,8 @@ impl Tracker {
         kind: &str,
         days: u32,
     ) -> Result<Vec<AttributionRow>> {
-        let cutoff = (Utc::now() - chrono::Duration::days(days as i64))
-            .format("%Y-%m-%d")
+        let cutoff = days_ago_cutoff(days.into())
+            .strftime("%Y-%m-%d")
             .to_string();
         let mut stmt = self.conn.prepare(
             "SELECT name, SUM(calls), SUM(tokens_in), SUM(tokens_out)
@@ -962,12 +963,9 @@ impl Tracker {
     }
 
     fn cleanup_old(&self) -> Result<()> {
-        let Some(cutoff) = Utc::now().checked_sub_signed(chrono::Duration::days(self.history_days))
-        else {
-            return Ok(());
-        };
-        let cutoff_day = cutoff.format("%Y-%m-%d").to_string();
-        let cutoff = cutoff.to_rfc3339();
+        let cutoff = days_ago_cutoff(self.history_days.unsigned_abs());
+        let cutoff_day = cutoff.strftime("%Y-%m-%d").to_string();
+        let cutoff = rfc3339(cutoff);
         self.conn
             .execute("DELETE FROM commands WHERE timestamp < ?1", params![cutoff])?;
         self.conn.execute(
@@ -1012,7 +1010,7 @@ impl Tracker {
             "INSERT INTO parse_failures (timestamp, raw_command, error_message, fallback_succeeded)
              VALUES (?1, ?2, ?3, ?4)",
             params![
-                Utc::now().to_rfc3339(),
+                rfc3339(Timestamp::now()),
                 raw_command,
                 error_message,
                 fallback_succeeded as i32,
@@ -1049,7 +1047,7 @@ impl Tracker {
             "INSERT INTO hook_decisions (timestamp, session_id, tool_use_id, project_path, raw_cmd, decision, rewritten_cmd, rtk_version)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
-                Utc::now().to_rfc3339(),
+                rfc3339(Timestamp::now()),
                 session_id,
                 tool_use_id,
                 project_path,
@@ -1091,13 +1089,10 @@ impl Tracker {
     /// `maybe_cleanup_hook_decisions` so it's directly callable (bypassing the
     /// sampling gate) from tests without needing to hit the 1-in-N chance for real.
     fn cleanup_hook_decisions(&self) -> Result<()> {
-        let Some(cutoff) = Utc::now().checked_sub_signed(chrono::Duration::days(self.history_days))
-        else {
-            return Ok(());
-        };
+        let cutoff = days_ago_cutoff(self.history_days.unsigned_abs());
         self.conn.execute(
             "DELETE FROM hook_decisions WHERE timestamp < ?1",
-            params![cutoff.to_rfc3339()],
+            params![rfc3339(cutoff)],
         )?;
         Ok(())
     }
@@ -1109,14 +1104,14 @@ impl Tracker {
     /// lookups during the scan loop are in-memory instead of one query each.
     pub fn hook_decisions_since(
         &self,
-        cutoff: DateTime<Utc>,
+        cutoff: Timestamp,
     ) -> Result<HashMap<String, HookDecisionRecord>> {
         let mut stmt = self.conn.prepare(
             "SELECT tool_use_id, decision
              FROM hook_decisions
              WHERE timestamp >= ?1",
         )?;
-        let rows = stmt.query_map(params![cutoff.to_rfc3339()], |row| {
+        let rows = stmt.query_map(params![rfc3339(cutoff)], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })?;
 
@@ -1148,17 +1143,13 @@ impl Tracker {
     /// any scan range before this point falls back to the estimate-based heuristic,
     /// permanently (not just transitionally), since retention keeps pruning the
     /// tail as new rows come in.
-    pub fn earliest_hook_decision_timestamp(&self) -> Result<Option<DateTime<Utc>>> {
+    pub fn earliest_hook_decision_timestamp(&self) -> Result<Option<Timestamp>> {
         let ts: Option<String> =
             self.conn
                 .query_row("SELECT MIN(timestamp) FROM hook_decisions", [], |row| {
                     row.get(0)
                 })?;
-        Ok(ts.and_then(|t| {
-            DateTime::parse_from_rfc3339(&t)
-                .ok()
-                .map(|dt| dt.with_timezone(&Utc))
-        }))
+        Ok(ts.and_then(|t| t.parse().ok()))
     }
 
     /// Get parse failure summary for `rtk gain --failures`.
@@ -1671,9 +1662,10 @@ impl Tracker {
             params![project_exact, project_glob, limit as i64], // added: project params
             |row| {
                 Ok(CommandRecord {
-                    timestamp: DateTime::parse_from_rfc3339(&row.get::<_, String>(0)?)
-                        .map(|dt| dt.with_timezone(&Utc))
-                        .unwrap_or_else(|_| Utc::now()),
+                    timestamp: row
+                        .get::<_, String>(0)?
+                        .parse()
+                        .unwrap_or_else(|_| Timestamp::now()),
                     rtk_cmd: row.get(1)?,
                     saved_tokens: row.get::<_, i64>(2)?.max(0) as usize, // clamp negative
                     savings_pct: row.get(3)?,
@@ -1685,8 +1677,8 @@ impl Tracker {
     }
 
     /// Count commands since a given timestamp (for telemetry).
-    pub fn count_commands_since(&self, since: chrono::DateTime<chrono::Utc>) -> Result<i64> {
-        let ts = since.format("%Y-%m-%dT%H:%M:%S").to_string();
+    pub fn count_commands_since(&self, since: Timestamp) -> Result<i64> {
+        let ts = since.strftime("%Y-%m-%dT%H:%M:%S").to_string();
         let count: i64 = self.conn.query_row(
             "SELECT COUNT(*) FROM commands WHERE timestamp >= ?1",
             params![ts],
@@ -1748,8 +1740,8 @@ impl Tracker {
     }
 
     /// Get tokens saved in the last 24 hours (for telemetry).
-    pub fn tokens_saved_24h(&self, since: chrono::DateTime<chrono::Utc>) -> Result<i64> {
-        let ts = since.format("%Y-%m-%dT%H:%M:%S").to_string();
+    pub fn tokens_saved_24h(&self, since: Timestamp) -> Result<i64> {
+        let ts = since.strftime("%Y-%m-%dT%H:%M:%S").to_string();
         let saved: i64 = self.conn.query_row(
             "SELECT COALESCE(SUM(saved_tokens), 0) FROM commands WHERE timestamp >= ?1",
             params![ts],
@@ -1786,8 +1778,8 @@ impl Tracker {
     }
 
     /// Count parse failures in the last 24 hours.
-    pub fn parse_failures_since(&self, since: chrono::DateTime<chrono::Utc>) -> Result<i64> {
-        let ts = since.format("%Y-%m-%dT%H:%M:%S").to_string();
+    pub fn parse_failures_since(&self, since: Timestamp) -> Result<i64> {
+        let ts = since.strftime("%Y-%m-%dT%H:%M:%S").to_string();
         let count: i64 = self.conn.query_row(
             "SELECT COUNT(*) FROM parse_failures WHERE timestamp >= ?1",
             params![ts],
@@ -1877,11 +1869,11 @@ impl Tracker {
             };
         match oldest {
             Some(ts) => {
-                let first = chrono::NaiveDateTime::parse_from_str(&ts, "%Y-%m-%dT%H:%M:%S")
-                    .or_else(|_| chrono::NaiveDateTime::parse_from_str(&ts, "%Y-%m-%d %H:%M:%S"))
-                    .map(|dt| dt.and_utc())
-                    .unwrap_or_else(|_| chrono::Utc::now());
-                let days = (chrono::Utc::now() - first).num_days();
+                let first = jiff::civil::DateTime::strptime("%Y-%m-%dT%H:%M:%S", &ts)
+                    .or_else(|_| jiff::civil::DateTime::strptime("%Y-%m-%d %H:%M:%S", &ts))
+                    .and_then(|dt| jiff::tz::TimeZone::UTC.to_timestamp(dt))
+                    .unwrap_or_else(|_| Timestamp::now());
+                let days = Timestamp::now().duration_since(first).as_secs() / 86_400;
                 Ok(days.max(0))
             }
             None => Ok(0),
@@ -1890,8 +1882,8 @@ impl Tracker {
 
     /// Number of distinct active days in the last 30 days.
     pub fn active_days_30d(&self) -> Result<i64> {
-        let since = (chrono::Utc::now() - chrono::Duration::days(30))
-            .format("%Y-%m-%dT%H:%M:%S")
+        let since = days_ago_cutoff(30)
+            .strftime("%Y-%m-%dT%H:%M:%S")
             .to_string();
         let count: i64 = self.conn.query_row(
             "SELECT COUNT(DISTINCT DATE(timestamp)) FROM commands WHERE timestamp >= ?1",
@@ -1946,8 +1938,8 @@ impl Tracker {
 
     /// Tokens saved in the last 30 days.
     pub fn tokens_saved_30d(&self) -> Result<i64> {
-        let since = (chrono::Utc::now() - chrono::Duration::days(30))
-            .format("%Y-%m-%dT%H:%M:%S")
+        let since = days_ago_cutoff(30)
+            .strftime("%Y-%m-%dT%H:%M:%S")
             .to_string();
         let saved: i64 = self.conn.query_row(
             "SELECT COALESCE(SUM(saved_tokens), 0) FROM commands WHERE timestamp >= ?1",
@@ -3571,9 +3563,9 @@ mod tests {
     fn tracker_with_rows_aged(history_days: i64, age_days: i64) -> Tracker {
         let mut t = Tracker::new_in_memory().expect("in-memory tracker");
         t.history_days = history_days;
-        let old = Utc::now() - chrono::Duration::days(age_days);
-        let old_day = old.format("%Y-%m-%d").to_string();
-        let old = old.to_rfc3339();
+        let old = Timestamp::now() - SignedDuration::from_hours(24 * age_days);
+        let old_day = old.strftime("%Y-%m-%d").to_string();
+        let old = rfc3339(old);
         t.conn
             .execute(
                 "INSERT INTO commands
@@ -3648,7 +3640,7 @@ mod tests {
             "10-day-old parse failure should be pruned at 3-day retention"
         );
         assert!(
-            t.hook_decisions_since(DateTime::<Utc>::MIN_UTC)
+            t.hook_decisions_since(Timestamp::MIN)
                 .expect("query hook decisions")
                 .is_empty(),
             "10-day-old hook decision should be pruned at 3-day retention"
@@ -3681,7 +3673,7 @@ mod tests {
             "10-day-old command should survive 30-day retention"
         );
         assert_eq!(
-            t.hook_decisions_since(DateTime::<Utc>::MIN_UTC)
+            t.hook_decisions_since(Timestamp::MIN)
                 .expect("query hook decisions")
                 .len(),
             1,
@@ -3702,7 +3694,7 @@ mod tests {
             let t = tracker_with_10_day_old_rows(history_days);
             t.cleanup_hook_decisions().expect("cleanup hook decisions");
             assert_eq!(
-                t.hook_decisions_since(DateTime::<Utc>::MIN_UTC)
+                t.hook_decisions_since(Timestamp::MIN)
                     .expect("query hook decisions")
                     .len(),
                 expected,
@@ -3742,7 +3734,7 @@ mod tests {
             t.cleanup_hook_decisions()
                 .expect("hook cleanup with an unrepresentable cutoff");
             assert_eq!(
-                t.hook_decisions_since(DateTime::<Utc>::MIN_UTC)
+                t.hook_decisions_since(Timestamp::MIN)
                     .expect("query hook decisions")
                     .len(),
                 1,
@@ -3887,7 +3879,7 @@ mod tests {
             )
             .expect("Failed to record hook decision");
 
-        let cutoff = Utc::now() - chrono::Duration::days(1);
+        let cutoff = Timestamp::now() - SignedDuration::from_hours(24);
         let log = tracker
             .hook_decisions_since(cutoff)
             .expect("Failed to query hook decisions");
@@ -3930,7 +3922,7 @@ mod tests {
             .expect("Failed to record hook decision");
 
         // Cutoff in the future — the row above should not appear.
-        let cutoff = Utc::now() + chrono::Duration::days(1);
+        let cutoff = Timestamp::now() + SignedDuration::from_hours(24);
         let log = tracker
             .hook_decisions_since(cutoff)
             .expect("Failed to query hook decisions");
@@ -4037,8 +4029,9 @@ mod tests {
             .expect("Failed to record hook decision");
 
         // Stale row, inserted directly: record_hook_decision always stamps
-        // Utc::now(), so there's no other way to get an old row into the table.
-        let stale_ts = (Utc::now() - chrono::Duration::days(DEFAULT_HISTORY_DAYS + 1)).to_rfc3339();
+        // the current time, so there's no other way to get an old row into the table.
+        let stale_ts =
+            rfc3339(Timestamp::now() - SignedDuration::from_hours(24 * (DEFAULT_HISTORY_DAYS + 1)));
         tracker
             .conn
             .execute(
@@ -4054,7 +4047,7 @@ mod tests {
             .cleanup_hook_decisions()
             .expect("cleanup should succeed");
 
-        let far_past = DateTime::<Utc>::MIN_UTC;
+        let far_past = Timestamp::MIN;
         let all = tracker
             .hook_decisions_since(far_past)
             .expect("query failed");
@@ -4107,7 +4100,7 @@ mod tests {
                 "INSERT INTO commands (timestamp, original_cmd, rtk_cmd, project_path, input_tokens, output_tokens, saved_tokens, savings_pct, exec_time_ms)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 rusqlite::params![
-                    chrono::Utc::now().to_rfc3339(),
+                    rfc3339(Timestamp::now()),
                     cmd_name, cmd_name, project,
                     100_i64, 90_i64, saved_small, 10.0_f64, 5_i64
                 ],
@@ -4119,7 +4112,7 @@ mod tests {
                 "INSERT INTO commands (timestamp, original_cmd, rtk_cmd, project_path, input_tokens, output_tokens, saved_tokens, savings_pct, exec_time_ms)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 rusqlite::params![
-                    chrono::Utc::now().to_rfc3339(),
+                    rfc3339(Timestamp::now()),
                     cmd_name, cmd_name, project,
                     7_000_i64, 350_i64, saved_large, 95.0_f64, 10_i64
                 ],
