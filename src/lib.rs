@@ -2612,7 +2612,7 @@ fn run_cli() -> Result<i32> {
     // `rtk git log > log.txt`: a file gets the command's own output, uncut.
     if runs_its_namesake(&cli.command)
         && core::utils::stdout_is_file()
-        && let Some((tool, args)) = native_command()
+        && let Some((tool, args)) = native_command(cli.skip_env)
     {
         return core::runner::run_passthrough(&tool, &args, cli.verbose);
     }
@@ -4151,6 +4151,14 @@ fn runs_its_namesake(cmd: &Commands) -> bool {
             ..
         } => max_len.is_none() && max.is_none() && !context_only,
         Commands::Diff { file2, .. } => file2.is_some(),
+        Commands::Kubectl { command } => !matches!(
+            command,
+            KubectlCommands::Pods { .. } | KubectlCommands::Services { .. }
+        ),
+        Commands::Oc { command } => !matches!(
+            command,
+            OcCommands::Pods { .. } | OcCommands::Services { .. }
+        ),
         _ => matches!(
             cmd,
             Commands::Ls { .. }
@@ -4177,19 +4185,31 @@ fn runs_its_namesake(cmd: &Commands) -> bool {
                 | Commands::Mvnd { .. }
                 | Commands::Ctest { .. }
                 | Commands::GolangciLint { .. }
+                | Commands::Docker { .. }
         ),
     }
 }
 
 /// The command line after `rtk` and its own root flags, as the program and its arguments.
-fn native_command() -> Option<(String, Vec<std::ffi::OsString>)> {
+/// When rtk took `--skip-env` (a global flag, so it may follow the command), it is left out
+/// of the program's arguments, up to a `--`.
+fn native_command(skip_env: bool) -> Option<(String, Vec<std::ffi::OsString>)> {
     let argv: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
     let lossy: Vec<String> = argv
         .iter()
         .map(|a| a.to_string_lossy().into_owned())
         .collect();
     let start = argv.len() - fallback_command_args(&lossy)?.len();
-    Some((lossy[start].clone(), argv[start + 1..].to_vec()))
+    let mut operands = false;
+    let args = argv[start + 1..]
+        .iter()
+        .filter(|a| {
+            operands |= *a == "--";
+            operands || !skip_env || *a != "--skip-env"
+        })
+        .cloned()
+        .collect();
+    Some((lossy[start].clone(), args))
 }
 
 fn is_operational_command(cmd: &Commands) -> bool {
