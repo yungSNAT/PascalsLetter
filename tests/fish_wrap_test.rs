@@ -27,7 +27,21 @@ mod unix {
     /// [`home_with`], with `hooks.wrap_fish_scripts` set to `enabled` — or the
     /// config left absent entirely when it is `None`.
     fn home_with_wrap(files: &[(&str, &str)], enabled: Option<bool>) -> tempfile::TempDir {
-        let home = tempfile::tempdir().expect("create isolated home");
+        home_with_wrap_in(&std::env::temp_dir(), files, enabled)
+    }
+
+    /// [`home_with_wrap`], created inside `parent`.
+    fn home_with_wrap_in(
+        parent: &std::path::Path,
+        files: &[(&str, &str)],
+        enabled: Option<bool>,
+    ) -> tempfile::TempDir {
+        let home = tempfile::tempdir_in(parent).expect("create isolated home");
+        // The hook reads project settings from the nearest `.claude/` above its
+        // working directory, the home. Without one here that walk leaves the
+        // home and can reach a real `.claude/settings.json` above the
+        // temporary directory, whose deny rules then keep every wrap off.
+        std::fs::create_dir_all(home.path().join(".claude")).expect("create .claude");
         if let Some(enabled) = enabled {
             // dirs::config_dir() resolves differently per platform; cover both.
             for dir in [
@@ -252,6 +266,26 @@ mod unix {
         assert!(
             !wrapped(&hook_stdin("claude", &claude_payload(FISH_CHAIN), &home)),
             "a file RTK could not decode must keep the wrap off"
+        );
+    }
+
+    /// The homes these tests build are isolated even when the temporary
+    /// directory sits below a `.claude/` with deny rules, as it does when
+    /// `TMPDIR` is inside a Claude Code user's home.
+    #[test]
+    fn a_deny_rule_above_the_home_does_not_reach_its_hook() {
+        if which::which("fish").is_err() {
+            return;
+        }
+        let outer = tempfile::tempdir().expect("create outer directory");
+        let settings = outer.path().join(".claude/settings.json");
+        std::fs::create_dir_all(settings.parent().expect("has a parent")).expect("create .claude");
+        std::fs::write(&settings, claude_denies("rm:*")).expect("write settings");
+
+        let home = home_with_wrap_in(outer.path(), &[], Some(true));
+        assert!(
+            wrapped(&hook_stdin("claude", &claude_payload(FISH_CHAIN), &home)),
+            "a deny rule outside the home reached the hook"
         );
     }
 
