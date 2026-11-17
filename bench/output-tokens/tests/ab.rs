@@ -199,3 +199,55 @@ fn a_session_without_its_cost_stops_the_plan() {
     let summary = fs::read_to_string(s.dir.join("out/summary.md")).unwrap();
     assert!(summary.contains("1 ran. A session ended without its cost"));
 }
+
+#[test]
+fn an_error_result_is_charged_and_the_plan_goes_on() {
+    let s = setup("an_error_result_is_charged_and_the_plan_goes_on");
+    executable(
+        &s.claude,
+        "#!/bin/sh\necho '{\"type\":\"result\",\"result\":\"overloaded\",\"is_error\":true,\"num_turns\":1,\"total_cost_usd\":0.5}'\n",
+    );
+    let out = ab(&s, "out", "2", "100");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "2.000000");
+    let csv = fs::read_to_string(s.dir.join("out/results.csv")).unwrap();
+    let rows: Vec<&str> = csv.lines().skip(1).collect();
+    assert_eq!(rows.len(), 4);
+    assert!(
+        rows.iter()
+            .all(|r| r.contains(r#","error","false","overloaded","#)
+                && r.contains(r#","0.500000","#))
+    );
+}
+
+#[test]
+fn a_side_label_that_shares_a_folder_or_a_budget_that_is_not_a_number_is_refused() {
+    let s = setup("a_side_label_that_shares_a_folder_or_a_budget_that_is_not_a_number_is_refused");
+    let run = |rtk: &str, budget: &str| {
+        Command::new(env!("CARGO_BIN_EXE_ab"))
+            .args(["--corpus".as_ref(), s.corpus.as_os_str()])
+            .args(["--cases".as_ref(), s.cases.as_os_str()])
+            .args(["--repos".as_ref(), s.dir.join("repos").as_os_str()])
+            .args(["--out".as_ref(), s.dir.join("out").as_os_str()])
+            .args(["--claude".as_ref(), s.claude.as_os_str()])
+            .args(["--model", "m", "--budget-usd", budget])
+            .arg(format!("--rtk={rtk}={}", s.rtk.display()))
+            .env("FAKE_LOG", s.dir.join("claude.log"))
+            .output()
+            .unwrap()
+    };
+    for (rtk, budget, why) in [
+        ("RAW", "1", "share a session folder"),
+        ("fake rtk", "NaN", "positive number"),
+    ] {
+        let out = run(rtk, budget);
+        assert!(!out.status.success());
+        assert!(String::from_utf8_lossy(&out.stderr).contains(why));
+    }
+    assert!(!s.dir.join("claude.log").exists(), "a session started");
+    assert!(!s.dir.join("out").exists());
+}

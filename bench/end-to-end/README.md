@@ -17,14 +17,17 @@ Published runs: [`results/`](results/).
 - **Repetitions:** 10 per arm and task. THOL's runner interleaves the arms within each task and repetition.
 - **Cost:** each run's `total_cost_usd` from Claude Code, which matches the API's per-request usage priced at the model's list prices (fresh input, 5-minute cache writes, cache reads and output).
 - **Statistic:** THOL's `leaderboard.py`: per task, the mean cost of an arm's successful runs over control's, then the geometric mean over tasks, with a 95% bootstrap interval (10,000 draws, seed 1234) that resamples tasks and the runs within each. An interval that excludes 1.00 differs from control. PascalsLetter against rtk is the same script on a copy of the database with rtk's rows standing as control.
-- **Hook use:** THOL's `competitor_tool_calls` counts Bash commands the model writes with `rtk `. The hook rewrites a command after the model writes it, so the count is 0 for both arms here, as it is for all 384 rtk rows in THOL's published database. Each run's own rtk history in the sandbox (`~/.local/share/rtk/history.db`) is read instead: `hook_decisions` holds every Bash call the hook saw, and `commands` every one that ran through rtk, with rtk's estimate of the tokens before and after.
+- **Hook use:** THOL's `competitor_tool_calls` counts Bash commands the model itself writes with `rtk `. The hook rewrites a command after the model writes it, so the count misses every rewrite; it is 0 in all 384 rtk rows of THOL's published database. Each run's own rtk history in the sandbox (`~/.local/share/rtk/history.db`) is read instead: `hook_decisions` holds every Bash call the hook saw, and `commands` every one that ran through rtk, with rtk's estimate of the tokens before and after.
 
 ## Run it
 
 Linux x86_64, with an Anthropic API key. A full run of the 8 tasks costs about US$45 at the list prices.
 
 ```bash
-# The 2 rtk binaries: rtk 1.2.0 checked against its checksums, and this checkout built.
+# The 2 rtk binaries: rtk 1.2.0 checked against its checksums, and this checkout built, so
+# check out the commit to measure first (578b0c0e for the 17 November results) and set
+# version_pin in thol/pascalsletter.json to match.
+git checkout --detach 578b0c0eb28e29c6b1e085b5f039395aed470eb8
 cargo run --release --locked --manifest-path bench/output-tokens/Cargo.toml --bin published -- ~/ot-work
 mkdir -p ~/arms/rtk-1.2.0 ~/arms/pascalsletter
 ln -s ~/ot-work/tools/rtk/rtk ~/arms/rtk-1.2.0/rtk

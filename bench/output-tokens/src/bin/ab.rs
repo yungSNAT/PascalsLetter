@@ -7,6 +7,7 @@
 //! `ANTHROPIC_API_KEY` in the environment.
 
 #[path = "../fact.rs"]
+#[allow(dead_code)] // `copies` serves the facts check only.
 mod fact;
 
 use anyhow::{Context, Result, ensure};
@@ -122,13 +123,20 @@ fn commands<'a>(corpus: &'a Corpus, cases: &[Case]) -> Result<Vec<&'a CorpusComm
 }
 
 /// dtk's `correct()`, every word of the answer in the reply, case aside, with each word
-/// held whole by the facts check's rule, so `37` is not in `137`.
+/// held whole by the facts check's rule, so `37` is not in `137`. The rule lets a `.`
+/// follow a fact, as a full stop; a word must not run on past one into more of a name or
+/// number, so neither `Cargo.lock.bak` nor `112.5` holds `Cargo.lock` or `112`.
 fn correct(reply: &str, answer: &[String]) -> bool {
     let reply = reply.to_lowercase();
+    let runs_on = |after: &str| {
+        after
+            .strip_prefix('.')
+            .is_some_and(|rest| rest.starts_with(char::is_alphanumeric))
+    };
     answer
         .iter()
         .flat_map(|a| a.split_whitespace())
-        .all(|word| fact::copies(&reply, &word.to_lowercase()) > 0)
+        .all(|word| fact::matches(&reply, &word.to_lowercase()).any(|after| !runs_on(after)))
 }
 
 /// What one session's stream-json transcript reports.
@@ -166,7 +174,7 @@ fn count_tokens(text: &str) -> usize {
         .len()
 }
 
-/// Reads a transcript; `None` when it has no `result` event.
+/// Reads a transcript; `None` when it has no `result` event or that event gives no cost.
 fn parse(transcript: &str) -> Option<Session> {
     let mut s = Session::default();
     let mut result = None;
@@ -204,7 +212,7 @@ fn parse(transcript: &str) -> Option<Session> {
     s.answer = r["result"].as_str().unwrap_or_default().to_string();
     s.is_error = r["is_error"].as_bool().unwrap_or(false);
     s.turns = n("/num_turns");
-    s.cost_usd = r["total_cost_usd"].as_f64().unwrap_or(0.0);
+    s.cost_usd = r["total_cost_usd"].as_f64()?;
     s.input = n("/usage/input_tokens");
     s.output = n("/usage/output_tokens");
     s.cache_write = n("/usage/cache_creation_input_tokens");
@@ -459,6 +467,17 @@ fn main() -> Result<()> {
             rtk: Some(PathBuf::from(path)),
         });
     }
+    let mut slugs: Vec<String> = sides.iter().map(|s| slug(&s.label)).collect();
+    slugs.sort();
+    slugs.dedup();
+    ensure!(
+        slugs.len() == sides.len(),
+        "2 sides would share a session folder; give each --rtk a label distinct from the others and from raw"
+    );
+    ensure!(
+        args.budget_usd.is_finite() && args.budget_usd > 0.0,
+        "--budget-usd must be a positive number"
+    );
     ensure!(
         !args.out.exists(),
         "{} exists; give a new folder",
@@ -608,6 +627,14 @@ mod tests {
         ));
         assert!(!correct("main.rsx", &words(&["main.rs"])));
         assert!(correct("It is main.rs.", &words(&["main.rs"])));
+        // A full stop may follow a word; more of a name or number may not.
+        assert!(!correct("Cargo.lock.bak changed", &words(&["Cargo.lock"])));
+        assert!(!correct("112.5 options", &words(&["112"])));
+        assert!(correct("Oldest: f7b677d9.", &words(&["f7b677d"])));
+        assert!(correct(
+            "Cargo.lock.bak and Cargo.lock",
+            &words(&["Cargo.lock"])
+        ));
     }
 
     #[test]
@@ -676,5 +703,7 @@ mod tests {
         assert_eq!(s.model_usage, r#"{"m":{}}"#);
         assert!((s.cost_usd - 0.01).abs() < 1e-12);
         assert_eq!(parse(r#"{"type":"assistant"}"#), None);
+        // A result with no cost cannot be charged, so it counts as no result.
+        assert_eq!(parse(r#"{"type":"result","result":"a.rs"}"#), None);
     }
 }
