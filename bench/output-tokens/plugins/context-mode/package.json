@@ -1,0 +1,6 @@
+{
+  "private": true,
+  "dependencies": {
+    "context-mode": "2.2.0"
+  }
+}

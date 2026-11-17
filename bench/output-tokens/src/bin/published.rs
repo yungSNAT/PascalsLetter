@@ -1,8 +1,8 @@
 //! Repeats the published measurement: downloads each tool's release and checks it
 //! against its published checksum, clones Chisle at its tag, installs the plugins
-//! from npm, builds this checkout's rtk, then runs output-tokens over corpus.toml.
-//! Linux x86_64; needs git, curl, tar, sha256sum, cargo, node, npm, uv and rg. From
-//! the repository root:
+//! from their committed lockfiles, builds this checkout's rtk, then runs
+//! output-tokens over corpus.toml. Linux x86_64; needs git, curl, tar, sha256sum,
+//! cargo, node, npm, uv and rg. From the repository root:
 //! `cargo run --release --locked --manifest-path bench/output-tokens/Cargo.toml --bin published -- <work directory>`
 
 use anyhow::{Context, Result, ensure};
@@ -19,6 +19,12 @@ const SNIP: &str = "https://github.com/edouard-claude/snip/releases/download/v0.
 /// Chisle publishes no archive: its v3.12.1 tag, checked by commit and by a clean
 /// tree, so a cached or moved copy cannot run under its label.
 const CHISLE: &str = "84e8f5a392aa8706604bf143822009a7e5c48c44";
+/// The Claude Code plugins: each one's folder (its lockfile under `plugins/`, its
+/// install under the work directory's `tools/`), npm package and version.
+const PLUGINS: [(&str, &str, &str); 2] = [
+    ("context-mode", "context-mode", "2.2.0"),
+    ("token-optimizer", "@ooples/token-optimizer-mcp", "7.11.0"),
+];
 
 #[derive(Parser)]
 #[command(about = "Repeats the published output-token measurement (Linux x86_64)")]
@@ -141,23 +147,25 @@ fn chisle(dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Installs a Claude Code plugin from npm into `prefix` once, without install
-/// scripts, and refuses a cached copy at another version.
-fn npm_plugin(prefix: &Path, package: &str, version: &str) -> Result<()> {
-    let installed = prefix.join("node_modules").join(package);
-    if !installed.is_dir() {
-        run(Command::new("npm")
-            .args([
-                "install",
-                "--ignore-scripts",
-                "--no-audit",
-                "--no-fund",
-                "--prefix",
-            ])
-            .arg(prefix)
-            .arg(format!("{package}@{version}"))
-            .stdout(Stdio::null()))?;
+/// Installs a Claude Code plugin into `prefix` with `npm ci` from the lockfile
+/// committed in `locked`, without install scripts: every package at its locked
+/// version, checked against its locked hash, replacing what an earlier run left.
+fn npm_plugin(locked: &Path, prefix: &Path, package: &str, version: &str) -> Result<()> {
+    fs::create_dir_all(prefix)?;
+    for file in ["package.json", "package-lock.json"] {
+        fs::copy(locked.join(file), prefix.join(file))
+            .with_context(|| format!("copy {}", locked.join(file).display()))?;
     }
+    run(Command::new("npm")
+        .args(["ci", "--ignore-scripts", "--no-audit", "--no-fund", "--prefix"])
+        .arg(prefix)
+        .stdout(Stdio::null()))?;
+    holds(prefix, package, version)
+}
+
+/// Fails unless `prefix` holds `package` at `version`, the version its label names.
+fn holds(prefix: &Path, package: &str, version: &str) -> Result<()> {
+    let installed = prefix.join("node_modules").join(package);
     let found = fs::read_to_string(installed.join("package.json"))
         .ok()
         .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
@@ -237,12 +245,9 @@ fn main() -> Result<()> {
     let snip = "snip_0.26.0_linux_amd64.tar.gz";
     release(&t.join("snip"), SNIP, "checksums.txt", snip, false)?;
     chisle(&t.join("chisle"))?;
-    npm_plugin(&t.join("context-mode"), "context-mode", "2.2.0")?;
-    npm_plugin(
-        &t.join("token-optimizer"),
-        "@ooples/token-optimizer-mcp",
-        "7.11.0",
-    )?;
+    for (dir, package, version) in PLUGINS {
+        npm_plugin(&here.join("plugins").join(dir), &t.join(dir), package, version)?;
+    }
 
     // This checkout's full edition, as `cargo install --git` builds it.
     for (target, manifest) in [
@@ -341,19 +346,42 @@ mod tests {
     }
 
     #[test]
-    fn a_cached_plugin_at_another_version_is_refused() {
+    fn a_plugin_at_another_version_is_refused() {
         let root = std::env::temp_dir().join(format!("published-npm-{}", std::process::id()));
         let package = root.join("node_modules/@scope/plugin");
         fs::create_dir_all(&package).unwrap();
         fs::write(package.join("package.json"), r#"{"version": "1.0.0"}"#).unwrap();
-        assert!(npm_plugin(&root, "@scope/plugin", "1.0.0").is_ok());
-        let error = npm_plugin(&root, "@scope/plugin", "2.0.0").unwrap_err();
+        assert!(holds(&root, "@scope/plugin", "1.0.0").is_ok());
+        let error = holds(&root, "@scope/plugin", "2.0.0").unwrap_err();
         assert!(
             error
                 .to_string()
                 .ends_with("does not hold @scope/plugin 2.0.0")
         );
         fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn each_plugin_lock_pins_its_labelled_version_and_every_package_by_hash() {
+        let plugins = Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins");
+        for (dir, package, version) in PLUGINS {
+            let read = |file: &str| -> serde_json::Value {
+                let text = fs::read_to_string(plugins.join(dir).join(file)).unwrap();
+                serde_json::from_str(&text).unwrap()
+            };
+            assert_eq!(read("package.json")["dependencies"][package], version);
+            let lock = read("package-lock.json");
+            let packages = lock["packages"].as_object().unwrap();
+            assert_eq!(packages[&format!("node_modules/{package}")]["version"], version);
+            for (path, entry) in packages.iter().filter(|(path, _)| !path.is_empty()) {
+                assert!(
+                    entry["integrity"]
+                        .as_str()
+                        .is_some_and(|hash| hash.starts_with("sha512-")),
+                    "{dir}: {path} is not pinned by hash"
+                );
+            }
+        }
     }
 
     #[cfg(unix)]
