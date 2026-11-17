@@ -1999,7 +1999,8 @@ fn run_fallback(parse_error: clap::Error) -> Result<i32> {
             .collect::<Vec<_>>()
             .join(" ")
     };
-    let toml_match = if core::toml_filter::toml_disabled() {
+    // A file gets the command's own output, uncut, as in `run_cli`.
+    let toml_match = if core::toml_filter::toml_disabled() || core::utils::stdout_is_file() {
         None
     } else {
         core::toml_filter::find_matching_filter(&lookup_cmd)
@@ -2606,6 +2607,14 @@ fn run_cli() -> Result<i32> {
     // because they don't go through the hook pipeline.
     if is_operational_command(&cli.command) {
         hooks::integrity::runtime_check()?;
+    }
+
+    // `rtk git log > log.txt`: a file gets the command's own output, uncut.
+    if runs_its_namesake(&cli.command)
+        && core::utils::stdout_is_file()
+        && let Some((tool, args)) = native_command()
+    {
+        return core::runner::run_passthrough(&tool, &args, cli.verbose);
     }
 
     let code = match cli.command {
@@ -4128,6 +4137,61 @@ fn run_cli() -> Result<i32> {
 /// SECURITY: whitelist pattern — new commands are NOT integrity-checked
 /// until explicitly added here. A forgotten command fails open (no check)
 /// rather than creating false confidence about what's protected.
+/// True when `cmd` runs the program it is named after with the user's arguments as typed,
+/// so `rtk <cmd> <args>` without rtk is `<cmd> <args>`. Left out: rtk's own views (`read`,
+/// `json`, `test`...), commands that rewrite their arguments or find their program another
+/// way (`npm build` runs `npm run build`; `mypy` falls back to `python3 -m mypy`; `jest`
+/// goes through a package manager), and `grep` or `diff` given a form only rtk accepts.
+fn runs_its_namesake(cmd: &Commands) -> bool {
+    match cmd {
+        Commands::Grep {
+            max_len,
+            max,
+            context_only,
+            ..
+        } => max_len.is_none() && max.is_none() && !context_only,
+        Commands::Diff { file2, .. } => file2.is_some(),
+        _ => matches!(
+            cmd,
+            Commands::Ls { .. }
+                | Commands::Tree { .. }
+                | Commands::Find { .. }
+                | Commands::Git { .. }
+                | Commands::Gh { .. }
+                | Commands::Glab { .. }
+                | Commands::Aws { .. }
+                | Commands::Psql { .. }
+                | Commands::Rg { .. }
+                | Commands::AstGrep { .. }
+                | Commands::Wc { .. }
+                | Commands::Curl { .. }
+                | Commands::Wget { .. }
+                | Commands::Cargo { .. }
+                | Commands::Go { .. }
+                | Commands::Npx { .. }
+                | Commands::Uv { .. }
+                | Commands::Ruff { .. }
+                | Commands::Sqlfluff { .. }
+                | Commands::Gt { .. }
+                | Commands::Mvn { .. }
+                | Commands::Mvnd { .. }
+                | Commands::Ctest { .. }
+                | Commands::GolangciLint { .. }
+        ),
+    }
+}
+
+/// The command line after `rtk` and its own root flags, as the program and its arguments.
+fn native_command() -> Option<(String, Vec<std::ffi::OsString>)> {
+    let argv: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+    let lossy: Vec<String> = argv
+        .iter()
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect();
+    let start = argv.len() - fallback_command_args(&lossy)?.len();
+    Some((lossy[start].clone(), argv[start + 1..].to_vec()))
+}
+
 fn is_operational_command(cmd: &Commands) -> bool {
     matches!(
         cmd,
@@ -4208,6 +4272,24 @@ mod tests {
     use super::*;
     use crate::core::test_isolation;
     use std::cell::Cell;
+
+    #[test]
+    fn only_a_command_that_is_its_namesake_runs_natively_into_a_file() {
+        let namesake = |argv: &[&str]| {
+            let cli = try_parse_cli_from(argv).unwrap_or_else(|e| panic!("{argv:?}: {e}"));
+            runs_its_namesake(&cli.command)
+        };
+        assert!(namesake(&["rtk", "git", "log", "-p"]));
+        assert!(namesake(&["rtk", "grep", "-rn", "fn new", "src"]));
+        assert!(namesake(&["rtk", "diff", "a.txt", "b.txt"]));
+        // Forms only rtk accepts, which the program itself would refuse or read otherwise.
+        assert!(!namesake(&["rtk", "grep", "--max", "5", "fn new", "src"]));
+        assert!(!namesake(&["rtk", "grep", "--context-only", "fn new", "src"]));
+        assert!(!namesake(&["rtk", "diff", "-"]));
+        // `rtk npm build` runs `npm run build`; `rtk read` is rtk's own view.
+        assert!(!namesake(&["rtk", "npm", "build"]));
+        assert!(!namesake(&["rtk", "read", "a.txt"]));
+    }
 
     #[test]
     fn test_jest_and_vitest_get_the_hook_integrity_check() {
