@@ -66,22 +66,22 @@ const RUST_KEYWORDS: &[&str] = &[
     "override", "priv", "try", "typeof", "unsized", "virtual", "yield",
 ];
 
-fn validate_crate_name(name: &str) -> Result<()> {
+fn validate_plugin_name(name: &str) -> Result<()> {
     if !is_valid_name(name) {
         bail!("plugin name must be alphanumeric with - or _, starting with a letter: `{name}`");
     }
     if RUST_KEYWORDS.contains(&name) {
         bail!("plugin name `{name}` is a reserved Rust keyword; choose another name");
     }
+    if to_struct_name(name) == "Self" {
+        bail!("plugin name `{name}` generates the reserved Rust type `Self`; choose another name");
+    }
     Ok(())
 }
 
 pub fn run_new(name: &str) -> Result<i32> {
-    validate_crate_name(name)?;
+    validate_plugin_name(name)?;
     let struct_name = to_struct_name(name);
-    if struct_name == "Self" {
-        bail!("plugin name `{name}` generates the reserved Rust type `Self`; choose another name");
-    }
     let dir = plugins_dir()?.join(name);
     if dir.exists() {
         bail!("plugin `{name}` already exists at {}", dir.display());
@@ -205,8 +205,14 @@ pub fn run_build() -> Result<i32> {
     if crates.is_empty() {
         bail!("no plugins to build — scaffold one with `rtk plugins new <name>`");
     }
-    for (name, _) in &crates {
-        validate_crate_name(name)?;
+    for (name, path) in &crates {
+        validate_plugin_name(name).with_context(|| {
+            format!(
+                "cannot build the plugin at {}: scaffold a replacement with `rtk plugins new <other-name>`, \
+                 move your code into it and move this directory out of the plugins folder",
+                path.display()
+            )
+        })?;
     }
     let host = plugins_dir()?.join(".host");
     std::fs::create_dir_all(host.join("src")).context("create host dir")?;
