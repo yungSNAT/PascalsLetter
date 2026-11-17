@@ -33,10 +33,10 @@ use crate::core::shell::{quote_program, quote_word};
 use crate::core::user_dirs;
 use crate::core::user_env;
 // The shared shell lexer lives in `discover`.
+use crate::core::utils::{days_ago_cutoff, rfc3339};
 use crate::discover::lexer::shell_split;
 use anyhow::{Context, Result};
-use crate::core::utils::{days_ago_cutoff, rfc3339};
-use jiff::{SignedDuration, Timestamp};
+use jiff::Timestamp;
 use rusqlite::{Connection, params};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -2771,6 +2771,7 @@ mod command_label_tests {
 mod tests {
     use super::*;
     use crate::core::test_isolation;
+    use jiff::SignedDuration;
 
     // Fixed timestamps bypass record(), which uses the wall clock and prunes old
     // rows. The in-memory tracker still creates the real production schema.

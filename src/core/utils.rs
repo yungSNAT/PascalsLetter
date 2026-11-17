@@ -87,7 +87,11 @@ pub(crate) fn decode_backslashes(s: &str, ansi_c: bool) -> Option<String> {
 pub fn days_ago_cutoff(days: u64) -> Timestamp {
     let days = days.min(i64::MAX as u64) as i64;
     days.checked_mul(86_400)
-        .and_then(|secs| Timestamp::now().checked_sub(SignedDuration::from_secs(secs)).ok())
+        .and_then(|secs| {
+            Timestamp::now()
+                .checked_sub(SignedDuration::from_secs(secs))
+                .ok()
+        })
         .unwrap_or(Timestamp::MIN)
 }
 

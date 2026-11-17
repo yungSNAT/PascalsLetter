@@ -491,7 +491,7 @@ mod tests {
 </TestRun>"#;
 
         let (start, finish) = parse_trx_time_bounds(trx).expect("time bounds");
-        assert_eq!((finish - start).num_seconds(), 2);
+        assert_eq!(finish.duration_since(start).as_secs(), 2);
     }
 
     #[test]
