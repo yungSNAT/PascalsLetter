@@ -67,11 +67,11 @@ class RtkRewritePluginTest(unittest.TestCase):
 
     def load_callback(self):
         module = load_plugin_module()
-        module._rtk_available = None
+        module._rtk_path = None
         module._rtk_missing_warned = False
         ctx = FakeContext()
 
-        with mock.patch.object(module.shutil, "which", return_value="/usr/bin/rtk"):
+        with mock.patch.object(module, "_find_rtk", return_value="/usr/bin/rtk"):
             module.register(ctx)
 
         self.assertIn("pre_tool_call", ctx.hooks)
@@ -79,11 +79,11 @@ class RtkRewritePluginTest(unittest.TestCase):
 
     def test_missing_rtk_skips_registering_pre_tool_call(self):
         module = load_plugin_module()
-        module._rtk_available = None
+        module._rtk_path = None
         module._rtk_missing_warned = False
         ctx = FakeContext()
 
-        with mock.patch.object(module.shutil, "which", return_value=None):
+        with mock.patch.object(module, "_find_rtk", return_value=None):
             with mock.patch.object(module.sys, "stderr", new_callable=io.StringIO) as stderr:
                 module.register(ctx)
 
@@ -95,10 +95,10 @@ class RtkRewritePluginTest(unittest.TestCase):
 
     def test_missing_rtk_warns_only_once(self):
         module = load_plugin_module()
-        module._rtk_available = None
+        module._rtk_path = None
         module._rtk_missing_warned = False
 
-        with mock.patch.object(module.shutil, "which", return_value=None):
+        with mock.patch.object(module, "_find_rtk", return_value=None):
             with mock.patch.object(module.sys, "stderr", new_callable=io.StringIO) as stderr:
                 self.assertFalse(module._check_rtk())
                 self.assertFalse(module._check_rtk())
@@ -110,10 +110,10 @@ class RtkRewritePluginTest(unittest.TestCase):
 
     def test_check_rtk_found_is_quiet(self):
         module = load_plugin_module()
-        module._rtk_available = None
+        module._rtk_path = None
         module._rtk_missing_warned = False
 
-        with mock.patch.object(module.shutil, "which", return_value="/usr/bin/rtk"):
+        with mock.patch.object(module, "_find_rtk", return_value="/usr/bin/rtk"):
             with mock.patch.object(module.sys, "stderr", new_callable=io.StringIO) as stderr:
                 self.assertTrue(module._check_rtk())
 
@@ -121,14 +121,14 @@ class RtkRewritePluginTest(unittest.TestCase):
 
     def test_check_rtk_caches_result_across_calls(self):
         module = load_plugin_module()
-        module._rtk_available = None
+        module._rtk_path = None
         module._rtk_missing_warned = False
 
-        with mock.patch.object(module.shutil, "which", return_value="/usr/bin/rtk") as which:
+        with mock.patch.object(module, "_find_rtk", return_value="/usr/bin/rtk") as find_rtk:
             self.assertTrue(module._check_rtk())
             self.assertTrue(module._check_rtk())
 
-        which.assert_called_once_with("rtk")
+        find_rtk.assert_called_once_with()
 
     @unittest.skipIf(os.name == "nt", "the fake rtk is a script run by its shebang")
     def test_rtk_runs_only_from_an_absolute_path_entry(self):
@@ -176,7 +176,7 @@ class RtkRewritePluginTest(unittest.TestCase):
                     directive = callback(tool_name="terminal", args=args)
 
                 run.assert_called_once_with(
-                    ["rtk", "rewrite", "git status"],
+                    ["/usr/bin/rtk", "rewrite", "git status"],
                     shell=False,
                     stdin=subprocess.DEVNULL,
                     timeout=5,

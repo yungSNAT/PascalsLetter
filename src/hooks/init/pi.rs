@@ -13,7 +13,10 @@ use crate::hooks::constants::{
 
 const PI_PLUGIN: &str = include_str!("../../../hooks/pi/rtk.ts");
 
-const PI_PLUGIN_REWRITE_MARKER: &str = "exec(\"rtk\", [\"rewrite\"";
+/// The `rtk rewrite` call in an RTK Pi extension: by bare name in earlier
+/// releases, by the path found on PATH since.
+const PI_PLUGIN_REWRITE_MARKERS: &[&str] =
+    &["exec(\"rtk\", [\"rewrite\"", "exec(rtk, [\"rewrite\""];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PiCompatibleAgent {
@@ -77,6 +80,7 @@ const KNOWN_PI_PLUGIN_HASHES: &[&str] = &[
     "628308173ae41c488b76bcf90eafbd4c0c72435927645d81cdbec652eac4b107",
     "3eb16108f51a29c2a62a453d5c97a6ea2da8aea1061da34c50fdcfaa32dc0ff7",
     "def594058835ce23d82abd6872a8359144a4486ed0905ff12e59fedb2260b472",
+    "4539416fc4c9a84d60794252e0ffd3b29408970e5ecbd79f45b247e9a58a17a0",
 ];
 
 /// Resolve Pi config directory, honouring `PI_CODING_AGENT_DIR` override.
@@ -203,7 +207,9 @@ fn is_current_pi_plugin(content: &str) -> bool {
 }
 
 fn looks_like_rtk_pi_plugin(content: &str) -> bool {
-    content.contains(PI_PLUGIN_REWRITE_MARKER)
+    PI_PLUGIN_REWRITE_MARKERS
+        .iter()
+        .any(|marker| content.contains(marker))
 }
 
 fn is_known_stock_pi_plugin(content: &str) -> bool {

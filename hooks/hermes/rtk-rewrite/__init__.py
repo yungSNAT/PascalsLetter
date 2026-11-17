@@ -6,7 +6,6 @@ only bridges Hermes ``pre_tool_call`` payloads to that command and fails open.
 
 import math
 import os
-import shutil
 import subprocess
 import sys
 
@@ -15,7 +14,7 @@ ACCEPTED_REWRITE_RETURN_CODES = {0, 3}
 EXPECTED_PASSTHROUGH_RETURN_CODES = {1, 2}
 DEFAULT_REWRITE_TIMEOUT = 5
 DEFAULT_REWRITE_BACKENDS = "local"
-_rtk_available = None
+_rtk_path = None  # the rtk to run once looked up; "" when there is none
 _rtk_missing_warned = False
 
 
@@ -29,16 +28,31 @@ def register(ctx):
 
 def _check_rtk():
     """Return whether the rtk binary is in PATH, warning once when missing."""
-    global _rtk_available, _rtk_missing_warned
+    global _rtk_path, _rtk_missing_warned
 
-    if _rtk_available is None:
-        _rtk_available = shutil.which("rtk") is not None
+    if _rtk_path is None:
+        _rtk_path = _find_rtk() or ""
 
-    if not _rtk_available and not _rtk_missing_warned:
+    if not _rtk_path and not _rtk_missing_warned:
         _warn("rtk binary not found in PATH; Hermes hook not registered")
         _rtk_missing_warned = True
 
-    return _rtk_available
+    return bool(_rtk_path)
+
+
+def _find_rtk():
+    """The rtk in the first absolute PATH entry that holds one, or None.
+
+    Not a bare "rtk" or shutil.which: on Windows both search the working folder
+    before PATH, so a checkout's rtk.exe would run, and a relative PATH entry is
+    resolved against the working folder everywhere.
+    """
+    name = "rtk.exe" if os.name == "nt" else "rtk"
+    for folder in os.environ.get("PATH", "").split(os.pathsep):
+        candidate = os.path.join(folder, name)
+        if os.path.isabs(folder) and os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
 
 
 def _rewrite_timeout():
@@ -80,7 +94,7 @@ def _pre_tool_call(tool_name=None, args=None, **_kwargs):
 
         try:
             result = subprocess.run(
-                ["rtk", "rewrite", command],
+                [_rtk_path, "rewrite", command],
                 shell=False,
                 stdin=subprocess.DEVNULL,
                 timeout=_rewrite_timeout(),

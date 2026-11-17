@@ -12,7 +12,7 @@ All rewrite logic lives in RTK itself (`rtk rewrite`). This plugin is a thin del
 
 ### Prerequisites
 
-RTK must be installed and available in `$PATH`:
+RTK must be installed and available in `$PATH`. The plugin runs the first `rtk` (`rtk.exe` on Windows) in an absolute `PATH` entry, never one in the working folder or a relative entry:
 
 ```bash
 brew install rtk
