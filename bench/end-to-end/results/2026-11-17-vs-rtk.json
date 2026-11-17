@@ -1,0 +1,900 @@
+{
+ "params": {
+  "bootstrap_draws": 10000,
+  "seed": 1234,
+  "ci": "95%"
+ },
+ "model": [
+  "claude-sonnet-4-6"
+ ],
+ "claude_versions": [
+  "2.1.206 (Claude Code)"
+ ],
+ "tasks": [
+  "code-bugfix-py",
+  "code-debug-pipeline-py",
+  "code-feature-js",
+  "code-iterate-tests",
+  "code-migration-py-xl",
+  "code-refactor-split-py",
+  "log-needle-zh",
+  "seo-audit"
+ ],
+ "task_control_tokens": {
+  "code-bugfix-py": 159314,
+  "code-debug-pipeline-py": 575860,
+  "code-feature-js": 283604,
+  "code-iterate-tests": 217056,
+  "code-migration-py-xl": 203915,
+  "code-refactor-split-py": 179279,
+  "log-needle-zh": 271545,
+  "seo-audit": 315305
+ },
+ "headline_min_tokens": 200000,
+ "headline_n_tasks": 6,
+ "headline": [
+  {
+   "competitor": "pascalsletter",
+   "cost_ratio": 0.9413119595816566,
+   "cost_reduction_pct": 5.9,
+   "ci_lo_pct": 1.5,
+   "ci_hi_pct": 10.7,
+   "adoption": 0,
+   "n_runs": 60,
+   "tasks_compared": 6,
+   "no_adoption": false,
+   "tokens": {
+    "input": 24947,
+    "output": 3552,
+    "cache": 254923
+   }
+  },
+  {
+   "competitor": "control",
+   "cost_ratio": 1.0,
+   "cost_reduction_pct": 0.0,
+   "ci_lo_pct": null,
+   "ci_hi_pct": null,
+   "adoption": null,
+   "n_runs": 60,
+   "tasks_compared": 6,
+   "tokens": {
+    "input": 25493,
+    "output": 3810,
+    "cache": 281901
+   }
+  }
+ ],
+ "adoption_na": [
+  "caveman",
+  "claude-token-efficient",
+  "edgee",
+  "headroom",
+  "ponytail",
+  "rtk",
+  "squeez"
+ ],
+ "no_adoption": [],
+ "opt_in_adoption": [
+  "code-review-graph",
+  "codegraph",
+  "graphify"
+ ],
+ "no_token_accounting": [
+  "edgee"
+ ],
+ "token_bands": [
+  {
+   "label": "0\u2013200k",
+   "lo": 0,
+   "hi": 200000,
+   "tasks": [
+    "code-bugfix-py",
+    "code-refactor-split-py"
+   ],
+   "n_tasks": 2,
+   "ranking": [
+    {
+     "competitor": "control",
+     "aggregate_cost_ratio": 1.0,
+     "tasks_compared": 2,
+     "tokens": {
+      "input": 17501,
+      "output": 1284,
+      "cache": 150505
+     }
+    },
+    {
+     "competitor": "pascalsletter",
+     "aggregate_cost_ratio": 1.0200847298486586,
+     "no_adoption": false,
+     "tasks_compared": 2,
+     "tokens": {
+      "input": 17468,
+      "output": 1301,
+      "cache": 160266
+     }
+    }
+   ]
+  },
+  {
+   "label": "200k\u2013400k",
+   "lo": 200000,
+   "hi": 400000,
+   "tasks": [
+    "code-feature-js",
+    "code-iterate-tests",
+    "code-migration-py-xl",
+    "log-needle-zh",
+    "seo-audit"
+   ],
+   "n_tasks": 5,
+   "ranking": [
+    {
+     "competitor": "pascalsletter",
+     "aggregate_cost_ratio": 0.9472580329760298,
+     "no_adoption": false,
+     "tasks_compared": 5,
+     "tokens": {
+      "input": 23037,
+      "output": 3102,
+      "cache": 212585
+     }
+    },
+    {
+     "competitor": "control",
+     "aggregate_cost_ratio": 1.0,
+     "tasks_compared": 5,
+     "tokens": {
+      "input": 23404,
+      "output": 3295,
+      "cache": 231577
+     }
+    }
+   ]
+  },
+  {
+   "label": "400k+",
+   "lo": 400000,
+   "hi": null,
+   "tasks": [
+    "code-debug-pipeline-py"
+   ],
+   "n_tasks": 1,
+   "ranking": [
+    {
+     "competitor": "pascalsletter",
+     "aggregate_cost_ratio": 0.912136794035122,
+     "no_adoption": false,
+     "tasks_compared": 1,
+     "tokens": {
+      "input": 34493,
+      "output": 5799,
+      "cache": 466611
+     }
+    },
+    {
+     "competitor": "control",
+     "aggregate_cost_ratio": 1.0,
+     "tasks_compared": 1,
+     "tokens": {
+      "input": 35939,
+      "output": 6388,
+      "cache": 533519
+     }
+    }
+   ]
+  }
+ ],
+ "control_per_task": {
+  "code-bugfix-py": {
+   "n": 10,
+   "mean_input_tokens": 16776,
+   "mean_output_tokens": 762,
+   "mean_cache_tokens": 141770
+  },
+  "code-debug-pipeline-py": {
+   "n": 10,
+   "mean_input_tokens": 35939,
+   "mean_output_tokens": 6388,
+   "mean_cache_tokens": 533519
+  },
+  "code-feature-js": {
+   "n": 10,
+   "mean_input_tokens": 18256,
+   "mean_output_tokens": 2238,
+   "mean_cache_tokens": 263100
+  },
+  "code-iterate-tests": {
+   "n": 10,
+   "mean_input_tokens": 19622,
+   "mean_output_tokens": 1825,
+   "mean_cache_tokens": 195600
+  },
+  "code-migration-py-xl": {
+   "n": 10,
+   "mean_input_tokens": 24907,
+   "mean_output_tokens": 1828,
+   "mean_cache_tokens": 177173
+  },
+  "code-refactor-split-py": {
+   "n": 10,
+   "mean_input_tokens": 18227,
+   "mean_output_tokens": 1805,
+   "mean_cache_tokens": 159240
+  },
+  "log-needle-zh": {
+   "n": 10,
+   "mean_input_tokens": 20228,
+   "mean_output_tokens": 1759,
+   "mean_cache_tokens": 249548
+  },
+  "seo-audit": {
+   "n": 10,
+   "mean_input_tokens": 34007,
+   "mean_output_tokens": 8824,
+   "mean_cache_tokens": 272465
+  }
+ },
+ "control_noise_floor": {
+  "code-bugfix-py": {
+   "n": 10,
+   "successes": 10,
+   "mean_cost": 0.11689113,
+   "cv": 0.007695633429049047,
+   "costs": [
+    0.1164171,
+    0.11869845,
+    0.11652104999999999,
+    0.11636429999999999,
+    0.1165365,
+    0.11654445,
+    0.1162662,
+    0.1184727,
+    0.11654925,
+    0.11654130000000001
+   ]
+  },
+  "code-debug-pipeline-py": {
+   "n": 10,
+   "successes": 10,
+   "mean_cost": 0.390688965,
+   "cv": 0.04571129250354744,
+   "costs": [
+    0.39928739999999996,
+    0.3832167000000001,
+    0.387135,
+    0.37261664999999994,
+    0.3895617,
+    0.41622630000000005,
+    0.3865719000000001,
+    0.36299490000000006,
+    0.42159359999999996,
+    0.3876855
+   ]
+  },
+  "code-feature-js": {
+   "n": 10,
+   "successes": 10,
+   "mean_cost": 0.18099072,
+   "cv": 0.1486966071355705,
+   "costs": [
+    0.21038520000000002,
+    0.1819431,
+    0.18584849999999997,
+    0.11864625000000001,
+    0.15112725,
+    0.191793,
+    0.198129,
+    0.19082595000000002,
+    0.19953344999999995,
+    0.18167549999999996
+   ]
+  },
+  "code-iterate-tests": {
+   "n": 10,
+   "successes": 10,
+   "mean_cost": 0.159664965,
+   "cv": 0.09166151468258196,
+   "costs": [
+    0.15706815,
+    0.15525134999999998,
+    0.15190379999999998,
+    0.1521975,
+    0.15628785,
+    0.15657735,
+    0.15382154999999997,
+    0.15460124999999997,
+    0.1580202,
+    0.20092064999999998
+   ]
+  },
+  "code-migration-py-xl": {
+   "n": 10,
+   "successes": 10,
+   "mean_cost": 0.17399277,
+   "cv": 0.07644333891257743,
+   "costs": [
+    0.15553124999999998,
+    0.18506219999999998,
+    0.18805605,
+    0.1755657,
+    0.1904562,
+    0.15624689999999997,
+    0.17164395,
+    0.1769208,
+    0.1579737,
+    0.18247095
+   ]
+  },
+  "code-refactor-split-py": {
+   "n": 10,
+   "successes": 10,
+   "mean_cost": 0.143220405,
+   "cv": 0.06462135727711307,
+   "costs": [
+    0.13646595,
+    0.1500822,
+    0.1500609,
+    0.15003719999999998,
+    0.13671689999999997,
+    0.13665765,
+    0.12370319999999999,
+    0.1500321,
+    0.1489308,
+    0.14951715
+   ]
+  },
+  "log-needle-zh": {
+   "n": 10,
+   "successes": 10,
+   "mean_cost": 0.177135405,
+   "cv": 0.11601495468960935,
+   "costs": [
+    0.19652099999999995,
+    0.18621734999999998,
+    0.12821475,
+    0.18657285,
+    0.1802241,
+    0.1827219,
+    0.17087010000000002,
+    0.16153874999999998,
+    0.17818815,
+    0.20028510000000002
+   ]
+  },
+  "seo-audit": {
+   "n": 10,
+   "successes": 10,
+   "mean_cost": 0.34164612,
+   "cv": 0.07210908773974896,
+   "costs": [
+    0.3123939,
+    0.32062064999999995,
+    0.35682854999999997,
+    0.3686658,
+    0.31552109999999994,
+    0.35527739999999997,
+    0.35493494999999997,
+    0.34853429999999996,
+    0.37433475,
+    0.3093498
+   ]
+  }
+ },
+ "competitors": {
+  "pascalsletter": {
+   "version": "develop 578b0c0e",
+   "aggregate_cost_ratio": 0.9604156847806689,
+   "aggregate_ci_lo": 0.914774802453024,
+   "aggregate_ci_hi": 1.0037875144365411,
+   "n_success": 80,
+   "n_runs": 80,
+   "tasks_compared": 8,
+   "per_task": {
+    "code-bugfix-py": {
+     "n": 10,
+     "successes": 10,
+     "mean_cost": 0.115810515,
+     "ratio": 0.9907553721142058,
+     "ci_lo": 0.9856505626801007,
+     "ci_hi": 0.994759858737858,
+     "adoption": 0,
+     "mean_wall_s": 18.0959,
+     "mean_input_tokens": 16689,
+     "mean_output_tokens": 717,
+     "mean_cache_tokens": 141524,
+     "costs": [
+      0.11544075000000002,
+      0.11584290000000001,
+      0.1159728,
+      0.11561115,
+      0.1157298,
+      0.11578530000000001,
+      0.11594505000000001,
+      0.1159566,
+      0.11603730000000001,
+      0.1157835
+     ],
+     "scores": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+     ],
+     "tool_calls": [
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4
+     ],
+     "competitor_tool_calls": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    "code-debug-pipeline-py": {
+     "n": 10,
+     "successes": 10,
+     "mean_cost": 0.35636178,
+     "ratio": 0.912136794035122,
+     "ci_lo": 0.8372188210795679,
+     "ci_hi": 0.9867250084972842,
+     "adoption": 0,
+     "mean_wall_s": 86.7119,
+     "mean_input_tokens": 34493,
+     "mean_output_tokens": 5799,
+     "mean_cache_tokens": 466611,
+     "costs": [
+      0.36605175,
+      0.41684025,
+      0.40248779999999995,
+      0.37147605,
+      0.30090930000000005,
+      0.30255719999999997,
+      0.28670415,
+      0.36951629999999996,
+      0.40921215,
+      0.33786285000000005
+     ],
+     "scores": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+     ],
+     "tool_calls": [
+      23,
+      23,
+      24,
+      23,
+      22,
+      24,
+      21,
+      23,
+      24,
+      25
+     ],
+     "competitor_tool_calls": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    "code-feature-js": {
+     "n": 10,
+     "successes": 10,
+     "mean_cost": 0.176001825,
+     "ratio": 0.9724356309538965,
+     "ci_lo": 0.8766483424870929,
+     "ci_hi": 1.0956168210467698,
+     "adoption": 0,
+     "mean_wall_s": 38.2074,
+     "mean_input_tokens": 18075,
+     "mean_output_tokens": 2100,
+     "mean_cache_tokens": 255634,
+     "costs": [
+      0.21236835000000004,
+      0.15438825,
+      0.1958946,
+      0.18615375,
+      0.1593687,
+      0.16552799999999998,
+      0.18517844999999997,
+      0.14630490000000002,
+      0.1685574,
+      0.18627585
+     ],
+     "scores": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+     ],
+     "tool_calls": [
+      12,
+      7,
+      10,
+      9,
+      7,
+      8,
+      9,
+      6,
+      8,
+      9
+     ],
+     "competitor_tool_calls": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    "code-iterate-tests": {
+     "n": 10,
+     "successes": 10,
+     "mean_cost": 0.15566264999999999,
+     "ratio": 0.9749330418229196,
+     "ci_lo": 0.9181974711609837,
+     "ci_hi": 1.012341116121749,
+     "adoption": 0,
+     "mean_wall_s": 31.2198,
+     "mean_input_tokens": 19721,
+     "mean_output_tokens": 1860,
+     "mean_cache_tokens": 179293,
+     "costs": [
+      0.15608699999999998,
+      0.15586755000000002,
+      0.15651030000000002,
+      0.1540905,
+      0.1559691,
+      0.15866324999999998,
+      0.15652215,
+      0.1558509,
+      0.15065355,
+      0.1564122
+     ],
+     "scores": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+     ],
+     "tool_calls": [
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10
+     ],
+     "competitor_tool_calls": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    "code-migration-py-xl": {
+     "n": 10,
+     "successes": 10,
+     "mean_cost": 0.165669195,
+     "ratio": 0.952161374291587,
+     "ci_lo": 0.8972167286633462,
+     "ci_hi": 1.0125805343466003,
+     "adoption": 0,
+     "mean_wall_s": 31.7662,
+     "mean_input_tokens": 23822,
+     "mean_output_tokens": 1668,
+     "mean_cache_tokens": 170990,
+     "costs": [
+      0.1829577,
+      0.15914655,
+      0.15637020000000001,
+      0.1584876,
+      0.1551753,
+      0.1706589,
+      0.1570623,
+      0.16085415,
+      0.17099115,
+      0.1849881
+     ],
+     "scores": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+     ],
+     "tool_calls": [
+      6,
+      6,
+      6,
+      6,
+      5,
+      6,
+      5,
+      7,
+      7,
+      7
+     ],
+     "competitor_tool_calls": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    "code-refactor-split-py": {
+     "n": 10,
+     "successes": 10,
+     "mean_cost": 0.15042186,
+     "ratio": 1.0502823253432358,
+     "ci_lo": 0.9862739172745392,
+     "ci_hi": 1.1187449074553004,
+     "adoption": 0,
+     "mean_wall_s": 29.4563,
+     "mean_input_tokens": 18247,
+     "mean_output_tokens": 1885,
+     "mean_cache_tokens": 179008,
+     "costs": [
+      0.15047235,
+      0.1465242,
+      0.16185705,
+      0.14908095000000002,
+      0.14907135,
+      0.1221594,
+      0.17351295,
+      0.1487091,
+      0.1523328,
+      0.15049845
+     ],
+     "scores": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+     ],
+     "tool_calls": [
+      12,
+      11,
+      12,
+      12,
+      12,
+      9,
+      14,
+      12,
+      12,
+      11
+     ],
+     "competitor_tool_calls": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    "log-needle-zh": {
+     "n": 10,
+     "successes": 10,
+     "mean_cost": 0.15378735,
+     "ratio": 0.8681909186929626,
+     "ci_lo": 0.773089947135688,
+     "ci_hi": 0.9738210597558993,
+     "adoption": 0,
+     "mean_wall_s": 29.361,
+     "mean_input_tokens": 19790,
+     "mean_output_tokens": 1392,
+     "mean_cache_tokens": 195571,
+     "costs": [
+      0.12680895,
+      0.16836495,
+      0.1799457,
+      0.1853094,
+      0.12710370000000001,
+      0.16742475,
+      0.12705795,
+      0.1665684,
+      0.16276095,
+      0.12652875
+     ],
+     "scores": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+     ],
+     "tool_calls": [
+      7,
+      7,
+      8,
+      8,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7
+     ],
+     "competitor_tool_calls": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    "seo-audit": {
+     "n": 10,
+     "successes": 10,
+     "mean_cost": 0.33247311,
+     "ratio": 0.97315055121949,
+     "ci_lo": 0.9094946527815175,
+     "ci_hi": 1.0527279715773326,
+     "adoption": 0,
+     "mean_wall_s": 155.5197,
+     "mean_input_tokens": 33779,
+     "mean_output_tokens": 8490,
+     "mean_cache_tokens": 261436,
+     "costs": [
+      0.31387575,
+      0.3190941,
+      0.30470834999999996,
+      0.34985325,
+      0.31634055,
+      0.4188168,
+      0.3395193,
+      0.3283794,
+      0.30357765000000003,
+      0.33056595
+     ],
+     "scores": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+     ],
+     "tool_calls": [
+      15,
+      15,
+      15,
+      15,
+      15,
+      18,
+      16,
+      15,
+      15,
+      15
+     ],
+     "competitor_tool_calls": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    }
+   }
+  }
+ },
+ "ranking": [
+  {
+   "rank": 1,
+   "competitor": "pascalsletter",
+   "aggregate_cost_ratio": 0.9604156847806689,
+   "aggregate_ci_lo": 0.914774802453024,
+   "aggregate_ci_hi": 1.0037875144365411,
+   "n_success": 80,
+   "n_runs": 80,
+   "tasks_compared": 8
+  }
+ ],
+ "non_ok": [],
+ "campaign": "2.1.206 (Claude Code)"
+}

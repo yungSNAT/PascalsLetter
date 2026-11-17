@@ -1,0 +1,241 @@
+competitor,task,rep,status,score,success,total_cost_usd,input_tokens,output_tokens,cache_creation_tokens,cache_read_tokens,num_turns,tool_calls,wall_ms,model,claude_version,competitor_version,kept_runs,hook_calls,hook_rewrites,rtk_runs,rtk_in_tokens,rtk_out_tokens
+control,code-bugfix-py,1,ok,1.0,1,0.11447925,6,712,16435,140500,5,4,16729,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-bugfix-py,1,ok,1.0,1,0.11544075000000002,6,698,16669,141480,5,4,16319,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,2,1,1,38,31
+rtk-1.2.0,code-bugfix-py,1,ok,1.0,1,0.1164171,6,741,16742,141672,5,4,16627,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,2,1,1,38,31
+control,code-bugfix-py,2,ok,1.0,1,0.11436089999999999,6,706,16428,140493,5,4,17439,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-bugfix-py,2,ok,1.0,1,0.11584290000000001,6,719,16688,141533,5,4,21107,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,2,1,1,38,31
+rtk-1.2.0,code-bugfix-py,2,ok,1.0,1,0.11869845,6,844,16901,142139,6,5,21313,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,3,1,1,41,39
+control,code-bugfix-py,3,ok,1.0,1,0.11440215000000001,6,709,16427,140493,5,4,17231,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-bugfix-py,3,ok,1.0,1,0.1159728,6,725,16698,141541,5,4,19609,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,2,1,1,38,31
+rtk-1.2.0,code-bugfix-py,3,ok,1.0,1,0.11652104999999999,6,746,16749,141681,5,4,18836,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,2,1,1,38,31
+control,code-bugfix-py,4,ok,1.0,1,0.11440050000000002,6,707,16434,140500,5,4,22600,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-bugfix-py,4,ok,1.0,1,0.11561115,6,706,16681,141498,5,4,18313,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,2,1,1,38,31
+rtk-1.2.0,code-bugfix-py,4,ok,1.0,1,0.11636429999999999,6,738,16740,141671,5,4,19547,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,2,1,1,38,31
+control,code-bugfix-py,5,ok,1.0,1,0.1144539,6,710,16436,140503,5,4,18654,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-bugfix-py,5,ok,1.0,1,0.1157298,6,712,16686,141531,5,4,18007,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,2,1,1,38,31
+rtk-1.2.0,code-bugfix-py,5,ok,1.0,1,0.1165365,6,745,16756,141695,5,4,19889,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,2,1,1,38,31
+control,code-bugfix-py,6,ok,1.0,1,0.11470485,6,726,16439,140502,5,4,17113,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-bugfix-py,6,ok,1.0,1,0.11578530000000001,6,716,16686,141516,5,4,16801,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,2,1,1,38,31
+rtk-1.2.0,code-bugfix-py,6,ok,1.0,1,0.11654445,6,748,16747,141684,5,4,18043,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,2,1,1,38,31
+control,code-bugfix-py,7,ok,1.0,1,0.11459354999999999,6,718,16441,140506,5,4,18070,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-bugfix-py,7,ok,1.0,1,0.11594505000000001,6,725,16691,141536,5,4,17910,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,2,1,1,38,31
+rtk-1.2.0,code-bugfix-py,7,ok,1.0,1,0.1162662,6,732,16738,141669,5,4,17683,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,2,1,1,38,31
+control,code-bugfix-py,8,ok,1.0,1,0.11450955000000002,6,714,16435,140501,5,4,15930,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-bugfix-py,8,ok,1.0,1,0.1159566,6,725,16694,141537,5,4,17030,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,2,1,1,38,31
+rtk-1.2.0,code-bugfix-py,8,ok,1.0,1,0.1184727,6,831,16894,142124,6,5,17591,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,3,1,1,41,39
+control,code-bugfix-py,9,ok,1.0,1,0.11434364999999999,6,709,16415,140448,5,4,17716,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-bugfix-py,9,ok,1.0,1,0.11603730000000001,6,727,16706,141556,5,4,18315,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,2,1,1,38,31
+rtk-1.2.0,code-bugfix-py,9,ok,1.0,1,0.11654925,6,749,16745,141675,5,4,18803,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,2,1,1,38,31
+control,code-bugfix-py,10,ok,1.0,1,0.11353814999999999,6,700,16271,140013,5,4,17498,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-bugfix-py,10,ok,1.0,1,0.1157835,6,715,16690,141510,5,4,17548,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,2,1,1,38,31
+rtk-1.2.0,code-bugfix-py,10,ok,1.0,1,0.11654130000000001,6,748,16746,141686,5,4,18683,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,2,1,1,38,31
+control,code-debug-pipeline-py,1,ok,1.0,1,0.36537135,13,5635,34861,500262,24,23,83999,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-debug-pipeline-py,1,ok,1.0,1,0.36605175,13,5627,35219,498455,24,23,88611,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,2,0,0,0,0
+rtk-1.2.0,code-debug-pipeline-py,1,ok,1.0,1,0.39928739999999996,14,6028,37064,566118,25,24,91214,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,3,0,0,0,0
+control,code-debug-pipeline-py,2,ok,1.0,1,0.3704529,13,5876,35124,501863,24,23,86153,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-debug-pipeline-py,2,ok,1.0,1,0.41684025,13,7956,37565,521975,24,23,127083,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,2,0,0,0,0
+rtk-1.2.0,code-debug-pipeline-py,2,ok,1.0,1,0.3832167000000001,13,6295,36160,510509,24,23,91597,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,2,0,0,0,0
+control,code-debug-pipeline-py,3,ok,1.0,1,0.36468615,13,5576,34891,500553,24,23,87024,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-debug-pipeline-py,3,ok,1.0,1,0.40248779999999995,14,6040,37712,568086,25,24,88945,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,3,0,0,0,0
+rtk-1.2.0,code-debug-pipeline-py,3,ok,1.0,1,0.387135,15,6003,33148,575800,20,19,96504,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,3,0,0,0,0
+control,code-debug-pipeline-py,4,ok,1.0,1,0.30559424999999996,13,5193,25955,434430,23,22,75191,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-debug-pipeline-py,4,ok,1.0,1,0.37147605,13,5806,35401,505311,24,23,85103,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,2,0,0,0,0
+rtk-1.2.0,code-debug-pipeline-py,4,ok,1.0,1,0.37261664999999994,13,5994,35145,502913,23,22,89737,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,2,0,0,0,0
+control,code-debug-pipeline-py,5,ok,1.0,1,0.36956955,13,6000,34707,497931,23,22,84898,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-debug-pipeline-py,5,ok,1.0,1,0.30090930000000005,13,4501,26944,441051,23,22,64337,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,3,0,0,0,0
+rtk-1.2.0,code-debug-pipeline-py,5,ok,1.0,1,0.3895617,13,6807,35992,508159,23,22,97421,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,2,0,0,0,0
+control,code-debug-pipeline-py,6,ok,1.0,1,0.4433214,13,9353,38570,527833,24,23,142365,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-debug-pipeline-py,6,ok,1.0,1,0.30255719999999997,9,4878,36660,306284,25,24,71786,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,3,0,0,0,0
+rtk-1.2.0,code-debug-pipeline-py,6,ok,1.0,1,0.41622630000000005,17,5760,34574,667076,22,21,93964,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,4,0,0,0,0
+control,code-debug-pipeline-py,7,ok,1.0,1,0.34784565,13,4970,33575,491168,23,22,75901,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-debug-pipeline-py,7,ok,1.0,1,0.28670415,12,4753,25831,395023,22,21,71336,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,2,0,0,0,0
+rtk-1.2.0,code-debug-pipeline-py,7,ok,1.0,1,0.3865719000000001,13,6488,36242,511018,24,23,100435,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,2,0,0,0,0
+control,code-debug-pipeline-py,8,ok,1.0,1,0.3780852,13,6259,35464,503904,24,23,93952,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-debug-pipeline-py,8,ok,1.0,1,0.36951629999999996,13,5707,35316,504791,24,23,84135,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,2,0,0,0,0
+rtk-1.2.0,code-debug-pipeline-py,8,ok,1.0,1,0.36299490000000006,13,5346,35086,503978,24,23,79119,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,2,0,0,0,0
+control,code-debug-pipeline-py,9,ok,1.0,1,0.5273740499999999,14,12410,42725,603211,25,24,188761,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-debug-pipeline-py,9,ok,1.0,1,0.40921215,14,6558,37461,567738,25,24,97613,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,3,0,0,0,0
+rtk-1.2.0,code-debug-pipeline-py,9,ok,1.0,1,0.42159359999999996,14,7096,38146,573547,25,24,108069,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,3,0,0,0,0
+control,code-debug-pipeline-py,10,ok,1.0,1,0.30357045,13,4502,27483,443134,24,23,68543,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-debug-pipeline-py,10,ok,1.0,1,0.33786285000000005,10,6168,36825,357397,26,25,88170,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,3,0,0,0,0
+rtk-1.2.0,code-debug-pipeline-py,10,ok,1.0,1,0.3876855,11,8063,37836,416075,24,23,118074,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,2,0,0,0,0
+control,code-feature-js,1,ok,1.0,1,0.20196225,11,2648,18871,304810,11,10,44349,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-feature-js,1,ok,1.0,1,0.21236835000000004,12,2636,18799,340987,13,12,46627,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,6,2,2,61,14
+rtk-1.2.0,code-feature-js,1,ok,1.0,1,0.21038520000000002,11,3034,19218,309249,12,11,49815,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,4,2,2,61,14
+control,code-feature-js,2,ok,1.0,1,0.24497249999999998,13,3892,19914,372920,13,12,63838,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-feature-js,2,ok,1.0,1,0.15438825,8,1795,17525,205735,8,7,34932,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,3,1,1,46,10
+rtk-1.2.0,code-feature-js,2,ok,1.0,1,0.1819431,10,2137,18170,272402,10,9,39202,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,3,1,1,46,10
+control,code-feature-js,3,ok,1.0,1,0.20597880000000002,11,2844,19050,306161,12,11,47680,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-feature-js,3,ok,1.0,1,0.1958946,11,2338,18422,305697,11,10,42154,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,4,1,1,46,10
+rtk-1.2.0,code-feature-js,3,ok,1.0,1,0.18584849999999997,10,2332,18388,272945,10,9,42749,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,3,1,1,46,10
+control,code-feature-js,4,ok,1.0,1,0.1327329,7,1269,16598,171448,7,6,25440,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-feature-js,4,ok,1.0,1,0.18615375,10,2366,18367,272525,10,9,39560,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,3,1,1,46,10
+rtk-1.2.0,code-feature-js,4,ok,1.0,1,0.11864625000000001,6,975,16481,140665,6,5,20397,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,2,1,1,46,10
+control,code-feature-js,5,ok,1.0,1,0.1506045,8,1673,17154,203860,8,7,30230,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-feature-js,5,ok,1.0,1,0.1593687,8,2162,17408,205449,8,7,42090,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,3,1,1,46,10
+rtk-1.2.0,code-feature-js,5,ok,1.0,1,0.15112725,8,1624,17355,205540,8,7,30777,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,3,1,1,46,10
+control,code-feature-js,6,ok,1.0,1,0.1805247,10,2152,17926,269974,10,9,36082,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-feature-js,6,ok,1.0,1,0.16552799999999998,9,1763,18002,238495,9,8,31012,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,4,1,1,46,10
+rtk-1.2.0,code-feature-js,6,ok,1.0,1,0.191793,10,2647,18764,272310,10,9,44885,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,3,1,1,46,10
+control,code-feature-js,7,ok,1.0,1,0.18135374999999998,10,2197,17965,270000,10,9,39720,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-feature-js,7,ok,1.0,1,0.18517844999999997,10,2293,18383,272724,10,9,40999,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,3,1,1,46,10
+rtk-1.2.0,code-feature-js,7,ok,1.0,1,0.198129,11,2411,18662,306495,11,10,44801,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,4,1,1,46,10
+control,code-feature-js,8,ok,1.0,1,0.17920695,10,2091,17829,269844,10,9,36038,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-feature-js,8,ok,1.0,1,0.14630490000000002,8,1430,16982,203828,7,6,29784,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,2,1,1,46,10
+rtk-1.2.0,code-feature-js,8,ok,1.0,1,0.19082595000000002,10,2587,18703,272849,10,9,43580,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,3,1,1,46,10
+control,code-feature-js,9,ok,1.0,1,0.1798371,10,2119,17898,269682,10,9,36855,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-feature-js,9,ok,1.0,1,0.1685574,9,1921,18158,238743,9,8,34313,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,4,1,1,46,10
+rtk-1.2.0,code-feature-js,9,ok,1.0,1,0.19953344999999995,11,2522,18609,306289,11,10,43254,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,4,1,1,46,10
+control,code-feature-js,10,ok,1.0,1,0.18138539999999997,10,2196,17970,270093,10,9,38342,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-feature-js,10,ok,1.0,1,0.18627585,10,2297,18705,272157,10,9,40603,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,3,1,1,46,10
+rtk-1.2.0,code-feature-js,10,ok,1.0,1,0.18167549999999996,10,2112,18210,272260,10,9,38343,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,3,1,1,46,10
+control,code-iterate-tests,1,ok,1.0,1,0.1514727,7,1714,19308,177789,11,10,29029,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-iterate-tests,1,ok,1.0,1,0.15608699999999998,7,1873,19766,179495,11,10,30453,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,3,0,0,0,0
+rtk-1.2.0,code-iterate-tests,1,ok,1.0,1,0.15706815,7,1899,19891,179903,11,10,31394,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,3,0,0,0,0
+control,code-iterate-tests,2,ok,1.0,1,0.1543167,7,1870,19430,177944,11,10,29619,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-iterate-tests,2,ok,1.0,1,0.15586755000000002,7,1857,19771,179501,11,10,29520,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,3,0,0,0,0
+rtk-1.2.0,code-iterate-tests,2,ok,1.0,1,0.15525134999999998,7,1811,19771,179747,11,10,28689,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,3,0,0,0,0
+control,code-iterate-tests,3,ok,1.0,1,0.15231599999999998,7,1745,19400,177900,11,10,29697,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-iterate-tests,3,ok,1.0,1,0.15651030000000002,7,1891,19800,179581,11,10,34715,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,3,0,0,0,0
+rtk-1.2.0,code-iterate-tests,3,ok,1.0,1,0.15190379999999998,7,1756,19274,177551,11,10,28507,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,3,1,1,46,43
+control,code-iterate-tests,4,ok,1.0,1,0.1533111,7,1804,19426,177942,11,10,28412,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-iterate-tests,4,ok,1.0,1,0.1540905,7,1764,19674,179440,11,10,29364,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,3,0,0,0,0
+rtk-1.2.0,code-iterate-tests,4,ok,1.0,1,0.1521975,7,1768,19304,177555,11,10,28732,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,3,1,1,46,43
+control,code-iterate-tests,5,ok,1.0,1,0.15469455000000001,7,1886,19461,178016,11,10,31010,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-iterate-tests,5,ok,1.0,1,0.1559691,7,1858,19790,179552,11,10,31097,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,3,0,0,0,0
+rtk-1.2.0,code-iterate-tests,5,ok,1.0,1,0.15628785,7,1842,19911,179902,11,10,31305,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,3,0,0,0,0
+control,code-iterate-tests,6,ok,1.0,1,0.15391185,7,1830,19477,178007,11,10,32026,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-iterate-tests,6,ok,1.0,1,0.15866324999999998,7,2008,19899,179670,11,10,33089,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,3,0,0,0,0
+rtk-1.2.0,code-iterate-tests,6,ok,1.0,1,0.15657735,7,1868,19885,179892,11,10,30869,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,3,0,0,0,0
+control,code-iterate-tests,7,ok,1.0,1,0.154188,7,1854,19454,178015,11,10,31156,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-iterate-tests,7,ok,1.0,1,0.15652215,7,1892,19801,179558,11,10,32898,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,3,0,0,0,0
+rtk-1.2.0,code-iterate-tests,7,ok,1.0,1,0.15382154999999997,7,1863,19351,177631,11,10,32880,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,3,1,1,46,43
+control,code-iterate-tests,8,ok,1.0,1,0.15370275000000003,7,1832,19419,177935,11,10,33861,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-iterate-tests,8,ok,1.0,1,0.1558509,7,1852,19786,179508,11,10,30995,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,3,0,0,0,0
+rtk-1.2.0,code-iterate-tests,8,ok,1.0,1,0.15460124999999997,7,1748,19843,179830,11,10,29681,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,3,0,0,0,0
+control,code-iterate-tests,9,ok,1.0,1,0.15394665,7,1844,19433,177973,11,10,31268,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-iterate-tests,9,ok,1.0,1,0.15065355,7,1718,19131,177071,11,10,30173,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,3,0,0,0,0
+rtk-1.2.0,code-iterate-tests,9,ok,1.0,1,0.1580202,7,1950,19936,179964,11,10,31850,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,3,0,0,0,0
+control,code-iterate-tests,10,ok,1.0,1,0.15382455,7,1838,19427,177941,11,10,29926,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-iterate-tests,10,ok,1.0,1,0.1564122,7,1886,19796,179554,11,10,29894,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,3,0,0,0,0
+rtk-1.2.0,code-iterate-tests,10,ok,1.0,1,0.20092064999999998,12,1747,19059,344028,11,10,33696,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,3,0,0,0,0
+control,code-migration-py-xl,1,ok,1.0,1,0.1528908,6,1565,22246,153251,6,5,30336,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-migration-py-xl,1,ok,1.0,1,0.1829577,7,1614,26612,196439,7,6,34310,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,5,2,2,4750,4750
+rtk-1.2.0,code-migration-py-xl,1,ok,1.0,1,0.15553124999999998,6,1538,22875,155540,6,5,27672,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,4,1,1,2285,2285
+control,code-migration-py-xl,2,ok,1.0,1,0.15839129999999998,6,1843,22570,153636,7,6,30091,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-migration-py-xl,2,ok,1.0,1,0.15914655,6,1749,23015,155291,7,6,32161,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,5,2,2,2388,2388
+rtk-1.2.0,code-migration-py-xl,2,ok,1.0,1,0.18506219999999998,7,1613,27078,197679,7,6,31261,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,5,2,2,4654,4654
+control,code-migration-py-xl,3,ok,1.0,1,0.17980094999999996,7,2144,23947,192729,7,6,38368,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-migration-py-xl,3,ok,1.0,1,0.15637020000000001,6,1676,22604,154824,7,6,32970,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,5,2,2,2334,2334
+rtk-1.2.0,code-migration-py-xl,3,ok,1.0,1,0.18805605,7,1752,27287,198096,7,6,32089,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,5,2,2,4654,4654
+control,code-migration-py-xl,4,ok,1.0,1,0.16184475,6,2042,22677,153860,7,6,34437,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-migration-py-xl,4,ok,1.0,1,0.1584876,6,1716,22964,155382,7,6,28551,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,4,1,1,2333,2333
+rtk-1.2.0,code-migration-py-xl,4,ok,1.0,1,0.1755657,6,1761,26720,163109,7,6,31991,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,5,2,26,3615,3615
+control,code-migration-py-xl,5,ok,1.0,1,0.1604232,6,1964,22640,153484,8,7,32546,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-migration-py-xl,5,ok,1.0,1,0.1551753,6,1362,23582,154316,6,5,26371,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,4,2,2,3226,3226
+rtk-1.2.0,code-migration-py-xl,5,ok,1.0,1,0.1904562,7,1863,27442,198609,8,7,34953,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,6,3,3,4655,4655
+control,code-migration-py-xl,6,ok,1.0,1,0.16573110000000002,7,1609,22454,191242,8,7,30040,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-migration-py-xl,6,ok,1.0,1,0.1706589,7,1549,23820,193593,7,6,27887,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,5,2,2,3226,3226
+rtk-1.2.0,code-migration-py-xl,6,ok,1.0,1,0.15624689999999997,6,1574,22918,155588,6,5,27900,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,4,1,1,2285,2285
+control,code-migration-py-xl,7,ok,1.0,1,0.19024575,8,1988,24241,231660,10,9,35843,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-migration-py-xl,7,ok,1.0,1,0.1570623,6,1684,22752,154881,6,5,29358,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,4,1,1,2333,2333
+rtk-1.2.0,code-migration-py-xl,7,ok,1.0,1,0.17164395,7,1749,23227,194289,7,6,32120,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,5,2,2,2285,2285
+control,code-migration-py-xl,8,ok,1.0,1,0.15593430000000003,6,1701,22498,153446,8,7,32670,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-migration-py-xl,8,ok,1.0,1,0.16085415,6,1813,23209,155358,8,7,40001,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,5,2,2,2333,2333
+rtk-1.2.0,code-migration-py-xl,8,ok,1.0,1,0.1769208,7,2000,23598,194691,8,7,39663,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,5,3,3,2286,2286
+control,code-migration-py-xl,9,ok,1.0,1,0.18039360000000004,7,1922,24922,193617,9,8,32751,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-migration-py-xl,9,ok,1.0,1,0.17099115,7,1797,22961,193038,8,7,32526,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,6,3,3,2334,2334
+rtk-1.2.0,code-migration-py-xl,9,ok,1.0,1,0.1579737,6,1646,23078,155744,6,5,34777,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,4,1,1,2285,2285
+control,code-migration-py-xl,10,ok,1.0,1,0.17151180000000002,6,2482,23426,154721,7,6,39439,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-migration-py-xl,10,ok,1.0,1,0.1849881,7,1720,26702,196782,8,7,33527,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,6,3,3,4775,4775
+rtk-1.2.0,code-migration-py-xl,10,ok,1.0,1,0.18247095,6,2785,24843,158389,8,7,43495,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,6,3,8,2676,2676
+control,code-refactor-split-py,1,ok,1.0,1,0.1455003,7,1806,17712,173231,12,11,25641,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-refactor-split-py,1,ok,1.0,1,0.15047235,7,1959,18289,174942,13,12,33989,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,4,2,2,61,14
+rtk-1.2.0,code-refactor-split-py,1,ok,1.0,1,0.13646595,6,1731,18033,142864,11,10,26443,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,2,0,0,0,0
+control,code-refactor-split-py,2,ok,1.0,1,0.12025485,5,1450,17463,110012,10,9,21703,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-refactor-split-py,2,ok,1.0,1,0.1465242,7,1704,18032,177744,12,11,24999,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,3,0,0,0,0
+rtk-1.2.0,code-refactor-split-py,2,ok,1.0,1,0.1500822,7,1914,18356,175054,13,12,27884,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,4,2,2,61,14
+control,code-refactor-split-py,3,ok,1.0,1,0.1443978,7,1718,17770,173231,12,11,25751,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-refactor-split-py,3,ok,1.0,1,0.16185705,8,2020,18421,208181,13,12,34472,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,4,2,2,61,14
+rtk-1.2.0,code-refactor-split-py,3,ok,1.0,1,0.1500609,7,1912,18358,175058,13,12,34688,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,4,2,2,61,14
+control,code-refactor-split-py,4,ok,1.0,1,0.13259415000000002,6,1590,17663,141633,11,10,23937,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-refactor-split-py,4,ok,1.0,1,0.14908095000000002,7,1872,18273,174854,13,12,27707,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,4,2,2,61,14
+rtk-1.2.0,code-refactor-split-py,4,ok,1.0,1,0.15003719999999998,7,1911,18356,175054,13,12,28196,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,4,2,2,61,14
+control,code-refactor-split-py,5,ok,1.0,1,0.14445075,7,1707,17707,174745,12,11,25834,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-refactor-split-py,5,ok,1.0,1,0.14907135,7,1871,18273,174872,13,12,27834,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,4,2,2,61,14
+rtk-1.2.0,code-refactor-split-py,5,ok,1.0,1,0.13671689999999997,6,1745,18042,142888,11,10,24670,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,2,0,0,0,0
+control,code-refactor-split-py,6,ok,1.0,1,0.14577179999999998,7,1736,18014,173861,12,11,26297,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-refactor-split-py,6,ok,1.0,1,0.1221594,5,1480,17782,110873,10,9,21111,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,1,0,0,0,0
+rtk-1.2.0,code-refactor-split-py,6,ok,1.0,1,0.13665765,6,1670,18291,143328,11,10,24454,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,2,0,0,0,0
+control,code-refactor-split-py,7,ok,1.0,1,0.12020549999999999,5,1440,17488,110035,10,9,20713,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-refactor-split-py,7,ok,1.0,1,0.17351295,9,2092,18485,242624,15,14,32717,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,6,2,2,61,14
+rtk-1.2.0,code-refactor-split-py,7,ok,1.0,1,0.12370319999999999,5,1556,17878,111019,10,9,21338,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,1,0,0,0,0
+control,code-refactor-split-py,8,ok,1.0,1,0.12018645,5,1439,17487,110034,10,9,23622,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-refactor-split-py,8,ok,1.0,1,0.1487091,7,1852,18254,174852,13,12,31596,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,4,2,2,61,14
+rtk-1.2.0,code-refactor-split-py,8,ok,1.0,1,0.1500321,7,1914,18342,175062,13,12,33987,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,4,2,2,61,14
+control,code-refactor-split-py,9,ok,1.0,1,0.1564722,8,1810,17838,208019,13,12,29377,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-refactor-split-py,9,ok,1.0,1,0.1523328,7,2053,18396,175106,13,12,30858,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,4,2,2,61,14
+rtk-1.2.0,code-refactor-split-py,9,ok,1.0,1,0.1489308,7,1878,18202,174941,12,11,30469,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,3,1,1,26,7
+control,code-refactor-split-py,10,ok,1.0,1,0.13246665,6,1592,17627,141558,11,10,24890,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,code-refactor-split-py,10,ok,1.0,1,0.15049845,7,1944,18269,176029,12,11,29280,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,3,2,2,61,14
+rtk-1.2.0,code-refactor-split-py,10,ok,1.0,1,0.14951715,7,1821,18411,177133,12,11,28704,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,3,0,0,0,0
+control,log-needle-zh,1,ok,1.0,1,0.16556834999999998,9,1378,19531,238767,8,7,33327,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,log-needle-zh,1,ok,1.0,1,0.12680895,5,1244,19811,112809,8,7,24784,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,6,2,2,38600,1620
+rtk-1.2.0,log-needle-zh,1,ok,1.0,1,0.19652099999999995,11,1793,20460,309560,10,9,36198,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,7,2,2,228,100
+control,log-needle-zh,2,ok,1.0,1,0.16275555000000003,9,1437,18511,239191,8,7,30600,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,log-needle-zh,2,ok,1.0,1,0.16836495,9,1449,19851,240539,8,7,32240,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,6,3,3,5106,997
+rtk-1.2.0,log-needle-zh,2,ok,1.0,1,0.18621734999999998,10,1740,20679,275137,9,8,38720,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,6,2,2,37990,1189
+control,log-needle-zh,3,ok,1.0,1,0.12995685,5,1511,19653,111927,8,7,31265,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,log-needle-zh,3,ok,1.0,1,0.1799457,10,1513,19972,274419,9,8,32575,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,6,1,1,0,0
+rtk-1.2.0,log-needle-zh,3,ok,1.0,1,0.12821475,5,1553,19125,110620,8,7,29233,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,6,2,2,38057,1191
+control,log-needle-zh,4,ok,1.0,1,0.15941415,9,1322,18131,238553,8,7,26973,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,log-needle-zh,4,ok,1.0,1,0.1853094,10,1571,21194,274123,9,8,32339,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,7,3,3,6009,2197
+rtk-1.2.0,log-needle-zh,4,ok,1.0,1,0.18657285,7,3179,22135,186202,11,10,56939,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,8,3,3,42267,1759
+control,log-needle-zh,5,ok,1.0,1,0.13233869999999998,5,1346,20848,113179,8,7,27556,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,log-needle-zh,5,ok,1.0,1,0.12710370000000001,5,1271,19966,110504,8,7,23654,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,6,2,2,38906,1620
+rtk-1.2.0,log-needle-zh,5,ok,1.0,1,0.1802241,10,1541,19916,274647,9,8,31563,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,6,1,1,0,0
+control,log-needle-zh,6,ok,1.0,1,0.1462944,6,1574,21078,145413,9,8,28675,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,log-needle-zh,6,ok,1.0,1,0.16742475,9,1413,19733,240680,8,7,35128,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,6,0,0,0,0
+rtk-1.2.0,log-needle-zh,6,ok,1.0,1,0.1827219,10,1558,20538,274348,9,8,33961,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,6,2,2,13230,1203
+control,log-needle-zh,7,ok,1.0,1,0.12801269999999998,5,1307,19956,111859,8,7,26579,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,log-needle-zh,7,ok,1.0,1,0.12705795,5,1354,19621,110514,8,7,26989,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,6,2,2,4648,770
+rtk-1.2.0,log-needle-zh,7,ok,1.0,1,0.17087010000000002,9,1456,20484,240627,8,7,29929,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,6,0,0,0,0
+control,log-needle-zh,8,ok,1.0,1,0.1615215,9,1433,18220,238915,8,7,31920,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,log-needle-zh,8,ok,1.0,1,0.1665684,9,1364,19714,240513,8,7,29159,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,6,0,0,0,0
+rtk-1.2.0,log-needle-zh,8,ok,1.0,1,0.16153874999999998,9,1371,18333,240660,8,7,30266,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,6,1,1,294,134
+control,log-needle-zh,9,ok,1.0,1,0.13945814999999998,6,1589,19339,143613,9,8,28222,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,log-needle-zh,9,ok,1.0,1,0.16276095,9,1395,18533,241034,8,7,31947,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,6,1,1,299,134
+rtk-1.2.0,log-needle-zh,9,ok,1.0,1,0.17818815,10,1524,19555,273223,9,8,37100,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,6,3,3,4764,734
+control,log-needle-zh,10,ok,1.0,1,0.15962834999999997,9,1338,18107,238767,8,7,28018,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,log-needle-zh,10,ok,1.0,1,0.12652875,5,1346,19507,110575,8,7,24795,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,6,2,2,13246,1636
+rtk-1.2.0,log-needle-zh,10,ok,1.0,1,0.20028510000000002,11,1877,21056,310457,10,9,37406,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,8,1,1,4072,565
+control,seo-audit,1,ok,1.0,1,0.33925695,10,8611,33493,281544,18,16,150277,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,seo-audit,1,ok,1.0,1,0.31387575,9,7892,33021,238800,17,15,144723,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,1,0,0,0,0
+rtk-1.2.0,seo-audit,1,ok,1.0,1,0.3123939,8,8453,33602,198558,17,15,153517,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,1,0,0,0,0
+control,seo-audit,2,ok,1.0,1,0.2784753,8,6726,31612,196721,17,15,121796,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,seo-audit,2,ok,1.0,1,0.3190941,9,8176,33276,238807,17,15,145466,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,1,0,0,0,0
+rtk-1.2.0,seo-audit,2,ok,1.0,1,0.32062064999999995,9,8236,33403,239308,17,15,150143,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,1,0,0,0,0
+control,seo-audit,3,ok,1.0,1,0.33231180000000005,9,8959,33810,237041,17,15,161433,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,seo-audit,3,ok,1.0,1,0.30470834999999996,9,7415,32477,238892,17,15,138544,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,1,0,0,0,0
+rtk-1.2.0,seo-audit,3,ok,1.0,1,0.35682854999999997,10,9434,34683,284091,18,16,172243,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,2,1,2,70,15
+control,seo-audit,4,ok,1.0,1,0.334704,10,8459,33372,275480,17,15,155130,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,seo-audit,4,ok,1.0,1,0.34985325,9,9807,34933,239075,17,15,182342,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,1,0,0,0,0
+rtk-1.2.0,seo-audit,4,ok,1.0,1,0.3686658,11,9445,34600,324026,18,16,170108,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,2,1,2,70,15
+control,seo-audit,5,ok,1.0,1,0.35444895000000004,11,8844,33693,318024,18,16,162572,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,seo-audit,5,ok,1.0,1,0.31634055,9,8015,33185,238816,17,15,150132,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,1,0,0,0,0
+rtk-1.2.0,seo-audit,5,ok,1.0,1,0.31552109999999994,9,7958,33158,239272,17,15,143290,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,1,0,0,0,0
+control,seo-audit,6,ok,1.0,1,0.35110020000000003,9,9966,34788,237094,17,15,186261,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,seo-audit,6,ok,1.0,1,0.4188168,12,10856,37610,383011,20,18,196988,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,4,0,0,0,0
+rtk-1.2.0,seo-audit,6,ok,1.0,1,0.35527739999999997,10,9387,34614,282133,18,16,168337,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,2,0,0,0,0
+control,seo-audit,7,ok,1.0,1,0.30277425,9,7373,32283,236970,17,15,133998,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,seo-audit,7,ok,1.0,1,0.3395193,10,8581,33676,281631,18,16,154140,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,2,1,2,0,0
+rtk-1.2.0,seo-audit,7,ok,1.0,1,0.35493494999999997,10,9451,34589,278104,17,15,175628,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,1,0,0,0,0
+control,seo-audit,8,ok,1.0,1,0.3702441000000001,11,9651,34500,320237,18,16,171562,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,seo-audit,8,ok,1.0,1,0.3283794,10,8043,33184,277548,17,15,152968,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,1,0,0,0,0
+rtk-1.2.0,seo-audit,8,ok,1.0,1,0.34853429999999996,10,9110,34248,278081,17,15,169999,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,1,0,0,0,0
+control,seo-audit,9,ok,0.9231,1,0.325056,10,7964,32778,275495,17,15,145512,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,seo-audit,9,ok,1.0,1,0.30357765000000003,9,7342,32471,238848,17,15,135208,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,1,0,0,0,0
+rtk-1.2.0,seo-audit,9,ok,1.0,1,0.37433475,11,9759,34937,323010,18,16,177087,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,2,1,2,70,15
+control,seo-audit,10,ok,1.0,1,0.3129843,10,7246,32116,279431,18,16,128706,claude-sonnet-4-6,2.1.206 (Claude Code),,1,0,0,0,0,0
+pascalsletter,seo-audit,10,ok,1.0,1,0.33056595,9,8769,33953,238934,17,15,154686,claude-sonnet-4-6,2.1.206 (Claude Code),develop 578b0c0e,1,1,0,0,0,0
+rtk-1.2.0,seo-audit,10,ok,1.0,1,0.3093498,10,7002,32232,278066,17,15,128087,claude-sonnet-4-6,2.1.206 (Claude Code),v1.2.0,1,1,0,0,0,0

@@ -1,0 +1,1458 @@
+{
+ "params": {
+  "bootstrap_draws": 10000,
+  "seed": 1234,
+  "ci": "95%"
+ },
+ "model": [
+  "claude-sonnet-4-6"
+ ],
+ "claude_versions": [
+  "2.1.206 (Claude Code)"
+ ],
+ "tasks": [
+  "code-bugfix-py",
+  "code-debug-pipeline-py",
+  "code-feature-js",
+  "code-iterate-tests",
+  "code-migration-py-xl",
+  "code-refactor-split-py",
+  "log-needle-zh",
+  "seo-audit"
+ ],
+ "task_control_tokens": {
+  "code-bugfix-py": 157579,
+  "code-debug-pipeline-py": 541355,
+  "code-feature-js": 291315,
+  "code-iterate-tests": 199198,
+  "code-migration-py-xl": 198259,
+  "code-refactor-split-py": 170948,
+  "log-needle-zh": 202786,
+  "seo-audit": 307438
+ },
+ "headline_min_tokens": 200000,
+ "headline_n_tasks": 4,
+ "headline": [
+  {
+   "competitor": "pascalsletter",
+   "cost_ratio": 0.9852506736983754,
+   "cost_reduction_pct": 1.5,
+   "ci_lo_pct": -4.9,
+   "ci_hi_pct": 8.1,
+   "adoption": 0,
+   "n_runs": 40,
+   "tasks_compared": 4,
+   "no_adoption": false,
+   "tokens": {
+    "input": 26534,
+    "output": 4445,
+    "cache": 294813
+   }
+  },
+  {
+   "competitor": "control",
+   "cost_ratio": 1.0,
+   "cost_reduction_pct": 0.0,
+   "ci_lo_pct": null,
+   "ci_hi_pct": null,
+   "adoption": null,
+   "n_runs": 40,
+   "tasks_compared": 4,
+   "tokens": {
+    "input": 26259,
+    "output": 4672,
+    "cache": 304783
+   }
+  },
+  {
+   "competitor": "rtk-1.2.0",
+   "cost_ratio": 1.0589311234554706,
+   "cost_reduction_pct": -5.9,
+   "ci_lo_pct": -15.7,
+   "ci_hi_pct": 2.6,
+   "adoption": 0,
+   "n_runs": 40,
+   "tasks_compared": 4,
+   "no_adoption": false,
+   "tokens": {
+    "input": 27108,
+    "output": 4802,
+    "cache": 329658
+   }
+  }
+ ],
+ "adoption_na": [
+  "caveman",
+  "claude-token-efficient",
+  "edgee",
+  "headroom",
+  "ponytail",
+  "rtk",
+  "squeez"
+ ],
+ "no_adoption": [],
+ "opt_in_adoption": [
+  "code-review-graph",
+  "codegraph",
+  "graphify"
+ ],
+ "no_token_accounting": [
+  "edgee"
+ ],
+ "token_bands": [
+  {
+   "label": "0\u2013200k",
+   "lo": 0,
+   "hi": 200000,
+   "tasks": [
+    "code-bugfix-py",
+    "code-iterate-tests",
+    "code-migration-py-xl",
+    "code-refactor-split-py"
+   ],
+   "n_tasks": 4,
+   "ranking": [
+    {
+     "competitor": "control",
+     "aggregate_cost_ratio": 1.0,
+     "tasks_compared": 4,
+     "tokens": {
+      "input": 19170,
+      "output": 1522,
+      "cache": 160798
+     }
+    },
+    {
+     "competitor": "pascalsletter",
+     "aggregate_cost_ratio": 1.028601569548373,
+     "no_adoption": false,
+     "tasks_compared": 4,
+     "tokens": {
+      "input": 19620,
+      "output": 1532,
+      "cache": 167704
+     }
+    },
+    {
+     "competitor": "rtk-1.2.0",
+     "aggregate_cost_ratio": 1.037546864170817,
+     "no_adoption": false,
+     "tasks_compared": 4,
+     "tokens": {
+      "input": 19883,
+      "output": 1555,
+      "cache": 168446
+     }
+    }
+   ]
+  },
+  {
+   "label": "200k\u2013400k",
+   "lo": 200000,
+   "hi": 400000,
+   "tasks": [
+    "code-feature-js",
+    "log-needle-zh",
+    "seo-audit"
+   ],
+   "n_tasks": 3,
+   "ranking": [
+    {
+     "competitor": "pascalsletter",
+     "aggregate_cost_ratio": 0.9994728356763124,
+     "no_adoption": false,
+     "tasks_compared": 3,
+     "tokens": {
+      "input": 23881,
+      "output": 3994,
+      "cache": 237547
+     }
+    },
+    {
+     "competitor": "control",
+     "aggregate_cost_ratio": 1.0,
+     "tasks_compared": 3,
+     "tokens": {
+      "input": 23566,
+      "output": 4037,
+      "cache": 239567
+     }
+    },
+    {
+     "competitor": "rtk-1.2.0",
+     "aggregate_cost_ratio": 1.0671339823408241,
+     "no_adoption": false,
+     "tasks_compared": 3,
+     "tokens": {
+      "input": 24164,
+      "output": 4274,
+      "cache": 261704
+     }
+    }
+   ]
+  },
+  {
+   "label": "400k+",
+   "lo": 400000,
+   "hi": null,
+   "tasks": [
+    "code-debug-pipeline-py"
+   ],
+   "n_tasks": 1,
+   "ranking": [
+    {
+     "competitor": "pascalsletter",
+     "aggregate_cost_ratio": 0.9437869692024301,
+     "no_adoption": false,
+     "tasks_compared": 1,
+     "tokens": {
+      "input": 34493,
+      "output": 5799,
+      "cache": 466611
+     }
+    },
+    {
+     "competitor": "control",
+     "aggregate_cost_ratio": 1.0,
+     "tasks_compared": 1,
+     "tokens": {
+      "input": 34336,
+      "output": 6577,
+      "cache": 500429
+     }
+    },
+    {
+     "competitor": "rtk-1.2.0",
+     "aggregate_cost_ratio": 1.03469893482456,
+     "no_adoption": false,
+     "tasks_compared": 1,
+     "tokens": {
+      "input": 35939,
+      "output": 6388,
+      "cache": 533519
+     }
+    }
+   ]
+  }
+ ],
+ "control_per_task": {
+  "code-bugfix-py": {
+   "n": 10,
+   "mean_input_tokens": 16416,
+   "mean_output_tokens": 711,
+   "mean_cache_tokens": 140446
+  },
+  "code-debug-pipeline-py": {
+   "n": 10,
+   "mean_input_tokens": 34336,
+   "mean_output_tokens": 6577,
+   "mean_cache_tokens": 500429
+  },
+  "code-feature-js": {
+   "n": 10,
+   "mean_input_tokens": 18118,
+   "mean_output_tokens": 2308,
+   "mean_cache_tokens": 270879
+  },
+  "code-iterate-tests": {
+   "n": 10,
+   "mean_input_tokens": 19424,
+   "mean_output_tokens": 1822,
+   "mean_cache_tokens": 177946
+  },
+  "code-migration-py-xl": {
+   "n": 10,
+   "mean_input_tokens": 23162,
+   "mean_output_tokens": 1926,
+   "mean_cache_tokens": 173165
+  },
+  "code-refactor-split-py": {
+   "n": 10,
+   "mean_input_tokens": 17677,
+   "mean_output_tokens": 1629,
+   "mean_cache_tokens": 151636
+  },
+  "log-needle-zh": {
+   "n": 10,
+   "mean_input_tokens": 19337,
+   "mean_output_tokens": 1424,
+   "mean_cache_tokens": 182018
+  },
+  "seo-audit": {
+   "n": 10,
+   "mean_input_tokens": 33244,
+   "mean_output_tokens": 8380,
+   "mean_cache_tokens": 265804
+  }
+ },
+ "control_noise_floor": {
+  "code-bugfix-py": {
+   "n": 10,
+   "successes": 10,
+   "mean_cost": 0.114378645,
+   "cv": 0.0027563089488087215,
+   "costs": [
+    0.11447925,
+    0.11436089999999999,
+    0.11440215000000001,
+    0.11440050000000002,
+    0.1144539,
+    0.11470485,
+    0.11459354999999999,
+    0.11450955000000002,
+    0.11434364999999999,
+    0.11353814999999999
+   ]
+  },
+  "code-debug-pipeline-py": {
+   "n": 10,
+   "successes": 10,
+   "mean_cost": 0.377587095,
+   "cv": 0.17374363825128722,
+   "costs": [
+    0.36537135,
+    0.3704529,
+    0.36468615,
+    0.30559424999999996,
+    0.36956955,
+    0.4433214,
+    0.34784565,
+    0.3780852,
+    0.5273740499999999,
+    0.30357045
+   ]
+  },
+  "code-feature-js": {
+   "n": 10,
+   "successes": 10,
+   "mean_cost": 0.183855885,
+   "cv": 0.165500917610553,
+   "costs": [
+    0.20196225,
+    0.24497249999999998,
+    0.20597880000000002,
+    0.1327329,
+    0.1506045,
+    0.1805247,
+    0.18135374999999998,
+    0.17920695,
+    0.1798371,
+    0.18138539999999997
+   ]
+  },
+  "code-iterate-tests": {
+   "n": 10,
+   "successes": 10,
+   "mean_cost": 0.153568485,
+   "cv": 0.006359268061890596,
+   "costs": [
+    0.1514727,
+    0.1543167,
+    0.15231599999999998,
+    0.1533111,
+    0.15469455000000001,
+    0.15391185,
+    0.154188,
+    0.15370275000000003,
+    0.15394665,
+    0.15382455
+   ]
+  },
+  "code-migration-py-xl": {
+   "n": 10,
+   "successes": 10,
+   "mean_cost": 0.167716755,
+   "cv": 0.07345355266952974,
+   "costs": [
+    0.1528908,
+    0.15839129999999998,
+    0.17980094999999996,
+    0.16184475,
+    0.1604232,
+    0.16573110000000002,
+    0.19024575,
+    0.15593430000000003,
+    0.18039360000000004,
+    0.17151180000000002
+   ]
+  },
+  "code-refactor-split-py": {
+   "n": 10,
+   "successes": 10,
+   "mean_cost": 0.136230045,
+   "cv": 0.09532614789153764,
+   "costs": [
+    0.1455003,
+    0.12025485,
+    0.1443978,
+    0.13259415000000002,
+    0.14445075,
+    0.14577179999999998,
+    0.12020549999999999,
+    0.12018645,
+    0.1564722,
+    0.13246665
+   ]
+  },
+  "log-needle-zh": {
+   "n": 10,
+   "successes": 10,
+   "mean_cost": 0.14849487,
+   "cv": 0.10085015390207044,
+   "costs": [
+    0.16556834999999998,
+    0.16275555000000003,
+    0.12995685,
+    0.15941415,
+    0.13233869999999998,
+    0.1462944,
+    0.12801269999999998,
+    0.1615215,
+    0.13945814999999998,
+    0.15962834999999997
+   ]
+  },
+  "seo-audit": {
+   "n": 10,
+   "successes": 10,
+   "mean_cost": 0.330135585,
+   "cv": 0.08131296688403374,
+   "costs": [
+    0.33925695,
+    0.2784753,
+    0.33231180000000005,
+    0.334704,
+    0.35444895000000004,
+    0.35110020000000003,
+    0.30277425,
+    0.3702441000000001,
+    0.325056,
+    0.3129843
+   ]
+  }
+ },
+ "competitors": {
+  "pascalsletter": {
+   "version": "develop 578b0c0e",
+   "aggregate_cost_ratio": 1.0066927979104354,
+   "aggregate_ci_lo": 0.9634067037590275,
+   "aggregate_ci_hi": 1.0504802139077087,
+   "n_success": 80,
+   "n_runs": 80,
+   "tasks_compared": 8,
+   "per_task": {
+    "code-bugfix-py": {
+     "n": 10,
+     "successes": 10,
+     "mean_cost": 0.115810515,
+     "ratio": 1.0125186830111512,
+     "ci_lo": 1.0108189430731898,
+     "ci_hi": 1.014599834736713,
+     "adoption": 0,
+     "mean_wall_s": 18.0959,
+     "mean_input_tokens": 16689,
+     "mean_output_tokens": 717,
+     "mean_cache_tokens": 141524,
+     "costs": [
+      0.11544075000000002,
+      0.11584290000000001,
+      0.1159728,
+      0.11561115,
+      0.1157298,
+      0.11578530000000001,
+      0.11594505000000001,
+      0.1159566,
+      0.11603730000000001,
+      0.1157835
+     ],
+     "scores": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+     ],
+     "tool_calls": [
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4
+     ],
+     "competitor_tool_calls": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    "code-debug-pipeline-py": {
+     "n": 10,
+     "successes": 10,
+     "mean_cost": 0.35636178,
+     "ratio": 0.9437869692024301,
+     "ci_lo": 0.8272961200570774,
+     "ci_hi": 1.065549279014117,
+     "adoption": 0,
+     "mean_wall_s": 86.7119,
+     "mean_input_tokens": 34493,
+     "mean_output_tokens": 5799,
+     "mean_cache_tokens": 466611,
+     "costs": [
+      0.36605175,
+      0.41684025,
+      0.40248779999999995,
+      0.37147605,
+      0.30090930000000005,
+      0.30255719999999997,
+      0.28670415,
+      0.36951629999999996,
+      0.40921215,
+      0.33786285000000005
+     ],
+     "scores": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+     ],
+     "tool_calls": [
+      23,
+      23,
+      24,
+      23,
+      22,
+      24,
+      21,
+      23,
+      24,
+      25
+     ],
+     "competitor_tool_calls": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    "code-feature-js": {
+     "n": 10,
+     "successes": 10,
+     "mean_cost": 0.176001825,
+     "ratio": 0.9572814326829951,
+     "ci_lo": 0.8490483004327579,
+     "ci_hi": 1.0775250908213698,
+     "adoption": 0,
+     "mean_wall_s": 38.2074,
+     "mean_input_tokens": 18075,
+     "mean_output_tokens": 2100,
+     "mean_cache_tokens": 255634,
+     "costs": [
+      0.21236835000000004,
+      0.15438825,
+      0.1958946,
+      0.18615375,
+      0.1593687,
+      0.16552799999999998,
+      0.18517844999999997,
+      0.14630490000000002,
+      0.1685574,
+      0.18627585
+     ],
+     "scores": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+     ],
+     "tool_calls": [
+      12,
+      7,
+      10,
+      9,
+      7,
+      8,
+      9,
+      6,
+      8,
+      9
+     ],
+     "competitor_tool_calls": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    "code-iterate-tests": {
+     "n": 10,
+     "successes": 10,
+     "mean_cost": 0.15566264999999999,
+     "ratio": 1.0136366846361737,
+     "ci_lo": 1.0041981315415849,
+     "ci_hi": 1.0216469351346273,
+     "adoption": 0,
+     "mean_wall_s": 31.2198,
+     "mean_input_tokens": 19721,
+     "mean_output_tokens": 1860,
+     "mean_cache_tokens": 179293,
+     "costs": [
+      0.15608699999999998,
+      0.15586755000000002,
+      0.15651030000000002,
+      0.1540905,
+      0.1559691,
+      0.15866324999999998,
+      0.15652215,
+      0.1558509,
+      0.15065355,
+      0.1564122
+     ],
+     "scores": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+     ],
+     "tool_calls": [
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10
+     ],
+     "competitor_tool_calls": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    "code-migration-py-xl": {
+     "n": 10,
+     "successes": 10,
+     "mean_cost": 0.165669195,
+     "ratio": 0.9877915596447117,
+     "ci_lo": 0.9309123948318804,
+     "ci_hi": 1.0475731015264722,
+     "adoption": 0,
+     "mean_wall_s": 31.7662,
+     "mean_input_tokens": 23822,
+     "mean_output_tokens": 1668,
+     "mean_cache_tokens": 170990,
+     "costs": [
+      0.1829577,
+      0.15914655,
+      0.15637020000000001,
+      0.1584876,
+      0.1551753,
+      0.1706589,
+      0.1570623,
+      0.16085415,
+      0.17099115,
+      0.1849881
+     ],
+     "scores": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+     ],
+     "tool_calls": [
+      6,
+      6,
+      6,
+      6,
+      5,
+      6,
+      5,
+      7,
+      7,
+      7
+     ],
+     "competitor_tool_calls": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    "code-refactor-split-py": {
+     "n": 10,
+     "successes": 10,
+     "mean_cost": 0.15042186,
+     "ratio": 1.1041753674822614,
+     "ci_lo": 1.0245481502821423,
+     "ci_hi": 1.1918247063488325,
+     "adoption": 0,
+     "mean_wall_s": 29.4563,
+     "mean_input_tokens": 18247,
+     "mean_output_tokens": 1885,
+     "mean_cache_tokens": 179008,
+     "costs": [
+      0.15047235,
+      0.1465242,
+      0.16185705,
+      0.14908095000000002,
+      0.14907135,
+      0.1221594,
+      0.17351295,
+      0.1487091,
+      0.1523328,
+      0.15049845
+     ],
+     "scores": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+     ],
+     "tool_calls": [
+      12,
+      11,
+      12,
+      12,
+      12,
+      9,
+      14,
+      12,
+      12,
+      11
+     ],
+     "competitor_tool_calls": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    "log-needle-zh": {
+     "n": 10,
+     "successes": 10,
+     "mean_cost": 0.15378735,
+     "ratio": 1.0356408271881714,
+     "ci_lo": 0.9262725175297261,
+     "ci_hi": 1.1498220878902672,
+     "adoption": 0,
+     "mean_wall_s": 29.361,
+     "mean_input_tokens": 19790,
+     "mean_output_tokens": 1392,
+     "mean_cache_tokens": 195571,
+     "costs": [
+      0.12680895,
+      0.16836495,
+      0.1799457,
+      0.1853094,
+      0.12710370000000001,
+      0.16742475,
+      0.12705795,
+      0.1665684,
+      0.16276095,
+      0.12652875
+     ],
+     "scores": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+     ],
+     "tool_calls": [
+      7,
+      7,
+      8,
+      8,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7
+     ],
+     "competitor_tool_calls": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    "seo-audit": {
+     "n": 10,
+     "successes": 10,
+     "mean_cost": 0.33247311,
+     "ratio": 1.0070804999709437,
+     "ci_lo": 0.9383718710719345,
+     "ci_hi": 1.0927231382735387,
+     "adoption": 0,
+     "mean_wall_s": 155.5197,
+     "mean_input_tokens": 33779,
+     "mean_output_tokens": 8490,
+     "mean_cache_tokens": 261436,
+     "costs": [
+      0.31387575,
+      0.3190941,
+      0.30470834999999996,
+      0.34985325,
+      0.31634055,
+      0.4188168,
+      0.3395193,
+      0.3283794,
+      0.30357765000000003,
+      0.33056595
+     ],
+     "scores": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+     ],
+     "tool_calls": [
+      15,
+      15,
+      15,
+      15,
+      15,
+      18,
+      16,
+      15,
+      15,
+      15
+     ],
+     "competitor_tool_calls": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    }
+   }
+  },
+  "rtk-1.2.0": {
+   "version": "v1.2.0",
+   "aggregate_cost_ratio": 1.0481844620648142,
+   "aggregate_ci_lo": 1.0042377200403476,
+   "aggregate_ci_hi": 1.1014194068512053,
+   "n_success": 80,
+   "n_runs": 80,
+   "tasks_compared": 8,
+   "per_task": {
+    "code-bugfix-py": {
+     "n": 10,
+     "successes": 10,
+     "mean_cost": 0.11689113,
+     "ratio": 1.0219663819238285,
+     "ci_lo": 1.017597757273967,
+     "ci_hi": 1.0274335012328442,
+     "adoption": 0,
+     "mean_wall_s": 18.7015,
+     "mean_input_tokens": 16776,
+     "mean_output_tokens": 762,
+     "mean_cache_tokens": 141770,
+     "costs": [
+      0.1164171,
+      0.11869845,
+      0.11652104999999999,
+      0.11636429999999999,
+      0.1165365,
+      0.11654445,
+      0.1162662,
+      0.1184727,
+      0.11654925,
+      0.11654130000000001
+     ],
+     "scores": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+     ],
+     "tool_calls": [
+      4,
+      5,
+      4,
+      4,
+      4,
+      4,
+      4,
+      5,
+      4,
+      4
+     ],
+     "competitor_tool_calls": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    "code-debug-pipeline-py": {
+     "n": 10,
+     "successes": 10,
+     "mean_cost": 0.390688965,
+     "ratio": 1.03469893482456,
+     "ci_lo": 0.9299867492265367,
+     "ci_hi": 1.1431903768291942,
+     "adoption": 0,
+     "mean_wall_s": 96.6134,
+     "mean_input_tokens": 35939,
+     "mean_output_tokens": 6388,
+     "mean_cache_tokens": 533519,
+     "costs": [
+      0.39928739999999996,
+      0.3832167000000001,
+      0.387135,
+      0.37261664999999994,
+      0.3895617,
+      0.41622630000000005,
+      0.3865719000000001,
+      0.36299490000000006,
+      0.42159359999999996,
+      0.3876855
+     ],
+     "scores": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+     ],
+     "tool_calls": [
+      24,
+      23,
+      19,
+      22,
+      22,
+      21,
+      23,
+      23,
+      24,
+      23
+     ],
+     "competitor_tool_calls": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    "code-feature-js": {
+     "n": 10,
+     "successes": 10,
+     "mean_cost": 0.18099072,
+     "ratio": 0.9844162453652218,
+     "ci_lo": 0.8600787743721169,
+     "ci_hi": 1.1159181626286694,
+     "adoption": 0,
+     "mean_wall_s": 39.7803,
+     "mean_input_tokens": 18256,
+     "mean_output_tokens": 2238,
+     "mean_cache_tokens": 263100,
+     "costs": [
+      0.21038520000000002,
+      0.1819431,
+      0.18584849999999997,
+      0.11864625000000001,
+      0.15112725,
+      0.191793,
+      0.198129,
+      0.19082595000000002,
+      0.19953344999999995,
+      0.18167549999999996
+     ],
+     "scores": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+     ],
+     "tool_calls": [
+      11,
+      9,
+      9,
+      5,
+      7,
+      9,
+      10,
+      9,
+      10,
+      9
+     ],
+     "competitor_tool_calls": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    "code-iterate-tests": {
+     "n": 10,
+     "successes": 10,
+     "mean_cost": 0.159664965,
+     "ratio": 1.0396987702261957,
+     "ci_lo": 1.002854335961283,
+     "ci_hi": 1.102963056822166,
+     "adoption": 0,
+     "mean_wall_s": 30.7603,
+     "mean_input_tokens": 19622,
+     "mean_output_tokens": 1825,
+     "mean_cache_tokens": 195600,
+     "costs": [
+      0.15706815,
+      0.15525134999999998,
+      0.15190379999999998,
+      0.1521975,
+      0.15628785,
+      0.15657735,
+      0.15382154999999997,
+      0.15460124999999997,
+      0.1580202,
+      0.20092064999999998
+     ],
+     "scores": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+     ],
+     "tool_calls": [
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10
+     ],
+     "competitor_tool_calls": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    "code-migration-py-xl": {
+     "n": 10,
+     "successes": 10,
+     "mean_cost": 0.17399277,
+     "ratio": 1.0374203221377614,
+     "ci_lo": 0.972516492541078,
+     "ci_hi": 1.1036153494971195,
+     "adoption": 0,
+     "mean_wall_s": 33.5921,
+     "mean_input_tokens": 24907,
+     "mean_output_tokens": 1828,
+     "mean_cache_tokens": 177173,
+     "costs": [
+      0.15553124999999998,
+      0.18506219999999998,
+      0.18805605,
+      0.1755657,
+      0.1904562,
+      0.15624689999999997,
+      0.17164395,
+      0.1769208,
+      0.1579737,
+      0.18247095
+     ],
+     "scores": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+     ],
+     "tool_calls": [
+      5,
+      6,
+      6,
+      6,
+      7,
+      5,
+      6,
+      7,
+      5,
+      7
+     ],
+     "competitor_tool_calls": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    "code-refactor-split-py": {
+     "n": 10,
+     "successes": 10,
+     "mean_cost": 0.143220405,
+     "ratio": 1.0513129097182636,
+     "ci_lo": 0.9803234537116539,
+     "ci_hi": 1.1226199710608877,
+     "adoption": 0,
+     "mean_wall_s": 28.0833,
+     "mean_input_tokens": 18227,
+     "mean_output_tokens": 1805,
+     "mean_cache_tokens": 159240,
+     "costs": [
+      0.13646595,
+      0.1500822,
+      0.1500609,
+      0.15003719999999998,
+      0.13671689999999997,
+      0.13665765,
+      0.12370319999999999,
+      0.1500321,
+      0.1489308,
+      0.14951715
+     ],
+     "scores": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+     ],
+     "tool_calls": [
+      10,
+      12,
+      12,
+      12,
+      10,
+      10,
+      9,
+      12,
+      11,
+      11
+     ],
+     "competitor_tool_calls": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    "log-needle-zh": {
+     "n": 10,
+     "successes": 10,
+     "mean_cost": 0.177135405,
+     "ratio": 1.19287221841401,
+     "ci_lo": 1.086712132313199,
+     "ci_hi": 1.2990075370751448,
+     "adoption": 0,
+     "mean_wall_s": 36.1315,
+     "mean_input_tokens": 20228,
+     "mean_output_tokens": 1759,
+     "mean_cache_tokens": 249548,
+     "costs": [
+      0.19652099999999995,
+      0.18621734999999998,
+      0.12821475,
+      0.18657285,
+      0.1802241,
+      0.1827219,
+      0.17087010000000002,
+      0.16153874999999998,
+      0.17818815,
+      0.20028510000000002
+     ],
+     "scores": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+     ],
+     "tool_calls": [
+      9,
+      8,
+      7,
+      10,
+      8,
+      8,
+      7,
+      7,
+      8,
+      9
+     ],
+     "competitor_tool_calls": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    "seo-audit": {
+     "n": 10,
+     "successes": 10,
+     "mean_cost": 0.34164612,
+     "ratio": 1.0348660838848984,
+     "ci_lo": 0.9705506525629455,
+     "ci_hi": 1.1028217264592721,
+     "adoption": 0,
+     "mean_wall_s": 160.8439,
+     "mean_input_tokens": 34007,
+     "mean_output_tokens": 8824,
+     "mean_cache_tokens": 272465,
+     "costs": [
+      0.3123939,
+      0.32062064999999995,
+      0.35682854999999997,
+      0.3686658,
+      0.31552109999999994,
+      0.35527739999999997,
+      0.35493494999999997,
+      0.34853429999999996,
+      0.37433475,
+      0.3093498
+     ],
+     "scores": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+     ],
+     "tool_calls": [
+      15,
+      15,
+      16,
+      16,
+      15,
+      16,
+      15,
+      15,
+      16,
+      15
+     ],
+     "competitor_tool_calls": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    }
+   }
+  }
+ },
+ "ranking": [
+  {
+   "rank": 1,
+   "competitor": "pascalsletter",
+   "aggregate_cost_ratio": 1.0066927979104354,
+   "aggregate_ci_lo": 0.9634067037590275,
+   "aggregate_ci_hi": 1.0504802139077087,
+   "n_success": 80,
+   "n_runs": 80,
+   "tasks_compared": 8
+  },
+  {
+   "rank": 2,
+   "competitor": "rtk-1.2.0",
+   "aggregate_cost_ratio": 1.0481844620648142,
+   "aggregate_ci_lo": 1.0042377200403476,
+   "aggregate_ci_hi": 1.1014194068512053,
+   "n_success": 80,
+   "n_runs": 80,
+   "tasks_compared": 8
+  }
+ ],
+ "non_ok": [],
+ "campaign": "2.1.206 (Claude Code)"
+}

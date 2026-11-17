@@ -1,0 +1,59 @@
+# Questions for the `ab` binary. Each names a corpus.toml command by its `run` (which gives
+# the repository and any `before` command), asks for a one-line answer, and lists the words
+# a right answer holds, all read from the command's raw output at the corpus's pinned commits.
+# The last 3 ask for a count of a list that rtk caps, so the answer needs what a cap leaves out.
+
+[[case]]
+run = "git log -n 20"
+question = "Of these 20 commits, which is the newest and which the oldest? Give their short hashes."
+answer = ["4649aa9", "f7b677d"]
+
+[[case]]
+run = "git log --stat -n 3"
+question = "Which files did the last 3 commits change? Give the file names."
+answer = ["Cargo.lock", "Cargo.toml", "CHANGELOG.md"]
+
+[[case]]
+run = "git status"
+question = "Which files have uncommitted changes? Give their paths."
+answer = ["crates/globset/src/lib.rs"]
+
+[[case]]
+run = "ls -la crates/core"
+question = "What is in crates/core? Give every entry's name."
+answer = ["flags", "haystack.rs", "logger.rs", "main.rs", "messages.rs", "README.md", "search.rs"]
+
+[[case]]
+run = "cargo clippy --workspace"
+question = "Which errors stop clippy, and where? Give each error's message and file:line:column."
+answer = ["this loop never actually loops", "crates/cli/src/decompress.rs:180:9", "written amount is not handled", "crates/printer/src/json.rs:522:9"]
+
+[[case]]
+run = "cargo test --workspace"
+question = "Which test fails, where and why? Give its name, file:line:column and message."
+answer = ["output_tokens_fails", "crates/globset/src/lib.rs:1026:5", "deliberate failure"]
+
+[[case]]
+run = "pytest"
+question = "Which test fails, and why? Give its name and message."
+answer = ["test_output_tokens_fails", "deliberate failure"]
+
+[[case]]
+run = "pytest tests/test_options.py"
+question = "How many tests passed? Give the number."
+answer = ["112"]
+
+[[case]]
+run = "grep -rn 'fn new' crates/searcher/src"
+question = "How many lines define a `new` function? Give the number."
+answer = ["15"]
+
+[[case]]
+run = "rg -n 'unwrap\\(\\)' crates/printer/src"
+question = "How many lines call `unwrap()`? Give the number."
+answer = ["250"]
+
+[[case]]
+run = "find crates -name '*.rs'"
+question = "How many Rust files are there? Give the number."
+answer = ["87"]
