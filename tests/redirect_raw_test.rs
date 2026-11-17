@@ -1,0 +1,140 @@
+//! `rtk <command> > file` writes the command's own output to the file, not rtk's view of it.
+//!
+//! A file is read later, often whole and often by a program, so a filter's cut there loses
+//! data with nobody watching: `rtk git log > log.txt` once kept 30 of 45,222 lines. A pipe or
+//! a terminal is what an agent reads, and keeps the filter.
+
+use std::fs::File;
+use std::path::Path;
+use std::process::{Command, Output, Stdio};
+
+mod common;
+
+/// Env that isolates git and rtk from the developer's real config, identity and home.
+fn isolate(cmd: &mut Command, home: &Path) {
+    common::isolate_git(cmd);
+    cmd.env("HOME", home)
+        .env("GIT_AUTHOR_NAME", "t")
+        .env("GIT_AUTHOR_EMAIL", "t@example.com")
+        .env("GIT_COMMITTER_NAME", "t")
+        .env("GIT_COMMITTER_EMAIL", "t@example.com")
+        .env("GIT_TERMINAL_PROMPT", "0");
+}
+
+fn git(repo: &Path, home: &Path, args: &[&str]) -> Output {
+    let mut cmd = Command::new("git");
+    cmd.arg("-C").arg(repo);
+    cmd.args(["-c", "commit.gpgsign=false", "-c", "maintenance.auto=false"]);
+    cmd.args(args);
+    isolate(&mut cmd, home);
+    let out = cmd.output().expect("run git");
+    assert!(
+        out.status.success(),
+        "git {args:?} failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    out
+}
+
+/// A repository of `commits` commits, more than `rtk git log` shows.
+fn repo(root: &Path, commits: usize) -> (std::path::PathBuf, std::path::PathBuf) {
+    let path = root.join("repo");
+    let home = root.join("home");
+    std::fs::create_dir_all(&path).expect("mkdir repo");
+    std::fs::create_dir_all(&home).expect("mkdir home");
+    git(&path, &home, &["init", "-q", "-b", "main"]);
+    for i in 0..commits {
+        let message = format!("commit {i}");
+        git(
+            &path,
+            &home,
+            &["commit", "-q", "--allow-empty", "-m", &message],
+        );
+    }
+    (path, home)
+}
+
+fn rtk_git_log(repo: &Path, home: &Path, stdout: Stdio) -> Output {
+    let mut cmd = common::rtk_command();
+    cmd.args(["git", "log", "-p"])
+        .current_dir(repo)
+        .stdout(stdout)
+        .stderr(Stdio::piped());
+    isolate(&mut cmd, home);
+    cmd.output().expect("run rtk git log")
+}
+
+#[test]
+fn a_command_redirected_to_a_file_writes_its_own_output() {
+    let root = common::tempdir();
+    let (repo, home) = repo(root.path(), 12);
+    let target = root.path().join("log.txt");
+
+    let out = rtk_git_log(
+        &repo,
+        &home,
+        Stdio::from(File::create(&target).expect("create log.txt")),
+    );
+    assert!(
+        out.status.success(),
+        "rtk git log failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let written = std::fs::read(&target).expect("read log.txt");
+    let native = git(&repo, &home, &["log", "-p"]).stdout;
+    assert_eq!(
+        String::from_utf8_lossy(&written),
+        String::from_utf8_lossy(&native),
+        "the file must hold git's own output"
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !stderr.contains("[rtk]"),
+        "nothing was cut, so nothing may be announced: {stderr:?}"
+    );
+}
+
+#[test]
+fn a_command_read_through_a_pipe_is_still_filtered() {
+    let root = common::tempdir();
+    let (repo, home) = repo(root.path(), 12);
+
+    let out = rtk_git_log(&repo, &home, Stdio::piped());
+    assert!(out.status.success(), "rtk git log failed");
+    let shown = String::from_utf8_lossy(&out.stdout);
+    let commits = shown.lines().filter(|l| l.starts_with("commit ")).count();
+    assert!(
+        commits < 12,
+        "a pipe keeps the filter's cap; it showed {commits} of 12 commits"
+    );
+}
+
+/// A TOML filter is rtk's own view too: the built-in `make` filter caps output at 50 lines.
+#[cfg(unix)]
+#[test]
+fn a_toml_filtered_command_redirected_to_a_file_writes_its_own_output() {
+    if Command::new("make").arg("--version").output().is_err() {
+        eprintln!("make is not installed; skipped");
+        return;
+    }
+    let root = common::tempdir();
+    let dir = root.path();
+    std::fs::write(
+        dir.join("Makefile"),
+        "all:\n\t@i=1; while [ $$i -le 60 ]; do echo line $$i; i=$$((i+1)); done\n",
+    )
+    .expect("write Makefile");
+    let target = dir.join("make.txt");
+
+    let mut cmd = common::rtk_command();
+    cmd.args(["make", "-s"])
+        .current_dir(dir)
+        .stdout(Stdio::from(File::create(&target).expect("create make.txt")));
+    let status = cmd.status().expect("run rtk make");
+    assert!(status.success(), "rtk make failed");
+
+    let written = std::fs::read_to_string(&target).expect("read make.txt");
+    let expected: String = (1..=60).map(|i| format!("line {i}\n")).collect();
+    assert_eq!(written, expected, "the file must hold make's own output");
+}
