@@ -176,6 +176,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn now_ts_is_utc_to_the_second() {
+        let ts = now_ts();
+        let shape = regex::Regex::new(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$").unwrap();
+        assert!(shape.is_match(&ts), "{ts}");
+    }
+
+    #[test]
     fn entries_round_trip_and_render_without_content() {
         let entry = LogEntry {
             ts: "2026-09-15T12:04:11Z".to_string(),

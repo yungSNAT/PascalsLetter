@@ -1087,6 +1087,23 @@ mod tests {
         assert_eq!(days_ago_cutoff(u64::MAX), DateTime::<Utc>::MIN_UTC);
     }
 
+    /// The tracking database compares these strings with `<` and `>=`, so new rows
+    /// must keep the spelling older rows were written in.
+    #[test]
+    fn test_rfc3339_keeps_the_stored_timestamp_format() {
+        use chrono::TimeZone;
+        for (nanos, expected) in [
+            (0, "2026-07-21T04:30:00+00:00"),
+            (120_000_000, "2026-07-21T04:30:00.120+00:00"),
+            (123_456_000, "2026-07-21T04:30:00.123456+00:00"),
+            (123_456_700, "2026-07-21T04:30:00.123456700+00:00"),
+            (1, "2026-07-21T04:30:00.000000001+00:00"),
+        ] {
+            let ts = Utc.timestamp_opt(1_784_608_200, nanos).unwrap();
+            assert_eq!(ts.to_rfc3339(), expected);
+        }
+    }
+
     #[test]
     fn test_truncate_long_string() {
         let result = truncate("hello world", 8);

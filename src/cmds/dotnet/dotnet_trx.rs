@@ -655,4 +655,24 @@ mod tests {
         assert_eq!(summary.total, 3);
         assert_eq!(summary.failed, 1);
     }
+
+    #[test]
+    fn test_parse_trx_duration_across_offsets_and_bad_bounds() {
+        let start = "2026-01-01T10:00:00+01:00";
+        for (finish, expected) in [
+            ("2026-01-01T09:00:00.250+00:00", Some("250 ms")),
+            ("2026-01-01T09:00:00.0009+00:00", None),
+            ("2026-01-01T09:00:01.5+00:00", Some("1.5 s")),
+            ("2026-01-01T10:00:00+01:00", None),
+            ("2026-01-01T08:59:59+00:00", None),
+            ("2026-01-01T10:00:01", None),
+            ("not a time", None),
+        ] {
+            assert_eq!(
+                parse_trx_duration(start, finish).as_deref(),
+                expected,
+                "{finish}"
+            );
+        }
+    }
 }
