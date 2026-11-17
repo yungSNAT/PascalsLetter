@@ -1,0 +1,6 @@
+{
+  "private": true,
+  "dependencies": {
+    "@ooples/token-optimizer-mcp": "7.11.0"
+  }
+}
