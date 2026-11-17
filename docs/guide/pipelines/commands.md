@@ -154,6 +154,10 @@ rtk pipeline share rtk:default  # a named one
 rtk pipeline share --md         # the markdown card, even on a terminal
 ```
 
+A card can include several configuration sources when your active pipeline combines files. Such a card documents the merged setup. Installation requires one complete pipeline TOML file: `rtk pipeline add` refuses cards with multiple TOML blocks before writing anything.
+
+A shared built-in pipeline uses an installable name such as `rtk-default` and extends `rtk:default`. It inherits the recipient's installed version of that built-in. `rtk pipeline show` continues to print the full definition.
+
 The card has two panels. **What it does** is derived from the resolved rules, never hand-written. **Measured impact** reports percentages per lever — command filtering and agent hooks as the share of a tool's output bytes removed, delegated reads as the absolute context a worker kept out of your window, and prompt-cache as the share of input served from cache. Figures are estimates (≈ bytes/4): ratios are reliable, absolutes approximate. Percentages travel between setups; token counts and costs do not, which is why the card leads with percentages.
 
 ### Publishing

@@ -237,22 +237,55 @@ fn gist_raw_url(source: &str) -> String {
     source.to_string()
 }
 
-fn extract_toml(raw: &str) -> String {
-    let mut lines = raw.lines();
-    while let Some(line) = lines.next() {
-        if line.trim_start().starts_with("```") && line.contains("toml") {
-            let mut body = String::new();
-            for inner in lines.by_ref() {
-                if inner.trim_start().starts_with("```") {
-                    return body;
-                }
-                body.push_str(inner);
+fn extract_toml(raw: &str) -> Result<String> {
+    // Examples inside a TOML multiline string are data, not share-card fences.
+    if toml::from_str::<toml::Value>(raw).is_ok() {
+        return Ok(raw.to_string());
+    }
+    let mut body = String::new();
+    let mut found = false;
+    let mut fence = None;
+    let mut in_toml = false;
+    for line in raw.lines() {
+        // As in CommonMark, a fence is indented at most 3 spaces; deeper is code.
+        let trimmed = line.trim_start_matches(' ');
+        let can_fence = line.len() - trimmed.len() <= 3;
+        if let Some((marker, length)) = fence {
+            let closing = trimmed.bytes().take_while(|&byte| byte == marker).count();
+            if can_fence && closing >= length && trimmed[closing..].trim().is_empty() {
+                fence = None;
+                in_toml = false;
+            } else if in_toml {
+                body.push_str(line);
                 body.push('\n');
             }
-            return body;
+            continue;
         }
+        let Some(marker @ (b'`' | b'~')) = trimmed.as_bytes().first().copied() else {
+            continue;
+        };
+        if !can_fence {
+            continue;
+        }
+        let length = trimmed.bytes().take_while(|&byte| byte == marker).count();
+        if length < 3 {
+            continue;
+        }
+        let info = trimmed[length..].trim();
+        if marker == b'`' && info.contains('`') {
+            continue;
+        }
+        in_toml = info.split_whitespace().next() == Some("toml");
+        if in_toml {
+            anyhow::ensure!(
+                !found,
+                "the source contains multiple TOML blocks; provide one complete pipeline TOML file — nothing to install"
+            );
+            found = true;
+        }
+        fence = Some((marker, length));
     }
-    raw.to_string()
+    Ok(if found { body } else { raw.to_string() })
 }
 
 fn valid_pipeline_name(name: &str) -> bool {
@@ -519,19 +552,29 @@ pub(crate) fn publish_gist(
     let file = std::env::temp_dir().join(format!("{safe}.md"));
     std::fs::write(&file, card_md).with_context(|| format!("write {}", file.display()))?;
 
+    let installable = sources.len() == 1;
     if !gh_available() {
         println!("The `gh` CLI is not available, so rtk cannot create the gist for you.");
         println!("Publish manually:");
         println!("  1. open https://gist.github.com");
         println!("  2. create a PUBLIC gist from: {}", file.display());
-        println!(
-            "  3. share the gist URL \u{2014} others install with: rtk pipeline add <gist-url>"
-        );
+        if installable {
+            println!(
+                "  3. share the gist URL \u{2014} others install with: rtk pipeline add <gist-url>"
+            );
+        } else {
+            println!(
+                "  3. share the gist URL as a configuration reference; installation requires one complete pipeline TOML file"
+            );
+        }
         return Ok(0);
     }
 
-    let desc =
-        format!("{name} \u{2014} rtk compression pipeline (install: rtk pipeline add <this url>)");
+    let desc = if installable {
+        format!("{name} \u{2014} rtk compression pipeline (install: rtk pipeline add <this url>)")
+    } else {
+        format!("{name}: rtk configuration reference (multiple sources)")
+    };
     let output = std::process::Command::new("gh")
         .args(["gist", "create"])
         .arg(&file)
@@ -547,7 +590,13 @@ pub(crate) fn publish_gist(
     crate::core::pipeline_remote::record_publish(name, &page_url);
     println!();
     println!("published \u{2192} {page_url}");
-    println!("others install it with:  rtk pipeline add {page_url}");
+    if installable {
+        println!("others install it with:  rtk pipeline add {page_url}");
+    } else {
+        println!(
+            "This card includes multiple configuration sources; installation requires one complete pipeline TOML file."
+        );
+    }
     Ok(0)
 }
 
@@ -569,7 +618,7 @@ pub fn run_add(
             (raw, origin)
         }
     };
-    let toml = extract_toml(&raw);
+    let toml = extract_toml(&raw)?;
     if toml.trim().is_empty() {
         anyhow::bail!("the source contains no pipeline TOML — nothing to install");
     }
@@ -1106,6 +1155,20 @@ impl CardData {
     }
 }
 
+fn builtin_share_source(name: &str) -> Option<(String, String)> {
+    // Built-in definitions are not user overlays: copying their rules would
+    // redeclare inherited names. Share a reference with an installable name.
+    builtin_text(name).map(|_| {
+        let portable = name.replace(':', "-");
+        (
+            format!("{name} (built-in reference)"),
+            format!(
+                "schema_version = 1\n\n[pipeline]\nname = \"{portable}\"\nextends = \"{name}\"\n"
+            ),
+        )
+    })
+}
+
 /// One collection pass for a share card; `None` means the name was unknown
 /// (the message is already printed).
 pub(crate) fn collect_card(name: Option<&str>) -> Result<Option<CardData>> {
@@ -1113,11 +1176,8 @@ pub(crate) fn collect_card(name: Option<&str>) -> Result<Option<CardData>> {
     let active = loaded.resolved.name.clone();
     let (display, sources) = match name {
         Some(n) => {
-            if let Some(text) = builtin_text(n) {
-                (
-                    n.to_string(),
-                    vec![(format!("{n} (built-in)"), text.to_string())],
-                )
+            if let Some(source) = builtin_share_source(n) {
+                (n.to_string(), vec![source])
             } else if n == active {
                 (active.clone(), active_sources(&active))
             } else {
@@ -1131,14 +1191,19 @@ pub(crate) fn collect_card(name: Option<&str>) -> Result<Option<CardData>> {
         }
         None => (active.clone(), active_sources(&active)),
     };
-    // The behaviour summary comes from the resolved rules, which describe the
-    // ACTIVE pipeline — a built-in shared by name keeps its own file comments
-    // as the summary instead of inheriting the active pipeline rules.
+    // The behaviour summary comes from resolved rules: the active pipeline's,
+    // or, for a built-in shared by name, those its reference resolves to (the
+    // card carries the reference, not the built-in's commented definition).
     let is_active = display == active;
     let what = if is_active {
         describe_rules(&loaded.resolved)
     } else {
-        Vec::new()
+        sources
+            .first()
+            .map(|(label, text)| {
+                describe_rules(&pipeline_config::load_candidate(text, label).resolved)
+            })
+            .unwrap_or_default()
     };
     let tracker = crate::core::tracking::Tracker::new().ok();
     // The PreTool rewrite (grep -> rtk grep, which compresses) is RTK's primary
@@ -1211,7 +1276,7 @@ pub fn run_share(name: Option<&str>, force_md: bool, gist: bool, force: bool) ->
 }
 
 /// The active pipeline's file set, labeled by scope; the compiled built-in
-/// text when no file is on disk.
+/// reference when no file is on disk.
 fn active_sources(active: &str) -> Vec<(String, String)> {
     let files: Vec<(String, String)> = pipeline_config::load_paths()
         .into_iter()
@@ -1232,10 +1297,7 @@ fn active_sources(active: &str) -> Vec<(String, String)> {
     if !files.is_empty() {
         return files;
     }
-    match builtin_text(active) {
-        Some(text) => vec![(format!("{active} (built-in)"), text.to_string())],
-        None => Vec::new(),
-    }
+    builtin_share_source(active).into_iter().collect()
 }
 
 /// A 10-step bar for a percentage, monospace-safe on every platform that
@@ -1644,17 +1706,27 @@ fn share_card(
 
     // ---- the pipeline itself, paste-ready
     for (label, text) in sources {
-        out.push_str(&format!("## {label}\n\n```toml\n"));
+        // A fence longer than any backtick run in the text, so a fenced example
+        // inside a TOML string cannot close it.
+        let longest = text.split(|c| c != '`').map(str::len).max().unwrap_or(0);
+        let fence = "`".repeat(longest.max(2) + 1);
+        out.push_str(&format!("## {label}\n\n{fence}toml\n"));
         out.push_str(text);
         if !text.ends_with('\n') {
             out.push('\n');
         }
-        out.push_str("```\n\n");
+        out.push_str(&format!("{fence}\n\n"));
     }
     out.push_str(&format!(
         "Measured by [rtk](https://github.com/rtk-ai/rtk) v{version} on {date}.\n",
     ));
-    out.push_str("\nInstall this pipeline: `rtk pipeline add <url-of-this-card>`\n");
+    match sources.len() {
+        0 => {}
+        1 => out.push_str("\nInstall this pipeline: `rtk pipeline add <url-of-this-card>`\n"),
+        _ => out.push_str(
+            "\nThis card includes multiple configuration sources. To install a pipeline, provide one complete pipeline TOML file to `rtk pipeline add <file>`.\n",
+        ),
+    }
     out
 }
 
@@ -2168,13 +2240,127 @@ mod tests {
     #[test]
     fn extract_toml_pulls_the_fenced_block_from_a_share_card() {
         let card = "# rtk pipeline: demo\n\nprose\n\n```toml\n[pipeline]\nname = \"demo\"\n```\n\ntrailing";
-        assert_eq!(super::extract_toml(card), "[pipeline]\nname = \"demo\"\n");
+        assert_eq!(
+            super::extract_toml(card).unwrap(),
+            "[pipeline]\nname = \"demo\"\n"
+        );
     }
 
     #[test]
     fn extract_toml_passes_raw_toml_through_unchanged() {
         let raw = "[pipeline]\nname = \"demo\"\n";
-        assert_eq!(super::extract_toml(raw), raw);
+        assert_eq!(super::extract_toml(raw).unwrap(), raw);
+    }
+
+    #[test]
+    fn extract_toml_preserves_raw_toml_containing_fenced_examples() {
+        for fence in ["```", "~~~"] {
+            let example = format!("{fence}toml\n[pipeline]\nname = \"inner\"\n{fence}\n");
+            for text in [example.clone(), format!("{example}\n{example}")] {
+                let raw = format!(
+                    "[pipeline]\nname = \"outer\"\n\n[[directive]]\nchannel = \"session_start\"\ntext = '''\n{text}'''\n"
+                );
+                assert!(toml::from_str::<toml::Value>(&raw).is_ok(), "{raw}");
+                assert_eq!(super::extract_toml(&raw).unwrap(), raw);
+            }
+        }
+    }
+
+    #[test]
+    fn extract_toml_rejects_multiple_fenced_sources() {
+        for card in [
+            "```toml\na = 1\n```\n\n```toml\nb = 2\n```",
+            "```toml\n```\n~~~toml\nb = 2\n~~~",
+            "~~~toml\na = 1\n~~~\n````toml title=pipeline\nb = 2\n````",
+        ] {
+            let error = super::extract_toml(card).unwrap_err().to_string();
+            assert!(error.contains("multiple TOML blocks"), "{error}");
+        }
+    }
+
+    #[test]
+    fn extract_toml_respects_fence_boundaries_and_language_tokens() {
+        for prefix in [
+            "```text title=toml\nnot a pipeline\n```\n",
+            "````text\n```toml\nnot a pipeline\n```\n````\n",
+            "~~~text\n```toml\nnot a pipeline\n```\n~~~\n",
+            "``toml\n",
+            "```text `toml\n",
+        ] {
+            let card = format!("{prefix}\n```toml\na = 1\n```\nAfterword");
+            assert_eq!(super::extract_toml(&card).unwrap(), "a = 1\n", "{card}");
+        }
+        let raw = "```text title=toml\nnot a pipeline\n```";
+        assert_eq!(super::extract_toml(raw).unwrap(), raw);
+    }
+
+    #[test]
+    fn extract_toml_preserves_shorter_fences_and_nonclosing_lines_in_the_body() {
+        let card = "````toml\na = \"\"\"\n```\n```` text\n\"\"\"\n`````  \nAfterword";
+        assert_eq!(
+            super::extract_toml(card).unwrap(),
+            "a = \"\"\"\n```\n```` text\n\"\"\"\n"
+        );
+        assert_eq!(super::extract_toml("~~~toml\na = 1").unwrap(), "a = 1\n");
+    }
+
+    #[test]
+    fn extract_toml_treats_fences_indented_four_spaces_as_code() {
+        let readme = "```toml\na = 1\n```\n\nAnother example:\n\n    ```toml\n    b = 2\n    ```\n";
+        assert_eq!(super::extract_toml(readme).unwrap(), "a = 1\n");
+        let card = "```toml\na = '''\n    ```\n'''\n   ```\nAfterword";
+        assert_eq!(
+            super::extract_toml(card).unwrap(),
+            "a = '''\n    ```\n'''\n"
+        );
+    }
+
+    #[test]
+    fn a_single_source_card_round_trips_toml_holding_a_fenced_example() {
+        let source = "[pipeline]\nname = \"outer\"\n\n[[directive]]\nname = \"examples\"\ntext = '''\n````toml\n[pipeline]\nname = \"inner\"\n````\n'''\n";
+        let card = super::share_card(
+            "outer",
+            &[("user outer.toml".into(), source.into())],
+            &super::CardStats {
+                what: &[],
+                filtering: None,
+                hook: None,
+                hook_slices: &[],
+                tasks: &[],
+                proxy: None,
+            },
+            "1.0.0",
+            "2026-11-17",
+        );
+        assert_eq!(super::extract_toml(&card).unwrap(), source, "{card}");
+    }
+
+    #[test]
+    fn multi_source_share_card_explains_the_single_file_install_requirement() {
+        let card = super::share_card(
+            "merged",
+            &[
+                ("base".into(), "a = 1\n".into()),
+                ("overlay".into(), "b = 2\n".into()),
+            ],
+            &super::CardStats {
+                what: &[],
+                filtering: None,
+                hook: None,
+                hook_slices: &[],
+                tasks: &[],
+                proxy: None,
+            },
+            "1.0.0",
+            "2026-11-12",
+        );
+        assert!(card.contains("multiple configuration sources"), "{card}");
+        assert!(card.contains("one complete pipeline TOML file"), "{card}");
+        assert!(
+            !card.contains("rtk pipeline add <url-of-this-card>"),
+            "{card}"
+        );
+        assert!(super::extract_toml(&card).is_err());
     }
 
     #[test]
@@ -2286,6 +2472,122 @@ mod tests {
                 text.contains(&format!("name    = \"{name}\""))
                     || text.contains(&format!("name = \"{name}\""))
             );
+        }
+    }
+
+    /// The card carries only a reference to the built-in, so a built-in shared by name (not the
+    /// active pipeline) must still describe its own rules, and no two built-ins may share a name.
+    #[test]
+    fn a_builtin_shared_by_name_describes_its_own_rules_under_a_unique_name() {
+        use crate::core::{pipeline_config, test_isolation};
+
+        let root = test_isolation::tempdir();
+        test_isolation::with_root(root.path(), || {
+            let active = super::collect_card(None).unwrap().unwrap().display;
+            let mut described = 0;
+            let mut portable = std::collections::BTreeSet::new();
+            for name in BUILTIN_NAMES {
+                let card = super::collect_card(Some(name)).unwrap().unwrap();
+                portable.insert(pipeline_config::declared_name(&card.sources[0].1, name).unwrap());
+                if *name == active {
+                    continue;
+                }
+                let (expected, _) = resolve(&[SourceFile {
+                    scope: Scope::User,
+                    label: "owned reference".into(),
+                    file: rtk_engine::pipeline::PipelineFile {
+                        enabled: true,
+                        extends: vec![name.to_string()],
+                        ..Default::default()
+                    },
+                }]);
+                assert_eq!(card.what, super::describe_rules(&expected), "{name}");
+                described += usize::from(!card.what.is_empty());
+            }
+            assert!(
+                described > 0,
+                "no non-active built-in has rules to describe"
+            );
+            assert_eq!(portable.len(), BUILTIN_NAMES.len(), "{portable:?}");
+        });
+    }
+
+    #[test]
+    fn builtin_share_cards_install_without_redeclaring_inherited_behaviour() {
+        use crate::core::{pipeline_config, test_isolation};
+        use std::fs;
+
+        for name in BUILTIN_NAMES {
+            let root = test_isolation::tempdir();
+            test_isolation::with_root(root.path(), || {
+                let card = super::collect_card(Some(name)).unwrap().unwrap();
+                assert_eq!(card.display, *name);
+                assert_eq!(card.sources.len(), 1);
+                let text = &card.sources[0].1;
+                let portable = pipeline_config::declared_name(text, name).unwrap();
+                assert!(super::valid_pipeline_name(&portable), "{name}: {portable}");
+                if *name == "rtk:default" {
+                    assert_eq!(
+                        super::collect_card(None).unwrap().unwrap().sources,
+                        card.sources
+                    );
+                }
+                let shared = root.path().join("shared.md");
+                fs::write(&shared, card.card_md()).unwrap();
+                assert_eq!(
+                    super::run_add(shared.to_str().unwrap(), None, true, false).unwrap(),
+                    0
+                );
+                let installed = pipeline_config::user_pipelines_dir()
+                    .unwrap()
+                    .join(format!("{portable}.toml"));
+                assert_eq!(fs::read_to_string(installed).unwrap(), *text);
+                let actual = pipeline_config::load();
+                assert!(
+                    !has_errors(&actual.diagnostics),
+                    "{name}: {:?}",
+                    actual.diagnostics
+                );
+                assert_eq!(actual.resolved.name, portable);
+
+                // Compare with the engine's normal inheritance of the
+                // selected built-in, including its transitive definitions.
+                let (expected, diagnostics) = resolve(&[SourceFile {
+                    scope: Scope::User,
+                    label: "owned reference".into(),
+                    file: rtk_engine::pipeline::PipelineFile {
+                        enabled: true,
+                        extends: vec![name.to_string()],
+                        ..Default::default()
+                    },
+                }]);
+                assert!(!has_errors(&diagnostics), "{name}: {diagnostics:?}");
+                assert_eq!(actual.resolved.extends, expected.extends);
+                assert_eq!(actual.resolved.guards, expected.guards);
+                assert_eq!(actual.resolved.methods, expected.methods);
+                assert_eq!(actual.resolved.tasks, expected.tasks);
+                assert_eq!(actual.resolved.upstreams, expected.upstreams);
+                assert_eq!(actual.resolved.classifiers, expected.classifiers);
+                assert_eq!(actual.resolved.rules.len(), expected.rules.len());
+                for (position, wanted) in &expected.rules {
+                    let observed = &actual.resolved.rules[position];
+                    assert_eq!(observed.len(), wanted.len());
+                    for (observed, wanted) in observed.iter().zip(wanted) {
+                        assert_eq!(observed.name, wanted.name);
+                        assert_eq!(observed.def, wanted.def);
+                        assert_eq!(observed.scope, wanted.scope);
+                        assert_eq!(observed.origin, wanted.origin);
+                    }
+                }
+                assert_eq!(actual.resolved.directives.len(), expected.directives.len());
+                for (observed, wanted) in
+                    actual.resolved.directives.iter().zip(&expected.directives)
+                {
+                    assert_eq!(observed.def, wanted.def);
+                    assert_eq!(observed.scope, wanted.scope);
+                    assert_eq!(observed.origin, wanted.origin);
+                }
+            });
         }
     }
 

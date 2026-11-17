@@ -48,10 +48,6 @@ fn to_struct_name(method: &str) -> String {
         .collect()
 }
 
-fn crate_ident(name: &str) -> String {
-    name.replace('-', "_")
-}
-
 fn is_valid_name(name: &str) -> bool {
     !name.is_empty()
         && name
@@ -60,10 +56,32 @@ fn is_valid_name(name: &str) -> bool {
         && name.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
 }
 
-pub fn run_new(name: &str) -> Result<i32> {
+/// Rust 2021's strict and reserved keywords, which no generated crate or type may be named.
+/// `gen` and the weak keywords (`union`, `raw`, `safe`, `macro_rules`) stay valid.
+const RUST_KEYWORDS: &[&str] = &[
+    "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum", "extern",
+    "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub",
+    "ref", "return", "self", "Self", "static", "struct", "super", "trait", "true", "type",
+    "unsafe", "use", "where", "while", "abstract", "become", "box", "do", "final", "macro",
+    "override", "priv", "try", "typeof", "unsized", "virtual", "yield",
+];
+
+fn validate_plugin_name(name: &str) -> Result<()> {
     if !is_valid_name(name) {
         bail!("plugin name must be alphanumeric with - or _, starting with a letter: `{name}`");
     }
+    if RUST_KEYWORDS.contains(&name) {
+        bail!("plugin name `{name}` is a reserved Rust keyword; choose another name");
+    }
+    if to_struct_name(name) == "Self" {
+        bail!("plugin name `{name}` generates the reserved Rust type `Self`; choose another name");
+    }
+    Ok(())
+}
+
+pub fn run_new(name: &str) -> Result<i32> {
+    validate_plugin_name(name)?;
+    let struct_name = to_struct_name(name);
     let dir = plugins_dir()?.join(name);
     if dir.exists() {
         bail!("plugin `{name}` already exists at {}", dir.display());
@@ -86,7 +104,6 @@ pub fn run_new(name: &str) -> Result<i32> {
     );
     std::fs::write(dir.join("Cargo.toml"), cargo).context("write Cargo.toml")?;
 
-    let struct_name = to_struct_name(name);
     let lib = format!(
         "use rtk_plugin::{{rtk_plugin, Block, Method, MethodCtx, MethodInfo, Outcome}};\n\
          \n\
@@ -188,6 +205,15 @@ pub fn run_build() -> Result<i32> {
     if crates.is_empty() {
         bail!("no plugins to build — scaffold one with `rtk plugins new <name>`");
     }
+    for (name, path) in &crates {
+        validate_plugin_name(name).with_context(|| {
+            format!(
+                "cannot build the plugin at {}: scaffold a replacement with `rtk plugins new <other-name>`, \
+                 move your code into it and move this directory out of the plugins folder",
+                path.display()
+            )
+        })?;
+    }
     let host = plugins_dir()?.join(".host");
     std::fs::create_dir_all(host.join("src")).context("create host dir")?;
 
@@ -196,9 +222,9 @@ pub fn run_build() -> Result<i32> {
     deps.push('\n');
     deps.push_str(&dep_line("rtk-plugin", "plugin"));
     deps.push('\n');
-    for (name, path) in &crates {
+    for (index, (name, path)) in crates.iter().enumerate() {
         deps.push_str(&format!(
-            "{name} = {{ path = {:?} }}\n",
+            "plugin_{index} = {{ package = {name:?}, path = {:?} }}\n",
             path.display().to_string()
         ));
     }
@@ -220,8 +246,8 @@ pub fn run_build() -> Result<i32> {
     std::fs::write(host.join("Cargo.toml"), cargo).context("write host Cargo.toml")?;
 
     let mut main = String::from("fn main() {\n");
-    for (name, _) in &crates {
-        let ident = crate_ident(name);
+    for (index, _) in crates.iter().enumerate() {
+        let ident = format!("plugin_{index}");
         main.push_str(&format!(
             "    for m in {ident}::__rtk_plugin_methods() {{\n        let _ = rtk_plugin::register(m);\n    }}\n    for k in {ident}::__rtk_plugin_kinds() {{\n        let _ = rtk_plugin::register_kind(k);\n    }}\n"
         ));
@@ -261,4 +287,57 @@ fn crate_names(crates: &[(String, PathBuf)]) -> String {
         .map(|(n, _)| n.as_str())
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::test_isolation;
+    use std::path::Path;
+
+    fn in_owned_home(f: impl FnOnce(&Path)) {
+        let root = test_isolation::tempdir();
+        test_isolation::with_root(root.path(), || {
+            let source = root.path().join("PUBLIC-upstream");
+            user_env::with_path("RTK_PLUGIN_SOURCE", Some(&source), || f(root.path()));
+        });
+    }
+
+    #[test]
+    fn reserved_rust_plugin_names_are_rejected_before_scaffolding() {
+        in_owned_home(|_| {
+            let plugins = plugins_dir().unwrap();
+            for name in [
+                "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else",
+                "enum", "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop", "match",
+                "mod", "move", "mut", "pub", "ref", "return", "self", "Self", "static", "struct",
+                "super", "trait", "true", "type", "unsafe", "use", "where", "while", "abstract",
+                "become", "box", "do", "final", "macro", "override", "priv", "try", "typeof",
+                "unsized", "virtual", "yield", "self_", "self-",
+            ] {
+                assert!(run_new(name).is_err(), "{name:?} generates invalid Rust");
+                assert!(!plugins.exists(), "{name:?} wrote invalid Rust");
+            }
+        });
+    }
+
+    #[test]
+    fn edition_2021_names_and_host_dependency_names_can_still_be_scaffolded() {
+        in_owned_home(|_| {
+            for name in [
+                "gen",
+                "union",
+                "raw",
+                "safe",
+                "macro_rules",
+                "rtk",
+                "rtk-plugin",
+                "rtk_plugin",
+                "std",
+                "public--tag_",
+            ] {
+                assert_eq!(run_new(name).unwrap(), 0, "{name}");
+            }
+        });
+    }
 }
