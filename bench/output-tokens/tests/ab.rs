@@ -176,3 +176,26 @@ fn the_budget_stops_the_plan_before_the_next_session() {
     let summary = fs::read_to_string(s.dir.join("out/summary.md")).unwrap();
     assert!(summary.contains("2 ran. The budget stopped the plan early."));
 }
+
+#[test]
+fn a_session_without_its_cost_stops_the_plan() {
+    let s = setup("a_session_without_its_cost_stops_the_plan");
+    // Ends after its first tool call, with no `result` event and so no cost.
+    executable(
+        &s.claude,
+        "#!/bin/sh\necho '{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Bash\",\"input\":{\"command\":\"git status\"}}]}}'\n",
+    );
+    let out = ab(&s, "out", "3", "100");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let csv = fs::read_to_string(s.dir.join("out/results.csv")).unwrap();
+    let rows: Vec<&str> = csv.lines().skip(1).collect();
+    assert_eq!(rows.len(), 1);
+    assert!(rows[0].starts_with(r#""1","1","raw","no result","false""#));
+    assert!(rows[0].ends_with(r#","","""#), "{}", rows[0]);
+    let summary = fs::read_to_string(s.dir.join("out/summary.md")).unwrap();
+    assert!(summary.contains("1 ran. A session ended without its cost"));
+}

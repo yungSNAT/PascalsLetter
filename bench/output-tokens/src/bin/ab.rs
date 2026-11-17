@@ -381,18 +381,14 @@ fn summary(
     commands: &[&CorpusCommand],
     sides: &[Side],
     rows: &[Row],
-    stopped: bool,
+    stopped: Option<&str>,
 ) -> String {
     let mut md = format!(
         "Model `{}`, {} session(s) planned per side per case; {} ran.{}\n\n",
         args.model,
         args.runs,
         rows.len(),
-        if stopped {
-            " The budget stopped the plan early."
-        } else {
-            ""
-        }
+        stopped.map(|why| format!(" {why}")).unwrap_or_default()
     );
     md.push_str("| Side | Right | Not finished | Tool result tokens (mean) | Turns (mean) | Cost (US$, total_cost_usd) |\n| --- | ---: | ---: | ---: | ---: | ---: |\n");
     for (i, side) in sides.iter().enumerate() {
@@ -492,7 +488,7 @@ fn main() -> Result<()> {
     let mut table = csv(&header.map(String::from));
     let mut rows = Vec::new();
     let mut spent = 0.0;
-    let mut stopped = false;
+    let mut stopped = None;
     'plan: for run in 0..args.runs {
         for (c, case) in cases.iter().enumerate() {
             let command = commands[c];
@@ -512,7 +508,7 @@ fn main() -> Result<()> {
             // Each run starts with a different side, so drift spreads over the sides.
             for k in 0..sides.len() {
                 if spent >= args.budget_usd {
-                    stopped = true;
+                    stopped = Some("The budget stopped the plan early.");
                     break 'plan;
                 }
                 let s = (k + run) % sides.len();
@@ -532,6 +528,8 @@ fn main() -> Result<()> {
                     (true, Some(s)) => ("ok", s),
                 };
                 let finished = status == "ok";
+                // Only a `result` event carries the session's cost.
+                let priced = matches!(status, "ok" | "error");
                 let right = finished && correct(&session.answer, &case.answer);
                 spent += session.cost_usd;
                 eprintln!(
@@ -554,7 +552,11 @@ fn main() -> Result<()> {
                     session.output.to_string(),
                     session.cache_write.to_string(),
                     session.cache_read.to_string(),
-                    format!("{:.6}", session.cost_usd),
+                    if priced {
+                        format!("{:.6}", session.cost_usd)
+                    } else {
+                        String::new()
+                    },
                     session.model_usage.clone(),
                 ]));
                 fs::write(args.out.join("results.csv"), &table)?;
@@ -565,6 +567,12 @@ fn main() -> Result<()> {
                     session,
                     right,
                 });
+                if !priced {
+                    stopped = Some(
+                        "A session ended without its cost, which the budget cannot count, so the plan stopped there.",
+                    );
+                    break 'plan;
+                }
             }
         }
     }
