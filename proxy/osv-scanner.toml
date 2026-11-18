@@ -13,3 +13,15 @@
 id = "RUSTSEC-2026-0459"
 ignoreUntil = 2027-02-13
 reason = "Needs a database and -wal written by a less trusted party. rtk-proxy is not in this fork's releases (built from source only). Its stores are in <config dir>/rtk/llm-proxy unless --db, --icm-db, RTK_PROXY_DB, RTK_PROXY_ICM_DB or its config file name another path; it opens none from the launch directory. Blocked on icm-store moving to rusqlite 0.41."
+
+# chrono is unmaintained, with no fixed version
+# (https://github.com/chronotope/chrono/issues/1768). The rtk crate no longer
+# uses it, but icm-core and icm-store at the pinned rtk-ai/icm rev require it,
+# as does icm's main branch (chrono 0.4, not optional), so moving proxy's own
+# code to jiff would not take it out of this lockfile. rtk-ai/icm has no issue
+# open for it. When icm drops chrono, move the icm rev and proxy's own code off
+# it and delete this entry.
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0543"
+ignoreUntil = 2027-02-18
+reason = "Unmaintained, not a known flaw. Held in proxy/Cargo.lock by icm-core and icm-store (rtk-ai/icm), which require chrono 0.4."

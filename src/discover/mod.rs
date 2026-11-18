@@ -11,7 +11,7 @@ pub mod rules;
 pub(crate) mod shell_wrapper;
 
 use anyhow::Result;
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use std::collections::HashMap;
 
 use provider::{ClaudeProvider, SessionProvider};
@@ -390,7 +390,7 @@ pub fn run(
     // read path used to swallow the same class of error via unwrap_or_default()/
     // ok().flatten(), silently reporting "no hook-decision log yet" for what could
     // actually be a corrupted database — warn here too instead of going quiet.
-    let (hook_log, measured_since): (HashMap<String, HookDecisionRecord>, Option<DateTime<Utc>>) =
+    let (hook_log, measured_since): (HashMap<String, HookDecisionRecord>, Option<Timestamp>) =
         match Tracker::new() {
             Ok(t) => {
                 let log = t.hook_decisions_since(cutoff).unwrap_or_else(|e| {
@@ -674,7 +674,7 @@ pub fn run(
         total_commands,
         already_rtk,
         already_rtk_estimated,
-        measured_since: measured_since.map(|ts| ts.format("%Y-%m-%d").to_string()),
+        measured_since: measured_since.map(|ts| ts.strftime("%Y-%m-%d").to_string()),
         since_days,
         supported,
         unsupported,
