@@ -134,7 +134,11 @@ try {
         }
     }
     if ($ca) { Remove-Item -LiteralPath "Cert:\LocalMachine\Root\$($ca.Thumbprint)" }
-    $proxies | Stop-Process -Force -ErrorAction SilentlyContinue
+    # Their logs stay open until they have exited.
+    foreach ($process in $proxies) {
+        Stop-Process -InputObject $process -Force -ErrorAction SilentlyContinue
+        $null = $process.WaitForExit(10000)
+    }
     Remove-Item Env:RTK_INSTALL_DIR -ErrorAction SilentlyContinue
 }
 
