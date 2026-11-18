@@ -54,9 +54,12 @@ export async function withDecoys(prefix, check) {
       // Drive-relative (the drive's working folder, here `work`) and quoted entries.
       decoys.push(`${work.slice(0, 2)}rel`, `"${real}"`)
       unc = `\\\\localhost\\${real[0]}$${real.slice(2)}`
-      // The first start through a share can outlast the hooks' 2-second timeout,
-      // so start it once here, with no timeout; this also shows it runs.
-      assert.equal(spawnSync(join(unc, RTK), ["--version"]).status, 0, unc)
+    }
+    // On Windows the first start of a fresh copy of node.exe can outlast the hooks'
+    // 2-second timeout, through a share or not, so start each path to the real one
+    // once here, with no timeout; this also shows it runs.
+    for (const dir of unc ? [real, unc] : [real]) {
+      assert.equal(spawnSync(join(dir, RTK), ["--version"]).status, 0, dir)
     }
     process.chdir(work)
 
