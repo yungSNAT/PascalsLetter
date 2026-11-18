@@ -3603,6 +3603,20 @@ mod tests {
         t
     }
 
+    // Regression: first_seen_days parsed the stored RFC 3339 strings (offset and
+    // fractional seconds) with a format that rejects them, so it always read 0.
+    #[test]
+    fn first_seen_days_counts_from_the_oldest_stored_command() {
+        let t = tracker_with_rows_aged(90, 10);
+        assert_eq!(t.first_seen_days().unwrap(), 10);
+    }
+
+    #[test]
+    fn first_seen_days_is_0_without_commands() {
+        let t = Tracker::new_in_memory().expect("in-memory tracker");
+        assert_eq!(t.first_seen_days().unwrap(), 0);
+    }
+
     // Regression: cleanup_old hardcoded DEFAULT_HISTORY_DAYS, so tracking.history_days
     // was declared, defaulted, written into config.toml, documented — and never read.
     // Both directions are asserted deliberately: a hardcoded 90 still passes the

@@ -1894,13 +1894,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn pro_hint_waits_a_week_then_once_a_day() {
+    fn pro_hint_never_shows_in_this_fork() {
         let day = std::time::Duration::from_secs(24 * 60 * 60);
-        assert!(!pro_hint_due(true, false, 0, None));
-        assert!(!pro_hint_due(true, false, 6, None));
-        assert!(pro_hint_due(true, false, 7, None));
-        assert!(!pro_hint_due(true, false, 30, Some(day / 2)));
-        assert!(pro_hint_due(true, false, 30, Some(day)));
+        for first_seen_days in [0, 7, 30, 10_000] {
+            for since_last_shown in [None, Some(day / 2), Some(day), Some(day * 30)] {
+                assert!(!pro_hint_due(true, false, first_seen_days, since_last_shown));
+            }
+        }
     }
 
     #[test]
