@@ -122,7 +122,12 @@ try {
     Set-SystemProxy $authPort
     $r = Invoke-Installer 'no-credentials' 'auth'
     Assert-Refused 'no-credentials' $r '407'
-    $r = Invoke-Installer 'credentials' 'auth' "[Net.WebRequest]::DefaultWebProxy.Credentials = [Net.NetworkCredential]::new('rtk', 'proxy-test')"
+    # The prelude is what the README asks for, and fetches the installer with
+    # irm as a user would, so the credentials must reach irm as well.
+    $prelude = "[Net.WebRequest]::DefaultWebProxy.Credentials = [Net.NetworkCredential]::new('rtk', 'proxy-test'); " +
+        "`$null = Invoke-RestMethod -Uri 'https://raw.githubusercontent.com/yungSNAT/PascalsLetter/develop/install.ps1' -UseBasicParsing"
+    $r = Invoke-Installer 'credentials' 'auth' $prelude
+    Assert ($r.Proxy.Contains('GET https://raw.githubusercontent.com/')) "credentials: irm did not fetch the installer through the proxy (see $work\auth-proxy.log)"
     Assert-Installed 'credentials' $r
     Assert-Decrypted 'credentials' $r 'auth'
 } finally {
