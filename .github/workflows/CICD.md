@@ -39,15 +39,23 @@ as coverage.yml runs them on that push)
           └────────────┴─────────┬───┴────────────┘
                                  │
                       ┌──────────▼─────────┐
-                      │  All must pass     │
-                      │  to merge          │
+                      │  report on the PR  │
                       └────────────────────┘
 
-     + release (build, after clippy: must also pass to merge)
-     + DCO check (independent, develop PRs only)
-     + Dependabot (weekly: Cargo deps + GitHub Actions)
+     + test presence, rustdoc, proxy, oss edition, install.ps1, hook plugins,
+       release (build) and the x86_64-pc-windows-gnu test leg also run on
+       each PR
+     + dependabot.yml (weekly: Cargo, npm, pip, GitHub Actions)
      + coverage.yml (push to develop or manual dispatch only: cargo-llvm-cov, then Codecov)
 ```
+
+The 'Protect main' ruleset, on `develop`, requires 6 of these checks to pass
+before a merge, with the branch up to date: `fmt`, `clippy`, `rustdoc`,
+`test (ubuntu-latest)`, `test (windows-latest)` and `test (macos-latest)`. A
+second ruleset blocks a merge until CodeQL (`codeql.yml`) has analysed the pull
+request, and whilst CodeQL reports an alert at error level or a security alert
+of high or critical severity. The other checks report on the pull request but
+do not block it. No workflow runs a DCO (sign-off) check.
 
 ## Draft release (release.yml)
 
