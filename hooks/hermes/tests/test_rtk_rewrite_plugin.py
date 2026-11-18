@@ -413,6 +413,11 @@ class InstalledRtkRewritePluginTest(unittest.TestCase):
         os.environ.pop("RTK_HERMES_TIMEOUT", None)
 
     @unittest.skipUnless(shutil.which("cargo"), "cargo is required for installed flow")
+    @unittest.skipIf(
+        os.name == "nt",
+        "the fake rtk is a script run by its shebang, and on Windows rtk finds the home "
+        "folder from the user profile, not HOME",
+    )
     def test_cargo_init_installs_importable_plugin_that_rewrites_with_fake_rtk(self):
         repo_root = Path(__file__).resolve().parents[3]
         self.assertTrue((repo_root / "Cargo.toml").exists(), "repo_root must point at the repository root")

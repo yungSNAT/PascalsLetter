@@ -62,7 +62,7 @@ export async function withDecoys(prefix, check) {
 
     // A bare "rtk", as the hooks started it before, reaches a decoy with these entries.
     process.env.PATH = [...decoys, real].join(delimiter)
-    const bare = spawnSync("rtk", ["rewrite", "git status"], { encoding: "utf8" })
+    const bare = spawnSync("rtk", ["rewrite", "git status"], { encoding: "utf8" }) // NOSONAR: these PATH entries are the decoys this check must reach
     assert.match(bare.stdout ?? "", /^decoy/, "bare rtk")
 
     await check({ decoys, real, unc })
