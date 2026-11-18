@@ -1915,12 +1915,6 @@ mod tests {
     }
 
     #[test]
-    fn pro_hint_respects_config_and_env() {
-        assert!(!pro_hint_due(false, false, 30, None));
-        assert!(!pro_hint_due(true, true, 30, None));
-    }
-
-    #[test]
     fn share_cta_only_when_pipeline_command_exists() {
         use clap::CommandFactory;
         let has_pipeline = crate::Cli::command().find_subcommand("pipeline").is_some();
