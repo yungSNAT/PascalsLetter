@@ -112,7 +112,7 @@ Same columns as daily, aggregated by Sunday-Saturday week or calendar month.
 
 ## The RTK Pro line
 
-After a week of data, `rtk gain` ends with one dim line about [RTK Pro](https://pro.rtk-ai.app), at most once a day and only on a terminal: a piped `rtk gain`, and so an agent reading it, never sees it. `pro_hint = false` under `[display]` in `config.toml`, or `RTK_PRO_HINT=0`, turns it off.
+Upstream RTK's `rtk gain` ends with one line about [RTK Pro](https://pro.rtk-ai.app) after a week of data. This fork never prints it: `pro_hint` under `[display]` in `config.toml` and `RTK_PRO_HINT` are still read but change nothing.
 
 ## How token estimation works
 

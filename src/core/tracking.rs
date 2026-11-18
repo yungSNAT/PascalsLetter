@@ -1869,9 +1869,14 @@ impl Tracker {
             };
         match oldest {
             Some(ts) => {
-                let first = jiff::civil::DateTime::strptime("%Y-%m-%dT%H:%M:%S", &ts)
-                    .or_else(|_| jiff::civil::DateTime::strptime("%Y-%m-%d %H:%M:%S", &ts))
-                    .and_then(|dt| jiff::tz::TimeZone::UTC.to_timestamp(dt))
+                // Rows are stored as RFC 3339 with an offset (`rfc3339`).
+                let first = ts
+                    .parse::<Timestamp>()
+                    .or_else(|_| {
+                        jiff::civil::DateTime::strptime("%Y-%m-%dT%H:%M:%S", &ts)
+                            .or_else(|_| jiff::civil::DateTime::strptime("%Y-%m-%d %H:%M:%S", &ts))
+                            .and_then(|dt| jiff::tz::TimeZone::UTC.to_timestamp(dt))
+                    })
                     .unwrap_or_else(|_| Timestamp::now());
                 let days = Timestamp::now().duration_since(first).as_secs() / 86_400;
                 Ok(days.max(0))
@@ -3601,6 +3606,20 @@ mod tests {
             )
             .expect("insert backdated engine attribution");
         t
+    }
+
+    // Regression: first_seen_days parsed the stored RFC 3339 strings (offset and
+    // fractional seconds) with a format that rejects them, so it always read 0.
+    #[test]
+    fn first_seen_days_counts_from_the_oldest_stored_command() {
+        let t = tracker_with_rows_aged(90, 10);
+        assert_eq!(t.first_seen_days().unwrap(), 10);
+    }
+
+    #[test]
+    fn first_seen_days_is_0_without_commands() {
+        let t = Tracker::new_in_memory().expect("in-memory tracker");
+        assert_eq!(t.first_seen_days().unwrap(), 0);
     }
 
     // Regression: cleanup_old hardcoded DEFAULT_HISTORY_DAYS, so tracking.history_days
