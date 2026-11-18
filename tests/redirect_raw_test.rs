@@ -10,23 +10,12 @@ use std::process::{Command, Output, Stdio};
 
 mod common;
 
-/// Env that isolates git and rtk from the developer's real config, identity and home.
-fn isolate(cmd: &mut Command, home: &Path) {
-    common::isolate_git(cmd);
-    cmd.env("HOME", home)
-        .env("GIT_AUTHOR_NAME", "t")
-        .env("GIT_AUTHOR_EMAIL", "t@example.com")
-        .env("GIT_COMMITTER_NAME", "t")
-        .env("GIT_COMMITTER_EMAIL", "t@example.com")
-        .env("GIT_TERMINAL_PROMPT", "0");
-}
-
 fn git(repo: &Path, home: &Path, args: &[&str]) -> Output {
     let mut cmd = Command::new("git");
     cmd.arg("-C").arg(repo);
     cmd.args(["-c", "commit.gpgsign=false", "-c", "maintenance.auto=false"]);
     cmd.args(args);
-    isolate(&mut cmd, home);
+    common::isolate_git_in(&mut cmd, home);
     let out = cmd.output().expect("run git");
     assert!(
         out.status.success(),
@@ -61,7 +50,7 @@ fn rtk_git_log(repo: &Path, home: &Path, args: &[&str], stdout: Stdio) -> Output
         .current_dir(repo)
         .stdout(stdout)
         .stderr(Stdio::piped());
-    isolate(&mut cmd, home);
+    common::isolate_git_in(&mut cmd, home);
     cmd.output().expect("run rtk git log")
 }
 
@@ -228,6 +217,7 @@ fn a_file_never_holds_filtered_output_when_no_descriptor_is_free() {
     }
 }
 
+#[cfg(unix)]
 fn sixty_line_makefile(dir: &Path) -> &Path {
     std::fs::write(
         dir.join("Makefile"),
@@ -237,6 +227,7 @@ fn sixty_line_makefile(dir: &Path) -> &Path {
     dir
 }
 
+#[cfg(unix)]
 fn assert_sixty_lines(target: &Path) {
     let written = std::fs::read_to_string(target).expect("read make.txt");
     let expected: String = (1..=60).map(|i| format!("line {i}\n")).collect();
