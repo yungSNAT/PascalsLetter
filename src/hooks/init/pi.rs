@@ -990,10 +990,17 @@ mod tests {
             );
             // Regression guard for #2753: a value import (e.g. `import { isToolCallEventType }`)
             // pulls in the whole @earendil-works/pi-coding-agent barrel at extension load,
-            // adding ~250ms of startup latency. Only `import type { ... }` is allowed.
+            // adding ~250ms of startup latency. Only `import type { ... }` is allowed from
+            // it; a value import may name a Node built-in (`node:fs`), which costs nothing.
+            let value_imports: Vec<&str> = content
+                .lines()
+                .filter(|line| line.starts_with("import ") && !line.starts_with("import type"))
+                .collect();
             assert!(
-                !content.contains("import {"),
-                "extension must not load the Pi package at runtime"
+                value_imports
+                    .iter()
+                    .all(|line| line.contains(" from \"node:")),
+                "extension must not load the Pi package at runtime: {value_imports:?}"
             );
         });
     }
