@@ -76,6 +76,18 @@ pub fn isolate_git(cmd: &mut Command) {
     scratch::isolate_git(cmd);
 }
 
+/// [`isolate_git`] with `home` as the home directory, a fixed identity and no
+/// prompts, for a test that runs git and rtk in a repository of its own.
+pub fn isolate_git_in(cmd: &mut Command, home: &std::path::Path) {
+    isolate_git(cmd);
+    cmd.env("HOME", home)
+        .env("GIT_AUTHOR_NAME", "t")
+        .env("GIT_AUTHOR_EMAIL", "t@example.com")
+        .env("GIT_COMMITTER_NAME", "t")
+        .env("GIT_COMMITTER_EMAIL", "t@example.com")
+        .env("GIT_TERMINAL_PROMPT", "0");
+}
+
 /// A temporary directory of the test's own under the scratch directory, so
 /// concurrent runs never share one. Keep the `TempDir` alive for the test.
 pub fn tempdir() -> tempfile::TempDir {

@@ -714,6 +714,34 @@ pub fn resolve_binary(name: &str) -> Result<PathBuf> {
     which::which(name).context(format!("Binary '{}' not found on PATH", name))
 }
 
+/// True when stdout is a regular file, as in `rtk git log > log.txt`.
+///
+/// A file is read later, often whole and often by a program, so a cut there loses data
+/// that nobody sees go. A pipe, a terminal and `/dev/null` (a character device) are not
+/// files.
+#[cfg(unix)]
+pub fn stdout_is_file() -> bool {
+    use std::os::fd::AsFd;
+    std::io::stdout()
+        .as_fd()
+        .try_clone_to_owned()
+        .map(std::fs::File::from)
+        .and_then(|f| f.metadata())
+        .is_ok_and(|m| m.file_type().is_file())
+}
+
+/// Windows: a disk file, by the handle's file type. std's `Metadata::is_file` is not
+/// enough there, as it is true of anything that is not a directory or a link.
+#[cfg(windows)]
+pub fn stdout_is_file() -> bool {
+    winapi_util::file::typ(winapi_util::HandleRef::stdout()).is_ok_and(|t| t.is_disk())
+}
+
+#[cfg(not(any(unix, windows)))]
+pub fn stdout_is_file() -> bool {
+    false
+}
+
 /// Create a `Command` with PATHEXT-aware binary resolution.
 ///
 /// Drop-in replacement for `Command::new(name)` that works on Windows
