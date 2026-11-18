@@ -2,7 +2,7 @@
 // reachable through a bare "rtk" or a non-absolute PATH entry, and a real one.
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, copyFileSync, linkSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { delimiter, join } from "node:path"
 
@@ -10,13 +10,18 @@ const WINDOWS = process.platform === "win32"
 export const RTK = WINDOWS ? "rtk.exe" : "rtk"
 
 // A fake rtk that reports a supported version and answers `rtk rewrite git status`
-// with `answer`. On Windows it is a copy of node.exe: its own version passes Pi's
-// version check, and it runs the working folder's `rewrite` script, which prints
-// the answer file beside the copy.
+// with `answer`. On Windows it is node.exe under another name, hard-linked where it
+// can be rather than copied (a fresh 90 MB copy was slow to start): its own version
+// passes Pi's version check, and it runs the working folder's `rewrite` script,
+// which prints the answer file beside it.
 function fakeRtk(dir, answer) {
   mkdirSync(dir, { recursive: true })
   if (WINDOWS) {
-    copyFileSync(process.execPath, join(dir, RTK))
+    try {
+      linkSync(process.execPath, join(dir, RTK))
+    } catch {
+      copyFileSync(process.execPath, join(dir, RTK))
+    }
     writeFileSync(join(dir, "answer"), answer)
     return
   }
@@ -55,9 +60,9 @@ export async function withDecoys(prefix, check) {
       decoys.push(`${work.slice(0, 2)}rel`, `"${real}"`)
       unc = `\\\\localhost\\${real[0]}$${real.slice(2)}`
     }
-    // On Windows the first start of a fresh copy of node.exe can outlast the hooks'
-    // 2-second timeout, through a share or not, so start each path to the real one
-    // once here, with no timeout; this also shows it runs.
+    // On a Windows runner a first start can outlast the hooks' 2-second timeout,
+    // through a share or not, so start each path to the real one once here, with
+    // no timeout; this also shows it runs.
     for (const dir of unc ? [real, unc] : [real]) {
       assert.equal(spawnSync(join(dir, RTK), ["--version"]).status, 0, dir)
     }
