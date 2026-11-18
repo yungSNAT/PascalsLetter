@@ -32,7 +32,7 @@ database_path = "/custom/path/history.db"   # optional override
 colors = true               # colored output
 emoji = true                # use emojis in output
 max_width = 120             # maximum output width
-pro_hint = true             # rtk gain mentions RTK Pro once a day after your first week (terminal only)
+pro_hint = true             # no effect in this fork: rtk gain never mentions RTK Pro
 
 [filters]
 # These apply to file-reading commands (ls, find, grep, cat/rtk read).
