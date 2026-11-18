@@ -766,6 +766,13 @@ mod tests {
         );
     }
 
+    // This fork's builds compile in no collector, so maybe_ping returns before a
+    // payload (first_seen_days included) is built.
+    #[test]
+    fn this_forks_builds_compile_in_no_telemetry_url() {
+        assert!(endpoint_url().is_none());
+    }
+
     #[test]
     fn test_detect_hook_type_returns_known() {
         let ht = detect_hook_type();
