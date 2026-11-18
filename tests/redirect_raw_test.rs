@@ -144,7 +144,10 @@ fn rtks_flag_after_a_double_dash_is_the_programs() {
     );
     let written = std::fs::read(&target).expect("read log.txt");
     let native = git(&repo, &home, &args).stdout;
-    assert!(native.is_empty(), "git found commits for the path --skip-env");
+    assert!(
+        native.is_empty(),
+        "git found commits for the path --skip-env"
+    );
     assert_eq!(
         String::from_utf8_lossy(&written),
         String::from_utf8_lossy(&native)
