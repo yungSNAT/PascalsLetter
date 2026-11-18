@@ -123,6 +123,34 @@ fn rtks_own_flag_after_the_command_stays_out_of_the_programs_arguments() {
     );
 }
 
+/// After `--`, `--skip-env` is the program's: here a path git finds no commits for.
+#[test]
+fn rtks_flag_after_a_double_dash_is_the_programs() {
+    let root = common::tempdir();
+    let (repo, home) = repo(root.path(), 3);
+    let target = root.path().join("log.txt");
+
+    let args = ["log", "-p", "--", "--skip-env"];
+    let out = rtk_git_log(
+        &repo,
+        &home,
+        &args,
+        Stdio::from(File::create(&target).expect("create log.txt")),
+    );
+    assert!(
+        out.status.success(),
+        "rtk git log -- --skip-env failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let written = std::fs::read(&target).expect("read log.txt");
+    let native = git(&repo, &home, &args).stdout;
+    assert!(native.is_empty(), "git found commits for the path --skip-env");
+    assert_eq!(
+        String::from_utf8_lossy(&written),
+        String::from_utf8_lossy(&native)
+    );
+}
+
 #[test]
 fn a_command_read_through_a_pipe_is_still_filtered() {
     let root = common::tempdir();
@@ -147,12 +175,7 @@ fn a_toml_filtered_command_redirected_to_a_file_writes_its_own_output() {
         return;
     }
     let root = common::tempdir();
-    let dir = root.path();
-    std::fs::write(
-        dir.join("Makefile"),
-        "all:\n\t@i=1; while [ $$i -le 60 ]; do echo line $$i; i=$$((i+1)); done\n",
-    )
-    .expect("write Makefile");
+    let dir = sixty_line_makefile(root.path());
     let target = dir.join("make.txt");
 
     let mut cmd = common::rtk_command();
@@ -162,7 +185,51 @@ fn a_toml_filtered_command_redirected_to_a_file_writes_its_own_output() {
     let status = cmd.status().expect("run rtk make");
     assert!(status.success(), "rtk make failed");
 
-    let written = std::fs::read_to_string(&target).expect("read make.txt");
+    assert_sixty_lines(&target);
+}
+
+/// The file test above with stdout hard to copy: descriptors 3 to 7 taken, a limit of 8,
+/// and 0 and 2 closed, so a copy of stdout (lowest free number 3 or above) cannot be made
+/// whilst a pipe for a filtered child would still fit in 0 and 2.
+#[cfg(unix)]
+#[test]
+fn a_file_is_still_seen_when_no_descriptor_is_free_to_copy_stdout() {
+    if Command::new("make").arg("--version").output().is_err() {
+        eprintln!("make is not installed; skipped");
+        return;
+    }
+    let root = common::tempdir();
+    let dir = sixty_line_makefile(root.path());
+    let target = dir.join("make.txt");
+
+    let rtk = common::rtk_command();
+    let mut cmd = Command::new("sh");
+    common::isolate_rtk(&mut cmd);
+    cmd.arg("-c")
+        .arg(
+            "ulimit -n 8 && exec 3</dev/null 4</dev/null 5</dev/null 6</dev/null 7</dev/null \
+             0<&- 2>&- && exec \"$0\" make -s",
+        )
+        .arg(rtk.get_program())
+        .current_dir(dir)
+        .stdout(Stdio::from(File::create(&target).expect("create make.txt")));
+    let status = cmd.status().expect("run sh");
+    assert!(status.success(), "rtk make failed under the descriptor limit");
+
+    assert_sixty_lines(&target);
+}
+
+fn sixty_line_makefile(dir: &Path) -> &Path {
+    std::fs::write(
+        dir.join("Makefile"),
+        "all:\n\t@i=1; while [ $$i -le 60 ]; do echo line $$i; i=$$((i+1)); done\n",
+    )
+    .expect("write Makefile");
+    dir
+}
+
+fn assert_sixty_lines(target: &Path) {
+    let written = std::fs::read_to_string(target).expect("read make.txt");
     let expected: String = (1..=60).map(|i| format!("line {i}\n")).collect();
     assert_eq!(written, expected, "the file must hold make's own output");
 }
