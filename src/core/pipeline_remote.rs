@@ -192,7 +192,7 @@ pub fn record_install(name: &str, source: &str, sha: Option<&str>) {
             ("source", Some(source.to_string())),
             (
                 "date",
-                Some(chrono::Local::now().format("%Y-%m-%d").to_string()),
+                Some(jiff::ZonedDateTime::now().strftime("%Y-%m-%d").to_string()),
             ),
             ("sha", sha.map(str::to_string)),
         ],

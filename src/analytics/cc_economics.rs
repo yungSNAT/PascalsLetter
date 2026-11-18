@@ -4,7 +4,7 @@
 //! dual-metric economic impact reporting with blended and active cost-per-token.
 
 use anyhow::{Context, Result};
-use chrono::NaiveDate;
+use jiff::civil::Date;
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -242,8 +242,8 @@ fn merge_weekly(cc: Option<Vec<CcusagePeriod>>, rtk: Vec<WeekStats>) -> Vec<Peri
     }
 
     for entry in rtk {
-        let monday_key = match NaiveDate::parse_from_str(&entry.week_start, "%Y-%m-%d") {
-            Ok(date) => date.format("%Y-%m-%d").to_string(),
+        let monday_key = match Date::strptime("%Y-%m-%d", &entry.week_start) {
+            Ok(date) => date.strftime("%Y-%m-%d").to_string(),
             Err(_) => {
                 eprintln!("[warn] Invalid week_start format: {}", entry.week_start);
                 continue;

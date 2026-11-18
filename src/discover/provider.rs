@@ -119,8 +119,8 @@ impl ClaudeProvider {
         // query) — use checked_mul and fall back to the epoch, which for "days ago"
         // naturally means "no lower bound", instead of panicking. Kept as its own
         // SystemTime-based implementation rather than reusing days_ago_cutoff
-        // directly: this filters on file mtimes (SystemTime), not chrono
-        // DateTime<Utc>, and days_ago_cutoff's MIN_UTC fallback wouldn't convert to
+        // directly: this filters on file mtimes (SystemTime), not jiff
+        // Timestamps, and days_ago_cutoff's Timestamp::MIN fallback wouldn't convert to
         // a valid SystemTime anyway. If this overflow-clamping logic needs a fix,
         // check whether the same fix applies to days_ago_cutoff too.
         let cutoff = since_days.map(|days| {

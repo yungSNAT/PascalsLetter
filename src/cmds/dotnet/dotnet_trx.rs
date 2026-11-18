@@ -1,7 +1,7 @@
 //! Parses .trx test result files (Visual Studio XML format) into compact summaries.
 
 use crate::binlog::{FailedTest, TestSummary};
-use chrono::{DateTime, FixedOffset};
+use jiff::Timestamp;
 use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
 use std::path::{Path, PathBuf};
@@ -69,17 +69,13 @@ fn parse_usize_attr(start: &BytesStart<'_>, key: &str) -> usize {
 }
 
 fn parse_trx_duration(start: &str, finish: &str) -> Option<String> {
-    let start_dt = DateTime::parse_from_rfc3339(start).ok()?;
-    let finish_dt = DateTime::parse_from_rfc3339(finish).ok()?;
+    let start_dt = start.parse().ok()?;
+    let finish_dt = finish.parse().ok()?;
     format_duration_between(start_dt, finish_dt)
 }
 
-fn format_duration_between(
-    start_dt: DateTime<FixedOffset>,
-    finish_dt: DateTime<FixedOffset>,
-) -> Option<String> {
-    let diff = finish_dt.signed_duration_since(start_dt);
-    let millis = diff.num_milliseconds();
+fn format_duration_between(start_dt: Timestamp, finish_dt: Timestamp) -> Option<String> {
+    let millis = finish_dt.duration_since(start_dt).as_millis();
     if millis <= 0 {
         return None;
     }
@@ -92,7 +88,7 @@ fn format_duration_between(
     Some(format!("{millis} ms"))
 }
 
-fn parse_trx_time_bounds(content: &str) -> Option<(DateTime<FixedOffset>, DateTime<FixedOffset>)> {
+fn parse_trx_time_bounds(content: &str) -> Option<(Timestamp, Timestamp)> {
     let mut reader = xml_reader(content);
 
     loop {
@@ -104,8 +100,8 @@ fn parse_trx_time_bounds(content: &str) -> Option<(DateTime<FixedOffset>, DateTi
 
                 let start = extract_attr_value(&e, "start")?;
                 let finish = extract_attr_value(&e, "finish")?;
-                let start_dt = DateTime::parse_from_rfc3339(&start).ok()?;
-                let finish_dt = DateTime::parse_from_rfc3339(&finish).ok()?;
+                let start_dt = start.parse().ok()?;
+                let finish_dt = finish.parse().ok()?;
                 return Some((start_dt, finish_dt));
             }
             Ok(Event::Eof) => break,
@@ -143,8 +139,8 @@ pub fn parse_trx_files_in_dir_since(dir: &Path, since: Option<SystemTime>) -> Op
     }
 
     let mut summaries = Vec::new();
-    let mut min_start: Option<DateTime<FixedOffset>> = None;
-    let mut max_finish: Option<DateTime<FixedOffset>> = None;
+    let mut min_start: Option<Timestamp> = None;
+    let mut max_finish: Option<Timestamp> = None;
     let entries = std::fs::read_dir(dir).ok()?;
     for entry in entries.flatten() {
         let path = entry.path();
@@ -495,7 +491,7 @@ mod tests {
 </TestRun>"#;
 
         let (start, finish) = parse_trx_time_bounds(trx).expect("time bounds");
-        assert_eq!((finish - start).num_seconds(), 2);
+        assert_eq!(finish.duration_since(start).as_secs(), 2);
     }
 
     #[test]
@@ -654,5 +650,25 @@ mod tests {
         let summary = parse_trx_files_in_dir_since(&trx_dir, None).expect("summary");
         assert_eq!(summary.total, 3);
         assert_eq!(summary.failed, 1);
+    }
+
+    #[test]
+    fn test_parse_trx_duration_across_offsets_and_bad_bounds() {
+        let start = "2026-01-01T10:00:00+01:00";
+        for (finish, expected) in [
+            ("2026-01-01T09:00:00.250+00:00", Some("250 ms")),
+            ("2026-01-01T09:00:00.0009+00:00", None),
+            ("2026-01-01T09:00:01.5+00:00", Some("1.5 s")),
+            ("2026-01-01T10:00:00+01:00", None),
+            ("2026-01-01T08:59:59+00:00", None),
+            ("2026-01-01T10:00:01", None),
+            ("not a time", None),
+        ] {
+            assert_eq!(
+                parse_trx_duration(start, finish).as_deref(),
+                expected,
+                "{finish}"
+            );
+        }
     }
 }
