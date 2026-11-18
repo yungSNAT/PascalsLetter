@@ -84,6 +84,14 @@ function Assert-Refused([string]$Name, $Result, [string]$Pattern) {
     Assert ($Result.Log -match $Pattern) "${Name}: output does not match '$Pattern' (see $work\$Name.log)"
 }
 
+# The proxy logs each request it decrypts as 'GET <url>', shortened to its
+# console width; a tunnel it did not open would show only CONNECT.
+function Assert-Decrypted([string]$Name, $Result, [string]$Proxy) {
+    foreach ($request in 'GET https://github.com/yungSNAT/PascalsLetter/releases/', 'GET https://release-assets.githubusercontent.com/') {
+        Assert ($Result.Proxy -and $Result.Proxy.Contains($request)) "${Name}: the proxy did not decrypt '$request' (see $work\$Proxy-proxy.log)"
+    }
+}
+
 $saved = Get-ItemProperty -Path $settings
 $proxies = @()
 $ca = $null
@@ -107,7 +115,7 @@ try {
     $ca = Import-Certificate -FilePath $caFile -CertStoreLocation Cert:\LocalMachine\Root
     $r = Invoke-Installer 'inspected' 'inspect'
     Assert-Installed 'inspected' $r
-    Assert ($r.Proxy.Contains('GET https://github.com/yungSNAT/PascalsLetter/releases/latest/download/checksums.txt')) "inspected: the proxy did not decrypt the download (see $work\inspect-proxy.log)"
+    Assert-Decrypted 'inspected' $r 'inspect'
 
     # The authenticating proxy refuses a download without its credentials, and
     # passes one with the credentials set on the session's default proxy.
@@ -116,7 +124,7 @@ try {
     Assert-Refused 'no-credentials' $r '407'
     $r = Invoke-Installer 'credentials' 'auth' "[Net.WebRequest]::DefaultWebProxy.Credentials = [Net.NetworkCredential]::new('rtk', 'proxy-test')"
     Assert-Installed 'credentials' $r
-    Assert ($r.Proxy.Contains('GET https://github.com/yungSNAT/PascalsLetter/releases/latest/download/checksums.txt')) "credentials: the proxy did not pass the download (see $work\auth-proxy.log)"
+    Assert-Decrypted 'credentials' $r 'auth'
 } finally {
     foreach ($name in 'ProxyServer', 'ProxyEnable') {
         if ($saved.PSObject.Properties[$name]) {
