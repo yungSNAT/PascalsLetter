@@ -33,11 +33,30 @@ function Get-FreePort {
     try { $listener.LocalEndpoint.Port } finally { $listener.Stop() }
 }
 
-# Starts mitmdump on $Port with $Arguments, logging to $Name-proxy.log, and
-# waits until it accepts connections.
+# mitmdump's own log is buffered and shortens long lines, so this addon writes
+# each CONNECT, and each request the proxy decrypted, to the file named by
+# RTK_PROXY_REQUESTS as it arrives.
+$recorder = Join-Path $work 'record.py'
+Set-Content -LiteralPath $recorder -Encoding ASCII -Value @'
+import os
+
+def _record(line):
+    with open(os.environ["RTK_PROXY_REQUESTS"], "a", encoding="utf-8") as f:
+        f.write(line + "\n")
+
+def http_connect(flow):
+    _record("CONNECT " + flow.request.pretty_host)
+
+def request(flow):
+    _record(flow.request.method + " " + flow.request.pretty_url)
+'@
+
+# Starts mitmdump on $Port with $Arguments, logging to $Name-proxy.log and its
+# requests to $Name-requests.txt, and waits until it accepts connections.
 function Start-Proxy([string]$Name, [int]$Port, [string[]]$Arguments = @()) {
     $log = Join-Path $work "$Name-proxy.log"
-    $all = @('--listen-host', '127.0.0.1', '--listen-port', $Port, '--set', "confdir=$conf", '--flow-detail', '1') + $Arguments
+    $env:RTK_PROXY_REQUESTS = Join-Path $work "$Name-requests.txt"
+    $all = @('--listen-host', '127.0.0.1', '--listen-port', $Port, '--set', "confdir=$conf", '-s', $recorder) + $Arguments
     $process = Start-Process -FilePath $env:MITMDUMP -ArgumentList $all -PassThru -NoNewWindow `
         -RedirectStandardOutput $log -RedirectStandardError "$log.err"
     for ($i = 0; $i -lt 60; $i++) {
@@ -56,7 +75,7 @@ function Set-SystemProxy([int]$Port) {
 
 # Runs the installer in a child PowerShell after $Prelude, logging to $Name.log,
 # and returns its exit code, its output, the installed rtk.exe's --version and
-# the proxy's log.
+# the requests the proxy has recorded so far.
 function Invoke-Installer([string]$Name, [string]$Proxy, [string]$Prelude = '') {
     $ErrorActionPreference = 'Continue'
     $dir = Join-Path $work "$Name-bin"
@@ -71,7 +90,7 @@ function Invoke-Installer([string]$Name, [string]$Proxy, [string]$Prelude = '') 
         Exit = $exit
         Log = Get-Content -LiteralPath (Join-Path $work "$Name.log") -Raw
         Version = $version
-        Proxy = Get-Content -LiteralPath (Join-Path $work "$Proxy-proxy.log") -Raw
+        Proxy = @(Get-Content -LiteralPath (Join-Path $work "$Proxy-requests.txt") -ErrorAction Ignore)
     }
 }
 
@@ -84,19 +103,18 @@ function Assert-Refused([string]$Name, $Result, [string]$Pattern) {
     Assert ($Result.Log -match $Pattern) "${Name}: output does not match '$Pattern' (see $work\$Name.log)"
 }
 
-# The proxy logs each request it decrypts as 'GET <url>', shortened to its
-# console width; a tunnel it did not open would show only CONNECT.
-function Assert-Decrypted([string]$Name, $Result, [string]$Proxy) {
-    foreach ($request in 'GET https://github.com/yungSNAT/PascalsLetter/releases/', 'GET https://release-assets.githubusercontent.com/') {
-        Assert ($Result.Proxy -and $Result.Proxy.Contains($request)) "${Name}: the proxy did not decrypt '$request' (see $work\$Proxy-proxy.log)"
+# A request the proxy decrypted is recorded as 'GET <url>'; a tunnel it did
+# not open would show only CONNECT.
+function Assert-Decrypted([string]$Name, $Result, [string]$Proxy, [string[]]$Prefixes) {
+    foreach ($prefix in $Prefixes) {
+        Assert (@($Result.Proxy | Where-Object { $_.StartsWith("GET $prefix") }).Count -gt 0) "${Name}: the proxy decrypted no request to $prefix (see $work\$Proxy-requests.txt)"
     }
 }
+$download = @('https://github.com/yungSNAT/PascalsLetter/releases/latest/download/checksums.txt', 'https://release-assets.githubusercontent.com/')
 
 $saved = Get-ItemProperty -Path $settings
 $proxies = @()
 $ca = $null
-# mitmdump's output is a file, which Python would otherwise buffer.
-$env:PYTHONUNBUFFERED = '1'
 try {
     $inspectPort = Get-FreePort
     $proxies += Start-Proxy 'inspect' $inspectPort
@@ -110,12 +128,12 @@ try {
     Set-SystemProxy $inspectPort
     $r = Invoke-Installer 'untrusted' 'inspect'
     Assert-Refused 'untrusted' $r 'SSL|TLS|trust'
-    Assert ($r.Proxy -match 'github\.com') "untrusted: the proxy saw no request to github.com (see $work\inspect-proxy.log)"
+    Assert ($r.Proxy -contains 'CONNECT github.com') "untrusted: the proxy saw no CONNECT to github.com (see $work\inspect-requests.txt)"
 
     $ca = Import-Certificate -FilePath $caFile -CertStoreLocation Cert:\LocalMachine\Root
     $r = Invoke-Installer 'inspected' 'inspect'
     Assert-Installed 'inspected' $r
-    Assert-Decrypted 'inspected' $r 'inspect'
+    Assert-Decrypted 'inspected' $r 'inspect' $download
 
     # The authenticating proxy refuses a download without its credentials, and
     # passes one with the credentials set on the session's default proxy.
@@ -127,9 +145,8 @@ try {
     $prelude = "[Net.WebRequest]::DefaultWebProxy.Credentials = [Net.NetworkCredential]::new('rtk', 'proxy-test'); " +
         "`$null = Invoke-RestMethod -Uri 'https://raw.githubusercontent.com/yungSNAT/PascalsLetter/develop/install.ps1' -UseBasicParsing"
     $r = Invoke-Installer 'credentials' 'auth' $prelude
-    Assert ($r.Proxy.Contains('GET https://raw.githubusercontent.com/')) "credentials: irm did not fetch the installer through the proxy (see $work\auth-proxy.log)"
     Assert-Installed 'credentials' $r
-    Assert-Decrypted 'credentials' $r 'auth'
+    Assert-Decrypted 'credentials' $r 'auth' (@('https://raw.githubusercontent.com/yungSNAT/PascalsLetter/develop/install.ps1') + $download)
 } finally {
     foreach ($name in 'ProxyServer', 'ProxyEnable') {
         if ($saved.PSObject.Properties[$name]) {
@@ -152,7 +169,7 @@ try {
 }
 
 if ($failures.Count -gt 0) {
-    foreach ($log in Get-ChildItem -LiteralPath $work -Filter '*.log') {
+    foreach ($log in Get-ChildItem -Path (Join-Path $work '*') -Include '*.log', '*.txt') {
         Write-Host "--- $($log.Name)"
         Get-Content -LiteralPath $log.FullName -Tail 40
     }
