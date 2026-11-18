@@ -188,12 +188,13 @@ fn a_toml_filtered_command_redirected_to_a_file_writes_its_own_output() {
     assert_sixty_lines(&target);
 }
 
-/// The file test above with stdout hard to copy: descriptors 3 to 7 taken, a limit of 8,
-/// and 0 and 2 closed, so a copy of stdout (lowest free number 3 or above) cannot be made
-/// whilst a pipe for a filtered child would still fit in 0 and 2.
+/// The file test above with no descriptor free to copy stdout: 3 to 7 taken, a limit of 8,
+/// and 0 and 2 closed. Rust's runtime reopens 0 and 2 on `/dev/null` before `main`, so rtk
+/// starts with none free and cannot start a filtered child either. Whatever rtk does, the
+/// file holds make's whole output or nothing, never a filtered cut.
 #[cfg(unix)]
 #[test]
-fn a_file_is_still_seen_when_no_descriptor_is_free_to_copy_stdout() {
+fn a_file_never_holds_filtered_output_when_no_descriptor_is_free() {
     if Command::new("make").arg("--version").output().is_err() {
         eprintln!("make is not installed; skipped");
         return;
@@ -215,9 +216,13 @@ fn a_file_is_still_seen_when_no_descriptor_is_free_to_copy_stdout() {
         .current_dir(dir)
         .stdout(Stdio::from(File::create(&target).expect("create make.txt")));
     let status = cmd.status().expect("run sh");
-    assert!(status.success(), "rtk make failed under the descriptor limit");
 
-    assert_sixty_lines(&target);
+    if status.success() {
+        assert_sixty_lines(&target);
+    } else {
+        let written = std::fs::read_to_string(&target).expect("read make.txt");
+        assert_eq!(written, "", "rtk failed, yet wrote to the file");
+    }
 }
 
 fn sixty_line_makefile(dir: &Path) -> &Path {
