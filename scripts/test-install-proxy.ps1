@@ -2,17 +2,21 @@
 # mitmproxy instances set as the Windows system proxy: one that inspects TLS
 # with its own certificate authority, and one that also asks for a user name
 # and password. Each case runs the installer in a child of this PowerShell and
-# checks, from the proxy's log, that the download really went through it.
+# checks, from the requests the proxy recorded, that the download went through it.
 #
 # It changes this user's proxy settings and the machine's trusted root
-# certificates, restoring both at the end, so it is for a disposable machine
-# such as a CI runner, run as administrator. $env:MITMDUMP names mitmdump.exe:
+# certificates, restoring both at the end; a killed run cannot restore them, so
+# it runs only on GitHub Actions or with RTK_PROXY_TEST=1, as administrator.
+# $env:MITMDUMP names mitmdump.exe:
 #   powershell -NoProfile -File scripts/test-install-proxy.ps1   # Windows PowerShell 5.1
 #   pwsh -NoProfile -File scripts/test-install-proxy.ps1         # PowerShell 7
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+if ($env:GITHUB_ACTIONS -ne 'true' -and $env:RTK_PROXY_TEST -ne '1') {
+    throw 'This test trusts a new root CA and changes the proxy settings: run it on a disposable machine with RTK_PROXY_TEST=1'
+}
 if (-not $env:MITMDUMP -or -not (Test-Path -LiteralPath $env:MITMDUMP)) { throw 'Set MITMDUMP to the path of mitmdump.exe' }
 $installer = (Resolve-Path (Join-Path $PSScriptRoot '..\install.ps1')).Path
 $shell = (Get-Process -Id $PID).Path
@@ -110,7 +114,8 @@ function Assert-Decrypted([string]$Name, $Result, [string]$Proxy, [string[]]$Pre
         Assert (@($Result.Proxy | Where-Object { $_.StartsWith("GET $prefix") }).Count -gt 0) "${Name}: the proxy decrypted no request to $prefix (see $work\$Proxy-requests.txt)"
     }
 }
-$download = @('https://github.com/yungSNAT/PascalsLetter/releases/latest/download/checksums.txt', 'https://release-assets.githubusercontent.com/')
+$latest = 'https://github.com/yungSNAT/PascalsLetter/releases/latest/download'
+$download = @("$latest/checksums.txt", "$latest/rtk-oss-x86_64-pc-windows-msvc.zip", 'https://release-assets.githubusercontent.com/')
 
 $saved = Get-ItemProperty -Path $settings
 $proxies = @()
@@ -148,6 +153,10 @@ try {
     Assert-Installed 'credentials' $r
     Assert-Decrypted 'credentials' $r 'auth' (@('https://raw.githubusercontent.com/yungSNAT/PascalsLetter/develop/install.ps1') + $download)
 } finally {
+    # Each step runs even if an earlier one fails, the trusted CA first. Windows
+    # PowerShell 5.1 would turn taskkill's stderr into a stopping error.
+    $ErrorActionPreference = 'Continue'
+    if ($ca) { Remove-Item -LiteralPath "Cert:\LocalMachine\Root\$($ca.Thumbprint)" }
     foreach ($name in 'ProxyServer', 'ProxyEnable') {
         if ($saved.PSObject.Properties[$name]) {
             Set-ItemProperty -Path $settings -Name $name -Value $saved.$name
@@ -155,15 +164,14 @@ try {
             Remove-ItemProperty -Path $settings -Name $name -ErrorAction SilentlyContinue
         }
     }
-    if ($ca) { Remove-Item -LiteralPath "Cert:\LocalMachine\Root\$($ca.Thumbprint)" }
     # mitmdump.exe runs mitmdump in a child process, which holds its log open,
-    # so the whole tree is stopped. Windows PowerShell 5.1 would turn
-    # taskkill's stderr into a stopping error.
-    $ErrorActionPreference = 'Continue'
+    # so the whole tree is stopped.
     foreach ($process in $proxies) {
         $null = & "$env:SystemRoot\System32\taskkill.exe" /PID $process.Id /T /F 2>&1
         $null = $process.WaitForExit(10000)
     }
+    # The CA's private key goes with the proxies, failures or not.
+    Remove-Item -LiteralPath $conf -Recurse -Force
     $ErrorActionPreference = 'Stop'
     Remove-Item Env:RTK_INSTALL_DIR -ErrorAction SilentlyContinue
 }

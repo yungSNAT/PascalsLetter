@@ -60,6 +60,10 @@ foreach ($route in $routes.Keys) {
     }
 }
 Remove-Item Env:RTK_INSTALL_DIR
-Remove-Item -LiteralPath $work -Recurse -Force
+# On Windows on Arm a just-run rtk.exe can stay locked for a moment.
+for ($try = 1; ; $try++) {
+    try { Remove-Item -LiteralPath $work -Recurse -Force; break }
+    catch { if ($try -ge 20) { throw }; Start-Sleep -Milliseconds 500 }
+}
 if ($failed) { exit 1 }
 Write-Host "install.ps1: both routes installed the published release ($($PSVersionTable.PSEdition) $($PSVersionTable.PSVersion))" -ForegroundColor Green
