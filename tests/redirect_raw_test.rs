@@ -205,10 +205,11 @@ fn a_file_is_still_seen_when_no_descriptor_is_free_to_copy_stdout() {
     let rtk = common::rtk_command();
     let mut cmd = Command::new("sh");
     common::isolate_rtk(&mut cmd);
+    // The limit comes after the redirections: bash copies descriptors to make them.
     cmd.arg("-c")
         .arg(
-            "ulimit -n 8 && exec 3</dev/null 4</dev/null 5</dev/null 6</dev/null 7</dev/null \
-             0<&- 2>&- && exec \"$0\" make -s",
+            "exec 3</dev/null 4</dev/null 5</dev/null 6</dev/null 7</dev/null 0<&- 2>&- \
+             && ulimit -n 8 && exec \"$0\" make -s",
         )
         .arg(rtk.get_program())
         .current_dir(dir)
