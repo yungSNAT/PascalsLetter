@@ -134,11 +134,15 @@ try {
         }
     }
     if ($ca) { Remove-Item -LiteralPath "Cert:\LocalMachine\Root\$($ca.Thumbprint)" }
-    # Their logs stay open until they have exited.
+    # mitmdump.exe runs mitmdump in a child process, which holds its log open,
+    # so the whole tree is stopped. Windows PowerShell 5.1 would turn
+    # taskkill's stderr into a stopping error.
+    $ErrorActionPreference = 'Continue'
     foreach ($process in $proxies) {
-        Stop-Process -InputObject $process -Force -ErrorAction SilentlyContinue
+        $null = & "$env:SystemRoot\System32\taskkill.exe" /PID $process.Id /T /F 2>&1
         $null = $process.WaitForExit(10000)
     }
+    $ErrorActionPreference = 'Stop'
     Remove-Item Env:RTK_INSTALL_DIR -ErrorAction SilentlyContinue
 }
 
