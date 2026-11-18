@@ -1,6 +1,6 @@
 # output-tokens
 
-Counts the tokens a coding agent would read from each tool's version of a command's output, over a fixed corpus of commands on pinned public repositories. It measures **command output only**: not billed agent sessions, not answer quality, and not what an agent does with fewer tokens. Billed end-to-end comparisons such as [THOL](https://tokenade.net/en/thol) and TokenBench need paid model runs and are not repeated here.
+Counts the tokens a coding agent would read from each tool's version of a command's output, over a fixed corpus of commands on pinned public repositories. It measures **command output only**: not billed agent sessions, not answer quality, and not what an agent does with fewer tokens. [`ab`](#model-answers-ab) asks a model the questions over the same commands, and [`../end-to-end`](../end-to-end) runs billed coding sessions.
 
 Published runs: [`results/`](results/).
 
@@ -39,3 +39,23 @@ cargo run --release --manifest-path bench/output-tokens/Cargo.toml -- \
 ```
 
 `{cmd}` puts the command into a template as written; `{qcmd}` puts it in as one quoted shell word.
+
+## Model answers (`ab`)
+
+[`ab`](src/bin/ab.rs) runs dtk's A/B test (`scripts/ab-test.sh` in [amaye15/dtk](https://github.com/amaye15/dtk)) over this corpus: for each case in [`ab-cases.toml`](ab-cases.toml), a headless Claude Code session gets 'Run this bash command: `<command>`   Then answer in one short line: `<question>`', with Bash as its only tool. A reply is right when it holds every word of the case's answer, case aside, each word whole by the fact rule above, so `250` is not in `1250`. No model grades the replies.
+
+- **Cases:** 11 corpus commands. 8 list commands ask for something read from their raw output; 3 ask for a count over a list rtk caps (`grep -rn 'fn new'`, `rg -n 'unwrap\(\)'` and `find crates -name '*.rs'`), so the answer needs what the cap leaves out.
+- **Sides:** `raw`, with no hook, and each `--rtk` build behind rtk's Claude Code hook (`rtk hook claude` in the session's settings, the build first on `PATH`).
+- **Sessions:** each has its own home and Claude Code configuration folder in the run's folder, loads only those settings (`--setting-sources user`) and inherits no `CLAUDE*` or `XDG_*` variables. The corpus `before` command runs first, and the side order rotates each run. `--budget-usd` starts no session once the sessions so far cost that much. A session that ends without Claude Code's `result` event (a timeout, or a crash), or with one that gives no cost, has no cost to count, so the plan stops after it and its cost is left blank.
+- **Recorded:** the reply and whether it is right, turns, the Bash commands, the tool results' characters and `o200k_base` tokens, the API usage and Claude Code's `total_cost_usd`, in `results.csv`, `summary.md` and each session's transcript.
+
+```bash
+ANTHROPIC_API_KEY=... cargo run --release --locked --manifest-path bench/output-tokens/Cargo.toml --bin ab -- \
+  --corpus bench/output-tokens/corpus.toml --cases bench/output-tokens/ab-cases.toml \
+  --repos ~/output-tokens-work/repos --out ~/ab-run --claude "$(command -v claude)" \
+  --model claude-haiku-5-5 --runs 5 --budget-usd 2 \
+  --rtk "rtk 1.2.0=$HOME/output-tokens-work/tools/rtk/rtk" \
+  --rtk "PascalsLetter=$HOME/output-tokens-work/target-rtk/release/rtk"
+```
+
+It needs the clones a `published` run sets up in `<work>/repos`.
