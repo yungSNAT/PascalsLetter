@@ -194,6 +194,34 @@ class RtkRewritePluginTest(unittest.TestCase):
             finally:
                 os.chdir(saved_cwd)
 
+    @unittest.skipUnless(os.name == "nt", "UNC paths are Windows'")
+    def test_hook_starts_rtk_through_a_unc_path_entry(self):
+        with tempfile.TemporaryDirectory() as root:
+            root = Path(root)
+            real = root / "real"
+            real.mkdir()
+            # The real rtk is this Python under rtk's name; it runs the working
+            # folder's `rewrite` script. PYTHONHOME and the PATH entry after the
+            # UNC one let the copy find its standard library and DLL.
+            shutil.copy2(sys.executable, real / "rtk.exe")
+            (root / "rewrite").write_text("print('rtk git status')\n")
+            unc = f"\\\\localhost\\{real.drive[0]}${str(real)[2:]}"
+            os.environ["PATH"] = os.pathsep.join([unc, sys.base_prefix])
+            os.environ["PYTHONHOME"] = sys.base_prefix
+            self.addCleanup(os.chdir, os.getcwd())
+            os.chdir(root)
+            # A first start through the share can outlast the hook's timeout, so
+            # start it once here with none; this also shows it runs.
+            subprocess.run([os.path.join(unc, "rtk.exe"), "-c", ""], check=True)
+
+            module = load_plugin_module()
+            ctx = FakeContext()
+            module.register(ctx)
+            self.assertEqual(os.path.join(unc, "rtk.exe"), module._rtk_path)
+            args = {"command": "git status"}
+            ctx.hooks["pre_tool_call"](tool_name="terminal", args=args)
+            self.assertEqual({"command": "rtk git status"}, args)
+
     def test_rewrite_updates_payload_without_returning_a_directive(self):
         for returncode in (0, 3):
             with self.subTest(returncode=returncode):
