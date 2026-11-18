@@ -23,17 +23,6 @@ mod common;
 
 const NOTICE: &str = "[rtk] capped at 10 commits";
 
-/// Env that isolates git and rtk from the developer's real config, identity and home.
-fn isolate(cmd: &mut Command, home: &Path) {
-    common::isolate_git(cmd);
-    cmd.env("HOME", home)
-        .env("GIT_AUTHOR_NAME", "t")
-        .env("GIT_AUTHOR_EMAIL", "t@example.com")
-        .env("GIT_COMMITTER_NAME", "t")
-        .env("GIT_COMMITTER_EMAIL", "t@example.com")
-        .env("GIT_TERMINAL_PROMPT", "0");
-}
-
 fn git_ok(repo: &Path, home: &Path, args: &[&str]) {
     git_ok_with_stdin(repo, home, args, "");
 }
@@ -49,7 +38,7 @@ fn git_ok_with_stdin(repo: &Path, home: &Path, args: &[&str], input: &str) {
     // commit for histories too small to need it.
     cmd.args(["-c", "maintenance.auto=false"]);
     cmd.args(args);
-    isolate(&mut cmd, home);
+    common::isolate_git_in(&mut cmd, home);
     let mut child = cmd
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -73,7 +62,7 @@ fn git_ok_with_stdin(repo: &Path, home: &Path, args: &[&str], input: &str) {
 fn rtk_log(repo: &Path, home: &Path, args: &[&str]) -> Output {
     let mut cmd = common::rtk_command();
     cmd.arg("git").arg("log").args(args).current_dir(repo);
-    isolate(&mut cmd, home);
+    common::isolate_git_in(&mut cmd, home);
     cmd.output().expect("run rtk git log")
 }
 
@@ -231,7 +220,7 @@ fn a_coloured_decorated_walk_announces_the_cap() {
             .args(&globals)
             .args(["log", "--graph", "-p"])
             .current_dir(&repo.path);
-        isolate(&mut cmd, &repo.home);
+        common::isolate_git_in(&mut cmd, &repo.home);
         let out = cmd.output().expect("run rtk git log");
         let stderr = String::from_utf8_lossy(&out.stderr);
         assert!(
@@ -373,7 +362,7 @@ fn the_probe_does_not_rerun_the_users_diff_program() {
         cmd.args(["git", "log"])
             .args(&shape)
             .current_dir(&repo.path);
-        isolate(&mut cmd, &repo.home);
+        common::isolate_git_in(&mut cmd, &repo.home);
         cmd.env("GIT_EXTERNAL_DIFF", &driver);
         let out = cmd.output().expect("run rtk git log");
         assert!(out.status.success(), "{shape:?}");
@@ -493,7 +482,7 @@ fn native_commit_count(repo: &Repo, args: &[&str]) -> usize {
     cmd.arg("-C").arg(&repo.path).arg("log");
     cmd.args(["--no-patch", "--pretty=format:%H"]);
     cmd.args(args);
-    isolate(&mut cmd, &repo.home);
+    common::isolate_git_in(&mut cmd, &repo.home);
     let out = cmd.output().expect("run git");
     assert!(out.status.success(), "git log {args:?} failed");
     String::from_utf8_lossy(&out.stdout)
@@ -1379,7 +1368,7 @@ fn merges_rtk_drops_are_not_counted_as_a_cut() {
 fn git_stdout(repo: &Repo, args: &[&str]) -> String {
     let mut cmd = Command::new("git");
     cmd.arg("-C").arg(&repo.path).args(args);
-    isolate(&mut cmd, &repo.home);
+    common::isolate_git_in(&mut cmd, &repo.home);
     let out = cmd.output().expect("run git");
     assert!(out.status.success(), "git {args:?} failed");
     String::from_utf8(out.stdout).expect("utf-8")
@@ -1390,7 +1379,7 @@ fn git_stdout(repo: &Repo, args: &[&str]) -> String {
 fn rtk_log_with_recall_in(repo: &Repo, args: &[&str], extra: &[(&str, &str)]) -> Output {
     let mut cmd = common::rtk_command();
     cmd.arg("git").arg("log").args(args).current_dir(&repo.path);
-    isolate(&mut cmd, &repo.home);
+    common::isolate_git_in(&mut cmd, &repo.home);
     cmd.env("RTK_RECALL_DB", recall_db(repo));
     for (key, value) in extra {
         cmd.env(key, value);
@@ -1406,7 +1395,7 @@ fn recall_db(repo: &Repo) -> std::path::PathBuf {
 fn rtk_recall(repo: &Repo, args: &[&str]) -> Output {
     let mut cmd = common::rtk_command();
     cmd.arg("recall").args(args).current_dir(&repo.path);
-    isolate(&mut cmd, &repo.home);
+    common::isolate_git_in(&mut cmd, &repo.home);
     cmd.env("RTK_RECALL_DB", recall_db(repo));
     cmd.output().expect("run rtk recall")
 }
@@ -1500,7 +1489,7 @@ fn real_git() -> std::path::PathBuf {
 fn rtk_log_with_stub(repo: &Repo, stub: &Path, args: &[&str], extra: &[(&str, &str)]) -> Output {
     let mut cmd = common::rtk_command();
     cmd.arg("git").arg("log").args(args).current_dir(&repo.path);
-    isolate(&mut cmd, &repo.home);
+    common::isolate_git_in(&mut cmd, &repo.home);
     cmd.env("RTK_RECALL_DB", recall_db(repo));
     let path = std::env::var_os("PATH").expect("PATH");
     let mut dirs = vec![stub.to_path_buf()];
@@ -2345,7 +2334,7 @@ fn ledger_input(
         .arg("log")
         .args(args)
         .current_dir(&repo.path);
-    isolate(&mut cmd, &repo.home);
+    common::isolate_git_in(&mut cmd, &repo.home);
     cmd.env("RTK_DB_PATH", &db);
     for (key, value) in env {
         cmd.env(key, value);
@@ -2359,7 +2348,7 @@ fn ledger_input(
     let mut gain = common::rtk_command();
     gain.args(["gain", "--format", "json"])
         .current_dir(&repo.path);
-    isolate(&mut gain, &repo.home);
+    common::isolate_git_in(&mut gain, &repo.home);
     gain.env("RTK_DB_PATH", &db);
     let report = String::from_utf8_lossy(&gain.output().expect("run rtk gain").stdout).into_owned();
     let tracked = report
@@ -2390,7 +2379,7 @@ fn the_entry_fetched_to_measure_the_cap_is_not_counted_as_savings() {
             "--no-merges",
             "--pretty=format:%h %s (%ar) <%an>%n%b%n---END---",
         ]);
-        isolate(&mut cmd, &repo.home);
+        common::isolate_git_in(&mut cmd, &repo.home);
         let out = cmd.output().expect("run git log");
         out.stdout.len().div_ceil(4)
     };
@@ -2516,7 +2505,7 @@ fn a_pretty_alias_is_not_read_as_an_empty_walk() {
     let mut cmd = common::rtk_command();
     cmd.args(["git", "log", "--pretty=tblank"])
         .current_dir(&repo.path);
-    isolate(&mut cmd, &repo.home);
+    common::isolate_git_in(&mut cmd, &repo.home);
     cmd.env("GIT_CONFIG_GLOBAL", &config);
     let out = cmd.output().expect("run rtk git log");
     assert!(out.status.success(), "rtk git log --pretty=tblank failed");
@@ -2854,7 +2843,7 @@ fn rtk_log_fed(repo: &Repo, args: &[&str], input: &str) -> Output {
     use std::process::Stdio;
     let mut cmd = common::rtk_command();
     cmd.arg("git").arg("log").args(args).current_dir(&repo.path);
-    isolate(&mut cmd, &repo.home);
+    common::isolate_git_in(&mut cmd, &repo.home);
     let mut child = cmd
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
