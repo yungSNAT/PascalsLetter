@@ -431,7 +431,7 @@ fn call_text<'a>(code: &'a str, head: regex::Match<'_>) -> (&'a str, &'a str) {
 
 /// The environment reads that stay direct, as written, each with its reason.
 /// Each covers one read: a second identical call in the same file is refused.
-const DIRECT_READS: [(&str, &str); 10] = [
+const DIRECT_READS: [(&str, &str); 11] = [
     // Builds the `PATH` a Windows test hands a child, extending the one it runs
     // under so the child still finds its tools.
     ("src/core/utils.rs", r#"var_os("PATH")"#),
@@ -443,6 +443,8 @@ const DIRECT_READS: [(&str, &str); 10] = [
     // the process environment is the only place it arrives: `user_env` holds
     // what the calling thread set, and nothing more, in a test build.
     ("src/core/task_cmd.rs", "var_os(WRAPPER_DIR)"),
+    // The same, for the audit log test that runs itself again with `TZ` set.
+    ("src/hooks/hook_cmd.rs", r#"var_os("RTK_TZ_CHILD")"#),
     // Only `rtk hook audit` reaches it, and no test runs that in-process.
     // `user_dirs::home` would move it to the Windows profile folder, which is
     // #1681's question, not this scan's.

@@ -69,7 +69,9 @@ pub fn set_enabled(on: bool) -> std::io::Result<()> {
 }
 
 pub fn now_ts() -> String {
-    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+    jiff::Timestamp::now()
+        .strftime("%Y-%m-%dT%H:%M:%SZ")
+        .to_string()
 }
 
 /// Append one entry. Silent and fail-open: the log is a side channel and
@@ -174,6 +176,13 @@ pub fn render(entry: &LogEntry) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn now_ts_is_utc_to_the_second() {
+        let ts = now_ts();
+        let shape = regex::Regex::new(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$").unwrap();
+        assert!(shape.is_match(&ts), "{ts}");
+    }
 
     #[test]
     fn entries_round_trip_and_render_without_content() {

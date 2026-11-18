@@ -648,7 +648,7 @@ fn audit_log_inner(action: &str, original: &str, rewritten: &str) -> Option<()> 
         &path,
     )
     .ok()?;
-    let ts = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S");
+    let ts = jiff::ZonedDateTime::now().strftime("%Y-%m-%dT%H:%M:%S");
     writeln!(
         file,
         "{} | {} | {} | {}",
@@ -2729,6 +2729,54 @@ mod tests {
         assert_eq!(parts[1], "rewrite");
         assert_eq!(parts[2], "git status");
         assert_eq!(parts[3], "rtk git status");
+    }
+
+    /// The audit log stamps local wall time. Reruns itself where local time is
+    /// UTC+05:30, a zone with no daylight saving, and checks the minute there.
+    #[cfg(unix)]
+    #[test]
+    fn test_audit_log_stamps_local_wall_time() {
+        const NAME: &str = "hooks::hook_cmd::tests::test_audit_log_stamps_local_wall_time";
+        if std::env::var_os("RTK_TZ_CHILD").is_none() {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", NAME])
+                .env("TZ", "IST-5:30")
+                .env("RTK_TZ_CHILD", "1")
+                .output()
+                .unwrap();
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(
+                output.status.success() && stdout.contains("1 passed"),
+                "{stdout}{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            return;
+        }
+        let minute_in_utc_plus_0530 = || {
+            let secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + 19_800;
+            format!("{:02}:{:02}", secs / 3600 % 24, secs / 60 % 60)
+        };
+        let root = test_isolation::tempdir();
+        let before = minute_in_utc_plus_0530();
+        test_isolation::with_root(root.path(), || {
+            user_env::with_vars(&[("RTK_HOOK_AUDIT", Some("1"))], || {
+                audit_log("rewrite", "git status", "rtk git status");
+            });
+        });
+        let after = minute_in_utc_plus_0530();
+        let content =
+            std::fs::read_to_string(audit_log_under(root.path())).expect("audit log written");
+        let stamp = content.split(" | ").next().unwrap_or_default();
+        let shape = regex::Regex::new(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d$").unwrap();
+        assert!(shape.is_match(stamp), "{stamp}");
+        assert!(
+            stamp[11..16] == before || stamp[11..16] == after,
+            "{stamp} vs {before}..{after}"
+        );
     }
 
     // --- Adversarial tests ---

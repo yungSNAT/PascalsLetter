@@ -7,7 +7,7 @@
 use crate::core::stream::exec_capture;
 use crate::core::utils::{resolved_command, tool_exists};
 use anyhow::{Context, Result};
-use chrono::{Datelike, NaiveDate, Weekday};
+use jiff::civil::{Date, Weekday};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::process::Command;
@@ -220,10 +220,10 @@ pub fn fetch(granularity: Granularity) -> Result<Option<Vec<CcusagePeriod>>> {
 fn canonicalize_weekly_keys(periods: &mut [CcusagePeriod]) -> Result<bool> {
     let mut all_mondays = true;
     for period in periods {
-        let date = NaiveDate::parse_from_str(&period.key, "%Y-%m-%d")
+        let date = Date::strptime("%Y-%m-%d", &period.key)
             .with_context(|| format!("Invalid ccusage week start: {}", period.key))?;
-        all_mondays &= date.weekday() == Weekday::Mon;
-        period.key = date.format("%Y-%m-%d").to_string();
+        all_mondays &= date.weekday() == Weekday::Monday;
+        period.key = date.strftime("%Y-%m-%d").to_string();
     }
     Ok(all_mondays)
 }

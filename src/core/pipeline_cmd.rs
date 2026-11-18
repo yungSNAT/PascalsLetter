@@ -1248,7 +1248,7 @@ pub(crate) fn collect_card(name: Option<&str>) -> Result<Option<CardData>> {
         tasks,
         proxy,
         published,
-        date: chrono::Local::now().format("%Y-%m-%d").to_string(),
+        date: jiff::ZonedDateTime::now().strftime("%Y-%m-%d").to_string(),
     }))
 }
 
