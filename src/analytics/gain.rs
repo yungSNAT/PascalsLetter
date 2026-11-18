@@ -1842,6 +1842,8 @@ pub(crate) fn share_cta_available() -> bool {
 const PRO_HINT_MIN_DAYS: i64 = 7;
 const PRO_HINT_INTERVAL: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
 const PRO_HINT_MARKER: &str = "pro-hint-shown";
+/// This fork does not advertise upstream's paid product, whatever the config says.
+const PRO_HINT_IN_THIS_FORK: bool = false;
 
 fn pro_hint_due(
     enabled: bool,
@@ -1853,7 +1855,11 @@ fn pro_hint_due(
         Some(elapsed) => elapsed >= PRO_HINT_INTERVAL,
         None => true,
     };
-    enabled && !env_off && first_seen_days >= PRO_HINT_MIN_DAYS && interval_passed
+    PRO_HINT_IN_THIS_FORK
+        && enabled
+        && !env_off
+        && first_seen_days >= PRO_HINT_MIN_DAYS
+        && interval_passed
 }
 
 fn print_pro_hint_if_due(tracker: &Tracker) {
@@ -1898,7 +1904,12 @@ mod tests {
         let day = std::time::Duration::from_secs(24 * 60 * 60);
         for first_seen_days in [0, 7, 30, 10_000] {
             for since_last_shown in [None, Some(day / 2), Some(day), Some(day * 30)] {
-                assert!(!pro_hint_due(true, false, first_seen_days, since_last_shown));
+                assert!(!pro_hint_due(
+                    true,
+                    false,
+                    first_seen_days,
+                    since_last_shown
+                ));
             }
         }
     }

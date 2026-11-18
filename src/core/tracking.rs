@@ -1869,9 +1869,14 @@ impl Tracker {
             };
         match oldest {
             Some(ts) => {
-                let first = jiff::civil::DateTime::strptime("%Y-%m-%dT%H:%M:%S", &ts)
-                    .or_else(|_| jiff::civil::DateTime::strptime("%Y-%m-%d %H:%M:%S", &ts))
-                    .and_then(|dt| jiff::tz::TimeZone::UTC.to_timestamp(dt))
+                // Rows are stored as RFC 3339 with an offset (`rfc3339`).
+                let first = ts
+                    .parse::<Timestamp>()
+                    .or_else(|_| {
+                        jiff::civil::DateTime::strptime("%Y-%m-%dT%H:%M:%S", &ts)
+                            .or_else(|_| jiff::civil::DateTime::strptime("%Y-%m-%d %H:%M:%S", &ts))
+                            .and_then(|dt| jiff::tz::TimeZone::UTC.to_timestamp(dt))
+                    })
                     .unwrap_or_else(|_| Timestamp::now());
                 let days = Timestamp::now().duration_since(first).as_secs() / 86_400;
                 Ok(days.max(0))
