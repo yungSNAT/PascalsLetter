@@ -160,6 +160,40 @@ class RtkRewritePluginTest(unittest.TestCase):
                     ctx.hooks["pre_tool_call"](tool_name="terminal", args=args)
                     self.assertEqual({"command": expected}, args)
 
+    def test_find_rtk_takes_only_an_absolute_path_entry(self):
+        """The resolver alone, so it runs on Windows too, with Windows' path forms."""
+        name = "rtk.exe" if os.name == "nt" else "rtk"
+        with tempfile.TemporaryDirectory() as root:
+            work, real = Path(root) / "work", Path(root) / "real"
+            for folder in (work / "rel", real):
+                folder.mkdir(parents=True)
+                write_fake_rtk(folder).replace(folder / name)
+            write_fake_rtk(work).replace(work / name)
+            decoys = ["rel", "", "."]
+            cases = []
+            if os.name == "nt":
+                # Drive-relative (the drive's working folder, here `work`) and quoted entries.
+                decoys += [f"{work.drive}rel", f'"{real}"']
+                # The same folder through a UNC path.
+                unc = f"\\\\localhost\\{real.drive[0]}${str(real)[2:]}"
+                cases.append(([unc], os.path.join(unc, name)))
+            cases += [(decoys + [str(real)], str(real / name)), (decoys, None)]
+            module = load_plugin_module()
+            saved_cwd = os.getcwd()
+            os.chdir(work)
+            try:
+                # A bare "rtk", as the plugin found it before, reaches a decoy with these entries.
+                bare = shutil.which("rtk", path=os.pathsep.join(decoys + [str(real)]))
+                self.assertIsNotNone(bare)
+                self.assertNotEqual(str(real / name), os.path.abspath(bare))
+
+                for entries, expected in cases:
+                    with self.subTest(entries=entries):
+                        os.environ["PATH"] = os.pathsep.join(entries)
+                        self.assertEqual(expected, module._find_rtk())
+            finally:
+                os.chdir(saved_cwd)
+
     def test_rewrite_updates_payload_without_returning_a_directive(self):
         for returncode in (0, 3):
             with self.subTest(returncode=returncode):
