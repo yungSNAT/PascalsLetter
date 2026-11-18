@@ -24,7 +24,7 @@ Hermes can run terminal commands elsewhere, through its `docker`, `ssh`, `modal`
 
 The plugin itself does not request blocking. On rewrite failures it leaves the original command unchanged and returns no directive. From v2026.8.27 (Hermes 0.20.6), Hermes can still block execution if its own callback timeout is reached.
 
-If rtk is not available in PATH when Hermes loads the plugin, the plugin prints a warning and skips hook registration.
+The plugin runs the first `rtk` (`rtk.exe` on Windows) in an absolute `PATH` entry, never one in the working folder or a relative entry. If there is none when Hermes loads the plugin, the plugin prints a warning and skips hook registration.
 
 - `rtk` is missing from `PATH`
 - `rtk rewrite` exits with an error

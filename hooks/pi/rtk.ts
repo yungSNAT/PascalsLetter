@@ -11,6 +11,8 @@
 //   1           No RTK equivalent → pass through unchanged
 //   3 + stdout  Rewrite (advisory) → mutate command
 
+import { accessSync, constants, statSync } from "node:fs"
+import { delimiter, isAbsolute, join } from "node:path"
 import type {
   BashToolCallEvent,
   ExtensionAPI,
@@ -37,13 +39,33 @@ function parseSemver(raw: string): [number, number, number] | null {
   return [parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3], 10)]
 }
 
+// The rtk in the first absolute PATH entry that holds one, or null. Not a bare
+// "rtk": on Windows, starting a program by bare name searches the working folder
+// before PATH, so a checkout's rtk.exe would run, and a relative PATH entry is
+// resolved against the working folder everywhere.
+function findRtk(): string | null {
+  const name = process.platform === "win32" ? "rtk.exe" : "rtk"
+  for (const dir of (process.env.PATH ?? "").split(delimiter)) {
+    if (!isAbsolute(dir)) continue
+    const bin = join(dir, name)
+    try {
+      accessSync(bin, constants.X_OK)
+      if (statSync(bin).isFile()) return bin
+    } catch {
+      // Not here: try the next entry.
+    }
+  }
+  return null
+}
+
 // Calls `rtk rewrite`; returns the rewritten command or null (pass through).
 async function rewriteCommand(
   pi: ExtensionAPI,
+  rtk: string,
   cmd: string,
   signal?: AbortSignal
 ): Promise<string | null> {
-  const result = await pi.exec("rtk", ["rewrite", cmd], {
+  const result = await pi.exec(rtk, ["rewrite", cmd], {
     timeout: REWRITE_TIMEOUT_MS,
     signal,
   })
@@ -95,8 +117,9 @@ export default async function (pi: ExtensionAPI) {
   const reportRtkUnavailable = registerRtkUnavailableNotice(pi)
 
   // Probe rtk version at load time; disables extension if missing or too old.
-  const ver = await pi.exec("rtk", ["--version"], { timeout: REWRITE_TIMEOUT_MS })
-  if (ver.code !== 0) {
+  const rtk = findRtk()
+  const ver = rtk ? await pi.exec(rtk, ["--version"], { timeout: REWRITE_TIMEOUT_MS }) : null
+  if (!rtk || ver?.code !== 0) {
     reportRtkUnavailable("rtk binary not found in PATH")
     console.warn("[rtk] rtk binary not found in PATH — extension disabled")
     return
@@ -124,7 +147,7 @@ export default async function (pi: ExtensionAPI) {
       if (process.env.RTK_DISABLED === "1") return
 
       // Delegate to RTK.
-      const rewritten = await rewriteCommand(pi, cmd, ctx.signal)
+      const rewritten = await rewriteCommand(pi, rtk, cmd, ctx.signal)
       if (rewritten && rewritten !== cmd) {
         event.input.command = rewritten
       }

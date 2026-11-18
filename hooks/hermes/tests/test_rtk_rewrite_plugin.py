@@ -38,7 +38,7 @@ def load_plugin_module(path=PLUGIN_PATH, module_name="rtk_rewrite_plugin"):
     return module
 
 
-def write_fake_rtk(bin_dir):
+def write_fake_rtk(bin_dir, rewritten="rtk git status"):
     fake_rtk = bin_dir / "rtk"
     fake_rtk.write_text(
         "\n".join(
@@ -46,7 +46,7 @@ def write_fake_rtk(bin_dir):
                 f"#!{sys.executable}",
                 "import sys",
                 "if sys.argv[1:] == ['rewrite', 'git status']:",
-                "    print('rtk git status')",
+                f"    print({rewritten!r})",
                 "    raise SystemExit(0)",
                 "print('unexpected rtk args:', sys.argv[1:], file=sys.stderr)",
                 "raise SystemExit(1)",
@@ -67,11 +67,11 @@ class RtkRewritePluginTest(unittest.TestCase):
 
     def load_callback(self):
         module = load_plugin_module()
-        module._rtk_available = None
+        module._rtk_path = None
         module._rtk_missing_warned = False
         ctx = FakeContext()
 
-        with mock.patch.object(module.shutil, "which", return_value="/usr/bin/rtk"):
+        with mock.patch.object(module, "_find_rtk", return_value="/usr/bin/rtk"):
             module.register(ctx)
 
         self.assertIn("pre_tool_call", ctx.hooks)
@@ -79,11 +79,11 @@ class RtkRewritePluginTest(unittest.TestCase):
 
     def test_missing_rtk_skips_registering_pre_tool_call(self):
         module = load_plugin_module()
-        module._rtk_available = None
+        module._rtk_path = None
         module._rtk_missing_warned = False
         ctx = FakeContext()
 
-        with mock.patch.object(module.shutil, "which", return_value=None):
+        with mock.patch.object(module, "_find_rtk", return_value=None):
             with mock.patch.object(module.sys, "stderr", new_callable=io.StringIO) as stderr:
                 module.register(ctx)
 
@@ -95,10 +95,10 @@ class RtkRewritePluginTest(unittest.TestCase):
 
     def test_missing_rtk_warns_only_once(self):
         module = load_plugin_module()
-        module._rtk_available = None
+        module._rtk_path = None
         module._rtk_missing_warned = False
 
-        with mock.patch.object(module.shutil, "which", return_value=None):
+        with mock.patch.object(module, "_find_rtk", return_value=None):
             with mock.patch.object(module.sys, "stderr", new_callable=io.StringIO) as stderr:
                 self.assertFalse(module._check_rtk())
                 self.assertFalse(module._check_rtk())
@@ -110,10 +110,10 @@ class RtkRewritePluginTest(unittest.TestCase):
 
     def test_check_rtk_found_is_quiet(self):
         module = load_plugin_module()
-        module._rtk_available = None
+        module._rtk_path = None
         module._rtk_missing_warned = False
 
-        with mock.patch.object(module.shutil, "which", return_value="/usr/bin/rtk"):
+        with mock.patch.object(module, "_find_rtk", return_value="/usr/bin/rtk"):
             with mock.patch.object(module.sys, "stderr", new_callable=io.StringIO) as stderr:
                 self.assertTrue(module._check_rtk())
 
@@ -121,14 +121,78 @@ class RtkRewritePluginTest(unittest.TestCase):
 
     def test_check_rtk_caches_result_across_calls(self):
         module = load_plugin_module()
-        module._rtk_available = None
+        module._rtk_path = None
         module._rtk_missing_warned = False
 
-        with mock.patch.object(module.shutil, "which", return_value="/usr/bin/rtk") as which:
+        with mock.patch.object(module, "_find_rtk", return_value="/usr/bin/rtk") as find_rtk:
             self.assertTrue(module._check_rtk())
             self.assertTrue(module._check_rtk())
 
-        which.assert_called_once_with("rtk")
+        find_rtk.assert_called_once_with()
+
+    @unittest.skipIf(os.name == "nt", "the fake rtk is a script run by its shebang")
+    def test_rtk_runs_only_from_an_absolute_path_entry(self):
+        with tempfile.TemporaryDirectory() as root:
+            work, real = Path(root) / "work", Path(root) / "real"
+            (work / "rel").mkdir(parents=True)
+            real.mkdir()
+            write_fake_rtk(work, "decoy in the working folder")
+            write_fake_rtk(work / "rel", "decoy in a relative PATH entry")
+            write_fake_rtk(real)
+            self.addCleanup(os.chdir, os.getcwd())
+            os.chdir(work)
+
+            for entries, expected in (
+                (["rel", "", ".", str(real)], "rtk git status"),
+                (["rel", "", "."], None),
+            ):
+                with self.subTest(entries=entries):
+                    os.environ["PATH"] = os.pathsep.join(entries)
+                    module = load_plugin_module()
+                    ctx = FakeContext()
+                    with mock.patch.object(module.sys, "stderr", new_callable=io.StringIO):
+                        module.register(ctx)
+
+                    if expected is None:
+                        self.assertNotIn("pre_tool_call", ctx.hooks)
+                        continue
+                    args = {"command": "git status"}
+                    ctx.hooks["pre_tool_call"](tool_name="terminal", args=args)
+                    self.assertEqual({"command": expected}, args)
+
+    def test_find_rtk_takes_only_an_absolute_path_entry(self):
+        """The resolver alone, so it runs on Windows too, with Windows' path forms."""
+        name = "rtk.exe" if os.name == "nt" else "rtk"
+        with tempfile.TemporaryDirectory() as root:
+            work, real = Path(root) / "work", Path(root) / "real"
+            for folder in (work / "rel", real):
+                folder.mkdir(parents=True)
+                write_fake_rtk(folder).replace(folder / name)
+            write_fake_rtk(work).replace(work / name)
+            decoys = ["rel", "", "."]
+            cases = []
+            if os.name == "nt":
+                # Drive-relative (the drive's working folder, here `work`) and quoted entries.
+                decoys += [f"{work.drive}rel", f'"{real}"']
+                # The same folder through a UNC path.
+                unc = f"\\\\localhost\\{real.drive[0]}${str(real)[2:]}"
+                cases.append(([unc], os.path.join(unc, name)))
+            cases += [(decoys + [str(real)], str(real / name)), (decoys, None)]
+            module = load_plugin_module()
+            saved_cwd = os.getcwd()
+            os.chdir(work)
+            try:
+                # A bare "rtk", as the plugin found it before, reaches a decoy with these entries.
+                bare = shutil.which("rtk", path=os.pathsep.join(decoys + [str(real)]))
+                self.assertIsNotNone(bare)
+                self.assertNotEqual(str(real / name), os.path.abspath(bare))
+
+                for entries, expected in cases:
+                    with self.subTest(entries=entries):
+                        os.environ["PATH"] = os.pathsep.join(entries)
+                        self.assertEqual(expected, module._find_rtk())
+            finally:
+                os.chdir(saved_cwd)
 
     def test_rewrite_updates_payload_without_returning_a_directive(self):
         for returncode in (0, 3):
@@ -146,7 +210,7 @@ class RtkRewritePluginTest(unittest.TestCase):
                     directive = callback(tool_name="terminal", args=args)
 
                 run.assert_called_once_with(
-                    ["rtk", "rewrite", "git status"],
+                    ["/usr/bin/rtk", "rewrite", "git status"],
                     shell=False,
                     stdin=subprocess.DEVNULL,
                     timeout=5,
@@ -349,6 +413,11 @@ class InstalledRtkRewritePluginTest(unittest.TestCase):
         os.environ.pop("RTK_HERMES_TIMEOUT", None)
 
     @unittest.skipUnless(shutil.which("cargo"), "cargo is required for installed flow")
+    @unittest.skipIf(
+        os.name == "nt",
+        "the fake rtk is a script run by its shebang, and on Windows rtk finds the home "
+        "folder from the user profile, not HOME",
+    )
     def test_cargo_init_installs_importable_plugin_that_rewrites_with_fake_rtk(self):
         repo_root = Path(__file__).resolve().parents[3]
         self.assertTrue((repo_root / "Cargo.toml").exists(), "repo_root must point at the repository root")
