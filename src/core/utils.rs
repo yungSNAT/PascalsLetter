@@ -1103,6 +1103,12 @@ mod tests {
         assert_eq!(days_ago_cutoff(u64::MAX), Timestamp::MIN);
     }
 
+    #[test]
+    fn test_days_ago_cutoff_clamps_past_the_earliest_timestamp() {
+        // About 13,700 years back: past jiff's year -9999, though i64 seconds hold it.
+        assert_eq!(days_ago_cutoff(5_000_000), Timestamp::MIN);
+    }
+
     /// The tracking database compares these strings with `<` and `>=`, so new rows
     /// must keep the spelling older rows were written in.
     #[test]
