@@ -459,15 +459,11 @@ fn a_project_pipeline_is_trusted_and_revoked_with_the_filters() {
         "{out:?}"
     );
 
-    assert_eq!(
-        active(&project),
-        "rtk:default",
-        "an untrusted pipeline loaded"
-    );
+    assert_active(&project, "rtk:default");
 
     let out = trust_yes(&project);
     assert!(text(&out.stderr).contains("Enabled"), "{out:?}");
-    assert_eq!(active(&project), "trust-probe");
+    assert_active(&project, "trust-probe");
     let pipeline = std::fs::canonicalize(project.dir().join(".rtk/pipeline.toml")).unwrap();
     let list = text(&project.rtk(&["trust", "--list"]).stdout);
     assert!(
@@ -480,41 +476,43 @@ fn a_project_pipeline_is_trusted_and_revoked_with_the_filters() {
         ".rtk/pipelines/extra.toml",
         "schema_version = 1\n[pipeline]\nname = \"extra-probe\"\n",
     );
-    assert_eq!(
-        active(&project),
-        "trust-probe",
-        "an untrusted pipeline loaded"
-    );
+    assert_active(&project, "trust-probe");
     trust_yes(&project);
-    assert_eq!(active(&project), "extra-probe");
+    assert_active(&project, "extra-probe");
 
     // Trust is per file: editing one leaves the other trusted.
     project.write(
         ".rtk/pipelines/extra.toml",
         "schema_version = 1\n[pipeline]\nname = \"extra-probe\"\n# edited\n",
     );
-    assert_eq!(active(&project), "trust-probe", "an edited pipeline loaded");
+    assert_active(&project, "trust-probe");
 
     let out = project.rtk(&["untrust"]);
     assert!(text(&out.stdout).contains("Trust revoked for"), "{out:?}");
-    assert_eq!(active(&project), "rtk:default", "a revoked pipeline loaded");
+    assert_active(&project, "rtk:default");
     assert!(
         text(&project.rtk(&["trust", "--list"]).stdout).contains("No trusted filters."),
         "a pipeline kept its trust"
     );
 }
 
-/// The pipeline `rtk pipeline status` reports as active.
-fn active(project: &Project) -> String {
+/// Checks that `rtk pipeline status` reports `expected` as the active pipeline,
+/// which shows whether a project pipeline file was loaded.
+#[cfg(feature = "engine")]
+fn assert_active(project: &Project, expected: &str) {
     let out = project.rtk(&["pipeline", "status"]);
     assert!(out.status.success(), "rtk pipeline status: {out:?}");
     let stdout = text(&out.stdout);
-    stdout
+    let active = stdout
         .lines()
-        .find_map(|line| line.strip_prefix("active: "))
-        .unwrap_or_else(|| panic!("no active line: {out:?}"))
-        .to_string()
+        .find_map(|line| line.strip_prefix("active: "));
+    assert_eq!(active, Some(expected), "{out:?}");
 }
+
+/// The Apache-2.0 edition (no `engine` feature) loads no pipelines, so only the
+/// trust bookkeeping above is checked there.
+#[cfg(not(feature = "engine"))]
+fn assert_active(_: &Project, _: &str) {}
 
 #[test]
 fn init_enables_a_project_filter_only_when_told_to() {
