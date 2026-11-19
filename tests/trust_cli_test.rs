@@ -361,6 +361,7 @@ fn trust_follows_symlinks_to_their_target() {
         std::fs::write(target.join("filters.toml"), content).unwrap();
     }
     let rtk_dir = linked.dir().join(".rtk");
+    std::fs::create_dir_all(linked.dir()).unwrap();
     symlink(&real, &rtk_dir).unwrap();
     trust_yes(&linked);
     assert!(linked.filtered());
