@@ -8,7 +8,7 @@
 
 mod common;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Output;
 
 const SHA_A: &str = "0123456789abcdef0123456789abcdef01234567";
@@ -80,8 +80,19 @@ fn installed(root: &Path) -> Option<String> {
     std::fs::read_to_string(root.join("config/pipelines/shared.toml")).ok()
 }
 
+/// rtk's data directory in the child: `dirs::data_local_dir()` follows
+/// `XDG_DATA_HOME` (the root) on Linux and is `~/Library/Application Support`
+/// on macOS.
+fn data_dir(root: &Path) -> PathBuf {
+    if cfg!(target_os = "macos") {
+        root.join("Library/Application Support/rtk")
+    } else {
+        root.join("rtk")
+    }
+}
+
 fn ledger_entry(root: &Path) -> Option<toml::Table> {
-    let text = std::fs::read_to_string(root.join("rtk/pipeline-installs.toml")).ok()?;
+    let text = std::fs::read_to_string(data_dir(root).join("pipeline-installs.toml")).ok()?;
     let table: toml::Table = text.parse().unwrap();
     table.get("shared")?.as_table().cloned()
 }
