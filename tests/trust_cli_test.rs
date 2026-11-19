@@ -7,23 +7,26 @@ mod common;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
-/// Replaces the whole output of `rtk help`, run through rtk's fallback, once
-/// trusted. The help is long enough that the message and its recall hint are
-/// shorter, so rtk emits them rather than falling back to the raw output.
-/// (`rtk <rtk> --version` would not do: rtk's own `--version` flag answers
-/// before the fallback runs.)
+/// Replaces the whole output of `rustc --print target-list`, which rtk runs
+/// through its fallback, once trusted. The list is long enough that the
+/// message and its recall hint are shorter, so rtk emits them rather than the
+/// raw output. rustc is on `PATH` wherever the suite runs, and the probe takes
+/// no flag rtk itself answers (`--help`, `--version`).
 const FILTER: &str = r#"schema_version = 1
 
 [filters.trust-probe]
 description = "trust probe"
-match_command = "^rtk(\\.exe)?\\s+help$"
-match_output = [{ pattern = "Usage", message = "FILTERED-BY-PROJECT" }]
+match_command = "^rustc\\s+--print\\s+target-list$"
+match_output = [{ pattern = "x86_64-unknown-linux-gnu", message = "FILTERED-BY-PROJECT" }]
 "#;
 
 const MARK: &str = "FILTERED-BY-PROJECT";
 
-/// `rtk <rtk> help`: an unknown first word, so rtk runs it as a command.
-const PROBE: [&str; 2] = [env!("CARGO_BIN_EXE_rtk"), "help"];
+/// `rtk rustc --print target-list`: not an rtk command, so rtk runs it.
+const PROBE: [&str; 3] = ["rustc", "--print", "target-list"];
+
+/// In every target list, so in the probe's output when no filter applies.
+const LISTED: &str = "x86_64-unknown-linux-gnu";
 
 struct Project {
     root: tempfile::TempDir,
@@ -62,7 +65,7 @@ impl Project {
     }
 
     /// What [`PROBE`] prints: the project filter's message when it is applied,
-    /// rtk's help when it is not.
+    /// rustc's target list when it is not.
     fn probe(&self) -> Output {
         self.rtk(&PROBE)
     }
@@ -73,8 +76,8 @@ impl Project {
         let stdout = String::from_utf8_lossy(&out.stdout);
         let applied = stdout.contains(MARK);
         assert!(
-            applied || stdout.contains("Usage"),
-            "probe printed neither the help nor the filter message: {out:?}"
+            applied || stdout.contains(LISTED),
+            "probe printed neither the target list nor the filter message: {out:?}"
         );
         applied
     }
