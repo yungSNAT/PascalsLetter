@@ -330,8 +330,9 @@ fn a_filter_in_a_parent_directory_is_not_read() {
     );
 }
 
-/// Trust is keyed by the file a link resolves to, so re-pointing a trusted
-/// link, or the `.rtk` directory it sits in, needs a new review.
+/// Trust is keyed by the file a link resolves to, not by the link or its bytes:
+/// re-pointing a trusted link, or its `.rtk` directory, at an identical copy
+/// elsewhere needs a new review.
 #[cfg(unix)]
 #[test]
 fn trust_follows_symlinks_to_their_target() {
@@ -341,7 +342,7 @@ fn trust_follows_symlinks_to_their_target() {
     let dir = project.dir();
     std::fs::create_dir_all(dir.join(".rtk")).unwrap();
     std::fs::write(dir.join("a.toml"), FILTER).unwrap();
-    std::fs::write(dir.join("b.toml"), format!("{FILTER}# b\n")).unwrap();
+    std::fs::write(dir.join("b.toml"), FILTER).unwrap();
     symlink(dir.join("a.toml"), project.filter_path()).unwrap();
     trust_yes(&project);
     assert!(project.filtered());
@@ -353,12 +354,9 @@ fn trust_follows_symlinks_to_their_target() {
     let linked = Project::new();
     let real = linked.root.path().join("real-rtk");
     let other = linked.root.path().join("other-rtk");
-    for (target, content) in [
-        (&real, FILTER.to_string()),
-        (&other, format!("{FILTER}# b\n")),
-    ] {
+    for target in [&real, &other] {
         std::fs::create_dir_all(target).unwrap();
-        std::fs::write(target.join("filters.toml"), content).unwrap();
+        std::fs::write(target.join("filters.toml"), FILTER).unwrap();
     }
     let rtk_dir = linked.dir().join(".rtk");
     std::fs::create_dir_all(linked.dir()).unwrap();
