@@ -33,7 +33,12 @@ On Windows, in PowerShell 5.1 or 7, `install.ps1` installs the same release for 
 irm https://raw.githubusercontent.com/yungSNAT/PascalsLetter/develop/install.ps1 | iex
 ```
 
-On 32-bit Windows it stops with an error, as releases hold only an x86_64 build. It is untested on Windows on Arm, where that build needs Windows 11's x64 emulation, and behind a proxy that asks for credentials or inspects TLS.
+On 32-bit Windows it stops with an error, as releases hold only an x86_64 build. CI installs the published release on Windows 11 on Arm, where that build runs under x64 emulation, and through a TLS-inspecting proxy whose certificate authority Windows trusts. Behind a proxy that asks for a user name and password, set them for the session first, so both `irm` and the installer send them:
+
+```powershell
+[Net.WebRequest]::DefaultWebProxy.Credentials = (Get-Credential).GetNetworkCredential()
+irm https://raw.githubusercontent.com/yungSNAT/PascalsLetter/develop/install.ps1 | iex
+```
 
 Releases hold the Apache-2.0 edition (upstream calls it `rtk-oss`), which leaves out the BUSL-1.1 compression engine; Windows users can download its zip from the same page. For the full edition, build from source with Rust:
 
