@@ -7,16 +7,23 @@ mod common;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
-/// Replaces the whole output of `rtk --version` once trusted.
+/// Replaces the whole output of `rtk help`, run through rtk's fallback, once
+/// trusted. The help is long enough that the message and its recall hint are
+/// shorter, so rtk emits them rather than falling back to the raw output.
+/// (`rtk <rtk> --version` would not do: rtk's own `--version` flag answers
+/// before the fallback runs.)
 const FILTER: &str = r#"schema_version = 1
 
 [filters.trust-probe]
 description = "trust probe"
-match_command = "^rtk(\\.exe)?\\s+--version"
-match_output = [{ pattern = "rtk", message = "FILTERED-BY-PROJECT" }]
+match_command = "^rtk(\\.exe)?\\s+help$"
+match_output = [{ pattern = "Usage", message = "FILTERED-BY-PROJECT" }]
 "#;
 
 const MARK: &str = "FILTERED-BY-PROJECT";
+
+/// `rtk <rtk> help`: an unknown first word, so rtk runs it as a command.
+const PROBE: [&str; 2] = [env!("CARGO_BIN_EXE_rtk"), "help"];
 
 struct Project {
     root: tempfile::TempDir,
@@ -54,10 +61,10 @@ impl Project {
         self.command().args(args).output().expect("run rtk")
     }
 
-    /// What `rtk <rtk> --version` prints: the project filter's message when it
-    /// is applied, the version line when it is not.
+    /// What [`PROBE`] prints: the project filter's message when it is applied,
+    /// rtk's help when it is not.
     fn probe(&self) -> Output {
-        self.rtk(&[env!("CARGO_BIN_EXE_rtk"), "--version"])
+        self.rtk(&PROBE)
     }
 
     fn filtered(&self) -> bool {
@@ -66,8 +73,8 @@ impl Project {
         let stdout = String::from_utf8_lossy(&out.stdout);
         let applied = stdout.contains(MARK);
         assert!(
-            applied || stdout.contains("rtk"),
-            "probe printed neither the version nor the filter message: {out:?}"
+            applied || stdout.contains("Usage"),
+            "probe printed neither the help nor the filter message: {out:?}"
         );
         applied
     }
@@ -225,7 +232,7 @@ fn the_environment_override_applies_only_in_ci() {
     let out = project
         .command()
         .env("RTK_TRUST_PROJECT_FILTERS", "1")
-        .args([env!("CARGO_BIN_EXE_rtk"), "--version"])
+        .args(PROBE)
         .output()
         .unwrap();
     assert!(!text(&out.stdout).contains(MARK), "{out:?}");
@@ -238,7 +245,7 @@ fn the_environment_override_applies_only_in_ci() {
         .command()
         .env("RTK_TRUST_PROJECT_FILTERS", "1")
         .env("CI", "true")
-        .args([env!("CARGO_BIN_EXE_rtk"), "--version"])
+        .args(PROBE)
         .output()
         .unwrap();
     assert!(text(&out.stdout).contains(MARK), "{out:?}");
