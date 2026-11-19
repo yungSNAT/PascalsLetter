@@ -212,9 +212,12 @@ const KEPT: &[&str] = &[
 ];
 
 /// Route instrumented children to the report's raw profile directory when
-/// running under `cargo llvm-cov`. Cargo puts the test executable in
-/// `<target>/llvm-cov-target/[<triple>/]<profile>/deps/`. The coverage tool
-/// merges the `.profraw` files directly in `llvm-cov-target`.
+/// running under `cargo llvm-cov`. Cargo puts the test executable somewhere
+/// below `<target>/llvm-cov-target/`, at a depth that has changed between
+/// releases (`[<triple>/]<profile>/deps/`, then
+/// `[<triple>/]<profile>/build/<package>/<hash>/out/`), so the nearest such
+/// ancestor is taken. The coverage tool merges the `.profraw` files directly in
+/// `llvm-cov-target`.
 ///
 /// Pin the path ourselves: the inherited value could name a developer file,
 /// and leaving it unset makes LLVM write into the child's working repository.
@@ -222,8 +225,7 @@ fn pin_profile(cmd: &mut Command) {
     static COVERAGE_TARGET: LazyLock<Option<PathBuf>> = LazyLock::new(|| {
         let exe = std::env::current_exe().ok()?;
         exe.ancestors()
-            .skip(3)
-            .take(2)
+            .skip(1)
             .find(|dir| {
                 dir.ends_with("llvm-cov-target")
                     && !dir.as_os_str().as_encoded_bytes().contains(&b'%')
