@@ -42,9 +42,9 @@ as coverage.yml runs them on that push)
                       │  report on the PR  │
                       └────────────────────┘
 
-     + test presence, rustdoc, proxy, oss edition, install.ps1, hook plugins,
-       release (build) and the x86_64-pc-windows-gnu test leg also run on
-       each PR
+     + test presence, rustdoc, proxy, oss edition, install.ps1 (x64 and
+       Arm Windows), install.ps1 behind proxies, hook plugins, release
+       (build) and the x86_64-pc-windows-gnu test leg also run on each PR
      + dependabot.yml (weekly: Cargo, npm, pip, GitHub Actions)
      + coverage.yml (push to develop or manual dispatch only: cargo-llvm-cov, then Codecov)
 ```

@@ -223,8 +223,13 @@ jobs:
 
   install-ps1:
     timeout-minutes: 10
-    name: install.ps1
-    runs-on: windows-latest
+    name: install.ps1 (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # On Windows on Arm the x86_64 release runs under x64 emulation.
+        os: [windows-latest, windows-11-arm]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -242,6 +247,33 @@ jobs:
       - name: Live install, PowerShell 7
         shell: pwsh
         run: ./scripts/test-install-live.ps1
+
+  # The published release installed through a TLS-inspecting proxy and an
+  # authenticating one, each set as the system proxy on this disposable runner.
+  install-ps1-proxy:
+    timeout-minutes: 15
+    name: install.ps1 behind proxies
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: mitmproxy 12.3.1, checked by SHA-256
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP 'mitmproxy.zip'
+          Invoke-WebRequest -Uri 'https://downloads.mitmproxy.org/12.3.1/mitmproxy-12.3.1-windows-x86_64.zip' -OutFile $zip
+          $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash
+          if ($hash -ne '336C03E7215876AF329F57C44B1B738CFB22CD29DC7CD4C0714F15C7648AF829') { throw "mitmproxy zip SHA-256 $hash" }
+          $dir = Join-Path $env:RUNNER_TEMP 'mitmproxy'
+          Expand-Archive -LiteralPath $zip -DestinationPath $dir
+          "MITMDUMP=$dir\mitmdump.exe" >> $env:GITHUB_ENV
+      - name: Windows PowerShell 5.1
+        shell: powershell
+        run: ./scripts/test-install-proxy.ps1
+      - name: PowerShell 7
+        shell: pwsh
+        run: ./scripts/test-install-proxy.ps1
 
   # The agent plugins' own tests. Windows matters: there a program started by
   # bare name runs from the working folder first, which the plugins must avoid.
