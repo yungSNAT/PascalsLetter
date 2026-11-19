@@ -334,3 +334,47 @@ fn a_project_pipeline_is_trusted_and_revoked_with_the_filters() {
         "the pipeline kept its trust"
     );
 }
+
+#[test]
+fn init_enables_a_project_filter_only_when_told_to() {
+    let project = Project::new();
+    project.write(".rtk/filters.toml", FILTER);
+    let init = |args: &[&str]| {
+        let out = project.rtk(&[&["init"][..], args].concat());
+        assert!(out.status.success(), "rtk init {args:?}: {out:?}");
+        out
+    };
+
+    let out = init(&["--dry-run"]);
+    assert!(
+        text(&out.stdout).contains("[dry-run] 1 untrusted custom filter(s)"),
+        "{out:?}"
+    );
+    assert!(!project.filtered(), "a dry run trusted the filter");
+
+    let declining: [&[&str]; 2] = [&["--no-trust-filters"], &[]];
+    for args in declining {
+        let out = init(args);
+        assert!(
+            text(&out.stderr).contains("Not enabled"),
+            "{args:?}: {out:?}"
+        );
+        assert!(!project.filtered(), "rtk init {args:?} trusted the filter");
+    }
+
+    let out = init(&["--trust-filters"]);
+    assert!(
+        text(&out.stderr).contains("Enabled. Revoke with"),
+        "{out:?}"
+    );
+    assert!(
+        project.filtered(),
+        "rtk init --trust-filters left it disabled"
+    );
+
+    let out = init(&["--trust-filters"]);
+    assert!(
+        !text(&out.stderr).contains("Enabled. Revoke with"),
+        "a trusted filter was offered again: {out:?}"
+    );
+}
