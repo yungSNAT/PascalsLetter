@@ -71,15 +71,19 @@ impl Project {
     }
 
     fn filtered(&self) -> bool {
-        let out = self.probe();
-        assert!(out.status.success(), "probe failed: {out:?}");
-        let stdout = String::from_utf8_lossy(&out.stdout);
-        let applied = stdout.contains(MARK);
-        assert!(
-            applied || stdout.contains(LISTED),
-            "probe printed neither the target list nor the filter message: {out:?}"
-        );
-        applied
+        applied(&self.probe())
+    }
+
+    /// [`Project::filtered`], run from `dir` instead of the project.
+    fn filtered_from(&self, dir: &Path) -> bool {
+        applied(
+            &self
+                .command()
+                .current_dir(dir)
+                .args(PROBE)
+                .output()
+                .unwrap(),
+        )
     }
 
     fn trust_store(&self) -> PathBuf {
@@ -99,6 +103,19 @@ fn find(dir: &Path, name: &str) -> Option<PathBuf> {
         }
     }
     None
+}
+
+/// Whether the probe's output is the filter's message. Fails unless the probe ran
+/// and printed one or the other.
+fn applied(out: &Output) -> bool {
+    assert!(out.status.success(), "probe failed: {out:?}");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let applied = stdout.contains(MARK);
+    assert!(
+        applied || stdout.contains(LISTED),
+        "probe printed neither the target list nor the filter message: {out:?}"
+    );
+    applied
 }
 
 fn text(bytes: &[u8]) -> String {
@@ -175,18 +192,33 @@ fn trust_yes_enables_the_filter_and_records_the_hash_of_its_content() {
 
 #[test]
 fn editing_a_trusted_filter_withdraws_its_trust() {
-    let project = Project::new();
-    project.write(".rtk/filters.toml", FILTER);
-    trust_yes(&project);
-    assert!(project.filtered());
+    // Trust is in the exact bytes: an edit that changes only line endings or
+    // trailing whitespace counts as an edit.
+    let edits = [
+        ("a content edit", format!("{FILTER}\n# edited\n")),
+        ("CRLF line endings", FILTER.replace('\n', "\r\n")),
+        (
+            "a trailing space",
+            FILTER.replace(
+                "description = \"trust probe\"",
+                "description = \"trust probe\" ",
+            ),
+        ),
+    ];
+    for (edit, content) in edits {
+        let project = Project::new();
+        project.write(".rtk/filters.toml", FILTER);
+        trust_yes(&project);
+        assert!(project.filtered());
 
-    project.write(".rtk/filters.toml", &format!("{FILTER}\n# edited\n"));
-    assert!(!project.filtered(), "an edited filter kept its trust");
-    let out = project.rtk(&["trust"]);
-    assert!(
-        !out.status.success(),
-        "an edited filter counted as trusted: {out:?}"
-    );
+        project.write(".rtk/filters.toml", &content);
+        assert!(!project.filtered(), "{edit} kept the filter's trust");
+        let out = project.rtk(&["trust"]);
+        assert!(
+            !out.status.success(),
+            "after {edit} the filter counted as trusted: {out:?}"
+        );
+    }
 }
 
 #[test]
@@ -220,7 +252,7 @@ fn an_unreadable_trust_store_fails_closed() {
 
     std::fs::write(project.trust_store(), "not json").unwrap();
     let out = project.probe();
-    assert!(!text(&out.stdout).contains(MARK), "{out:?}");
+    assert!(!applied(&out), "{out:?}");
     assert!(
         text(&out.stderr).contains("trust store unreadable"),
         "{out:?}"
@@ -232,26 +264,132 @@ fn the_environment_override_applies_only_in_ci() {
     let project = Project::new();
     project.write(".rtk/filters.toml", FILTER);
 
-    let out = project
-        .command()
-        .env("RTK_TRUST_PROJECT_FILTERS", "1")
-        .args(PROBE)
-        .output()
-        .unwrap();
-    assert!(!text(&out.stdout).contains(MARK), "{out:?}");
+    let run = |vars: &[(&str, &str)]| {
+        project
+            .command()
+            .envs(vars.iter().copied())
+            .args(PROBE)
+            .output()
+            .unwrap()
+    };
+
+    let out = run(&[("RTK_TRUST_PROJECT_FILTERS", "1")]);
+    assert!(!applied(&out), "{out:?}");
     assert!(
         text(&out.stderr).contains("CI environment not detected"),
         "{out:?}"
     );
 
+    for ci in [
+        "CI",
+        "GITHUB_ACTIONS",
+        "GITLAB_CI",
+        "JENKINS_URL",
+        "BUILDKITE",
+    ] {
+        let out = run(&[("RTK_TRUST_PROJECT_FILTERS", "1"), (ci, "true")]);
+        assert!(applied(&out), "{ci}: {out:?}");
+    }
+
+    let out = run(&[("RTK_TRUST_PROJECT_FILTERS", "true"), ("CI", "true")]);
+    assert!(!applied(&out), "an override other than 1 applied: {out:?}");
+}
+
+#[test]
+fn a_trusted_filter_that_is_not_utf8_fails_closed() {
+    let project = Project::new();
+    let path = project.filter_path();
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, [FILTER.as_bytes(), &b"# \xff\n"[..]].concat()).unwrap();
+    trust_yes(&project);
+
+    let out = project.probe();
+    assert!(!applied(&out), "{out:?}");
+    assert!(text(&out.stderr).contains("is not valid UTF-8"), "{out:?}");
+}
+
+#[test]
+fn a_filter_in_a_parent_directory_is_not_read() {
+    let project = Project::new();
+    project.write(".rtk/filters.toml", FILTER);
+    trust_yes(&project);
+    let sub = project.dir().join("sub");
+    std::fs::create_dir_all(&sub).unwrap();
+
+    assert!(project.filtered());
+    assert!(!project.filtered_from(&sub), "a parent's filter applied");
     let out = project
         .command()
-        .env("RTK_TRUST_PROJECT_FILTERS", "1")
-        .env("CI", "true")
-        .args(PROBE)
+        .current_dir(&sub)
+        .arg("trust")
         .output()
         .unwrap();
-    assert!(text(&out.stdout).contains(MARK), "{out:?}");
+    assert!(
+        text(&out.stderr).contains("No custom filters or pipeline found"),
+        "{out:?}"
+    );
+}
+
+/// Trust is keyed by the file a link resolves to, so re-pointing a trusted
+/// link, or the `.rtk` directory it sits in, needs a new review.
+#[cfg(unix)]
+#[test]
+fn trust_follows_symlinks_to_their_target() {
+    use std::os::unix::fs::symlink;
+
+    let project = Project::new();
+    let dir = project.dir();
+    std::fs::create_dir_all(dir.join(".rtk")).unwrap();
+    std::fs::write(dir.join("a.toml"), FILTER).unwrap();
+    std::fs::write(dir.join("b.toml"), format!("{FILTER}# b\n")).unwrap();
+    symlink(dir.join("a.toml"), project.filter_path()).unwrap();
+    trust_yes(&project);
+    assert!(project.filtered());
+
+    std::fs::remove_file(project.filter_path()).unwrap();
+    symlink(dir.join("b.toml"), project.filter_path()).unwrap();
+    assert!(!project.filtered(), "a re-pointed link kept its trust");
+
+    let linked = Project::new();
+    let real = linked.root.path().join("real-rtk");
+    let other = linked.root.path().join("other-rtk");
+    for (target, content) in [
+        (&real, FILTER.to_string()),
+        (&other, format!("{FILTER}# b\n")),
+    ] {
+        std::fs::create_dir_all(target).unwrap();
+        std::fs::write(target.join("filters.toml"), content).unwrap();
+    }
+    let rtk_dir = linked.dir().join(".rtk");
+    symlink(&real, &rtk_dir).unwrap();
+    trust_yes(&linked);
+    assert!(linked.filtered());
+
+    std::fs::remove_file(&rtk_dir).unwrap();
+    symlink(&other, &rtk_dir).unwrap();
+    assert!(!linked.filtered(), "a re-pointed .rtk kept its trust");
+}
+
+/// The user-global `filters.toml` is gated the same way. Only Linux lets the
+/// test move a child's config directory (`XDG_CONFIG_HOME`).
+#[cfg(target_os = "linux")]
+#[test]
+fn a_global_filter_is_gated_like_a_project_one() {
+    let project = Project::new();
+    let global = project.root.path().join(".config/rtk/filters.toml");
+    std::fs::create_dir_all(global.parent().unwrap()).unwrap();
+    std::fs::write(&global, FILTER).unwrap();
+    assert!(!project.filtered(), "an untrusted global filter applied");
+
+    let out = trust_yes(&project);
+    assert!(text(&out.stderr).contains("global scoped"), "{out:?}");
+    assert!(
+        project.filtered(),
+        "a trusted global filter was not applied"
+    );
+
+    project.rtk(&["untrust"]);
+    assert!(!project.filtered(), "a revoked global filter applied");
 }
 
 #[test]
@@ -320,8 +458,15 @@ fn a_project_pipeline_is_trusted_and_revoked_with_the_filters() {
         "{out:?}"
     );
 
+    assert_eq!(
+        active(&project),
+        "rtk:default",
+        "an untrusted pipeline loaded"
+    );
+
     let out = trust_yes(&project);
     assert!(text(&out.stderr).contains("Enabled"), "{out:?}");
+    assert_eq!(active(&project), "trust-probe");
     let pipeline = std::fs::canonicalize(project.dir().join(".rtk/pipeline.toml")).unwrap();
     let list = text(&project.rtk(&["trust", "--list"]).stdout);
     assert!(
@@ -330,12 +475,44 @@ fn a_project_pipeline_is_trusted_and_revoked_with_the_filters() {
     );
     assert!(text(&trust_yes(&project).stderr).contains("already trusted"));
 
+    project.write(
+        ".rtk/pipelines/extra.toml",
+        "schema_version = 1\n[pipeline]\nname = \"extra-probe\"\n",
+    );
+    assert_eq!(
+        active(&project),
+        "trust-probe",
+        "an untrusted pipeline loaded"
+    );
+    trust_yes(&project);
+    assert_eq!(active(&project), "extra-probe");
+
+    // Trust is per file: editing one leaves the other trusted.
+    project.write(
+        ".rtk/pipelines/extra.toml",
+        "schema_version = 1\n[pipeline]\nname = \"extra-probe\"\n# edited\n",
+    );
+    assert_eq!(active(&project), "trust-probe", "an edited pipeline loaded");
+
     let out = project.rtk(&["untrust"]);
     assert!(text(&out.stdout).contains("Trust revoked for"), "{out:?}");
+    assert_eq!(active(&project), "rtk:default", "a revoked pipeline loaded");
     assert!(
         text(&project.rtk(&["trust", "--list"]).stdout).contains("No trusted filters."),
-        "the pipeline kept its trust"
+        "a pipeline kept its trust"
     );
+}
+
+/// The pipeline `rtk pipeline status` reports as active.
+fn active(project: &Project) -> String {
+    let out = project.rtk(&["pipeline", "status"]);
+    assert!(out.status.success(), "rtk pipeline status: {out:?}");
+    let stdout = text(&out.stdout);
+    stdout
+        .lines()
+        .find_map(|line| line.strip_prefix("active: "))
+        .unwrap_or_else(|| panic!("no active line: {out:?}"))
+        .to_string()
 }
 
 #[test]
@@ -348,7 +525,7 @@ fn init_enables_a_project_filter_only_when_told_to() {
         out
     };
 
-    let out = init(&["--dry-run"]);
+    let out = init(&["--dry-run", "--trust-filters"]);
     assert!(
         text(&out.stdout).contains("[dry-run] 1 untrusted custom filter(s)"),
         "{out:?}"
