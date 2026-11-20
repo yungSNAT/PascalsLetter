@@ -169,7 +169,8 @@ fn zero_count_still_reports_a_missing_file() {
 
 #[test]
 fn range_stdin_returns_before_the_writer_closes() {
-    let mut child = common::rtk_command()
+    let root = common::tempdir();
+    let mut child = common::rtk_command_in(root.path())
         .args(["read", "-", "--from", "2", "--lines", "1"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -228,7 +229,7 @@ fn range_accounting_counts_selected_bytes_without_decoding_them() {
         .expect("read binary range");
     assert!(output.status.success(), "{:?}", output.stderr);
     let conn = rusqlite::Connection::open(db).expect("open isolated history");
-    let counts: (usize, usize, i64) = conn.query_row(
+    let counts: (i64, i64, i64) = conn.query_row(
         "SELECT input_tokens, output_tokens, saved_tokens FROM commands WHERE rtk_cmd = 'rtk read --lines'",
         [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))
     ).expect("range accounting row");

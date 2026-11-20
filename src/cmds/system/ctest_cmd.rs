@@ -1676,6 +1676,11 @@ some unrelated tail
         assert!(!looks_like_ctest_output(input));
     }
 
+    fn filter_with_isolated_recovery(input: &str) -> String {
+        let root = crate::core::test_isolation::tempdir();
+        crate::core::test_isolation::with_root(root.path(), || filter_ctest_output(input))
+    }
+
     #[test]
     fn caps_failed_test_entries_with_one_complete_section_tee() {
         let mut input = String::from("Test project /tmp/build\n");
@@ -1691,7 +1696,7 @@ some unrelated tail
             "\n0% tests passed, 25 tests failed out of 25\n\nTotal Test time (real) =   0.01 sec\n",
         );
 
-        let filtered = filter_ctest_output(&input);
+        let filtered = filter_with_isolated_recovery(&input);
         let (rendered_section, full_section, truncated) = failed_section_parts(&input);
         assert!(truncated);
 
@@ -1740,7 +1745,7 @@ some unrelated tail
             input.push_str(&format!("\t  {number} - broken_{number} (Failed)\n"));
         }
 
-        let filtered = filter_ctest_output(&input);
+        let filtered = filter_with_isolated_recovery(&input);
 
         assert_eq!(
             filtered
@@ -1778,7 +1783,7 @@ some unrelated tail
             "\n100% tests passed, 0 tests failed out of 25\n\nTotal Test time (real) =   0.01 sec\n",
         );
 
-        let filtered = filter_ctest_output(&input);
+        let filtered = filter_with_isolated_recovery(&input);
 
         assert_eq!(
             filtered
