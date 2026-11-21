@@ -243,7 +243,21 @@ pub fn read_gain_summary() -> Option<ProxyGainSummary> {
     if !path.is_file() {
         return None;
     }
-    read_gain_summary_at(&path)
+    read_gain_summary_at(&path, None)
+}
+
+/// [`read_gain_summary`] over the requests recorded in the last `days` days
+/// (from the start of the UTC day `days` ago, the same window the hook
+/// attribution uses), for figures labelled with that window.
+pub fn read_gain_summary_since(days: u32) -> Option<ProxyGainSummary> {
+    let path = db_path()?;
+    if !path.is_file() {
+        return None;
+    }
+    let cutoff = crate::core::utils::days_ago_cutoff(days.into())
+        .strftime("%Y-%m-%d")
+        .to_string();
+    read_gain_summary_at(&path, Some(&cutoff))
 }
 
 /// Requests scanned for the fracture count. `rtk gain` has a <10ms budget and
@@ -280,8 +294,9 @@ fn count_cache_fractures(conn: &rusqlite::Connection) -> Option<i64> {
 }
 
 /// [`read_gain_summary`] against an explicit path, so the query is testable
-/// without depending on the caller's config directory.
-fn read_gain_summary_at(db: &std::path::Path) -> Option<ProxyGainSummary> {
+/// without depending on the caller's config directory. `since` (`YYYY-MM-DD`)
+/// keeps rows whose `ts` falls on or after that day; `None` reads all rows.
+fn read_gain_summary_at(db: &std::path::Path, since: Option<&str>) -> Option<ProxyGainSummary> {
     let conn =
         rusqlite::Connection::open_with_flags(db, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
             .ok()?;
@@ -306,9 +321,9 @@ fn read_gain_summary_at(db: &std::path::Path) -> Option<ProxyGainSummary> {
                  COALESCE(SUM(saved_ingest_filter),0), COALESCE(SUM(saved_pixel_compress),0), \
                  COALESCE(SUM(saved_ccr),0), \
                  COALESCE(SUM(CASE WHEN status >= 400 THEN 1 ELSE 0 END),0){cache_cols} \
-                 FROM usage_records"
+                 FROM usage_records WHERE ?1 IS NULL OR ts >= ?1"
             ),
-            [],
+            [since],
             |r| {
                 Ok(ProxyGainSummary {
                     total_requests: r.get(0)?,
@@ -347,8 +362,8 @@ fn read_gain_summary_at(db: &std::path::Path) -> Option<ProxyGainSummary> {
         s.cache_fractures = count_cache_fractures(&conn).unwrap_or(0);
     }
     if let Ok((actual, without, routed_n, routed_in, routed_saved, routed_cost)) = conn.query_row(
-        "SELECT COALESCE(SUM(CASE WHEN status < 400 THEN cost_usd ELSE 0 END),0),                 COALESCE(SUM(CASE WHEN status < 400 THEN cost_without ELSE 0 END),0),                 COALESCE(SUM(CASE WHEN routed_from IS NOT NULL THEN 1 ELSE 0 END),0),                 COALESCE(SUM(CASE WHEN routed_from IS NOT NULL THEN tokens_in ELSE 0 END),0),                 COALESCE(SUM(CASE WHEN routed_from IS NOT NULL AND status < 400 THEN cost_without - cost_usd ELSE 0 END),0),                 COALESCE(SUM(CASE WHEN routed_from IS NOT NULL AND status < 400 THEN cost_usd ELSE 0 END),0)          FROM usage_records",
-        [],
+        "SELECT COALESCE(SUM(CASE WHEN status < 400 THEN cost_usd ELSE 0 END),0),                 COALESCE(SUM(CASE WHEN status < 400 THEN cost_without ELSE 0 END),0),                 COALESCE(SUM(CASE WHEN routed_from IS NOT NULL THEN 1 ELSE 0 END),0),                 COALESCE(SUM(CASE WHEN routed_from IS NOT NULL THEN tokens_in ELSE 0 END),0),                 COALESCE(SUM(CASE WHEN routed_from IS NOT NULL AND status < 400 THEN cost_without - cost_usd ELSE 0 END),0),                 COALESCE(SUM(CASE WHEN routed_from IS NOT NULL AND status < 400 THEN cost_usd ELSE 0 END),0)          FROM usage_records WHERE ?1 IS NULL OR ts >= ?1",
+        [since],
         |r| {
             Ok((
                 r.get::<_, f64>(0)?,
@@ -368,8 +383,8 @@ fn read_gain_summary_at(db: &std::path::Path) -> Option<ProxyGainSummary> {
         s.routed_cost_usd = routed_cost;
     }
     if let Ok(n) = conn.query_row(
-        "SELECT COUNT(*) FROM usage_records WHERE tokens_saved > 0",
-        [],
+        "SELECT COUNT(*) FROM usage_records WHERE tokens_saved > 0 AND (?1 IS NULL OR ts >= ?1)",
+        [since],
         |r| r.get::<_, i64>(0),
     ) {
         s.trimmed_requests = n;
@@ -1148,7 +1163,7 @@ mod tests {
         .expect("seed db");
         drop(conn);
 
-        let s = read_gain_summary_at(&db_path).expect("summary");
+        let s = read_gain_summary_at(&db_path, None).expect("summary");
         assert_eq!(
             (s.total_requests, s.tokens_in, s.tokens_out, s.tokens_saved),
             (3, 300, 130, 90)
@@ -1175,7 +1190,7 @@ mod tests {
     #[test]
     fn read_gain_summary_is_none_for_a_missing_db() {
         let dir = tempfile::tempdir().expect("tempdir");
-        assert!(read_gain_summary_at(&dir.path().join("nope.db")).is_none());
+        assert!(read_gain_summary_at(&dir.path().join("nope.db"), None).is_none());
     }
 
     #[test]
@@ -1304,13 +1319,59 @@ mod tests {
         .expect("seed db");
         drop(conn);
 
-        let s = read_gain_summary_at(&db_path).expect("summary");
+        let s = read_gain_summary_at(&db_path, None).expect("summary");
         assert_eq!(s.cache_read, 18232);
         assert_eq!(s.cache_created, 41410);
         assert_eq!(s.cache_fractures, 1);
         assert_eq!(s.retrieve_calls, 5);
         assert_eq!(s.saved_normalize, 111);
         assert!(s.cache_hit_ratio().is_some());
+    }
+
+    #[test]
+    fn a_window_keeps_only_requests_from_its_first_day() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_path = dir.path().join("w.db");
+        let conn = rusqlite::Connection::open(&db_path).expect("open");
+        conn.execute_batch(
+            "CREATE TABLE usage_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts TEXT NOT NULL,
+                tokens_in INTEGER NOT NULL DEFAULT 0,
+                tokens_out INTEGER NOT NULL DEFAULT 0,
+                tokens_saved INTEGER NOT NULL DEFAULT 0,
+                cost_usd REAL NOT NULL DEFAULT 0,
+                cost_without REAL NOT NULL DEFAULT 0,
+                routed_from TEXT,
+                status INTEGER NOT NULL DEFAULT 0,
+                ctx_total INTEGER NOT NULL DEFAULT 0,
+                ctx_tool_result INTEGER NOT NULL DEFAULT 0,
+                ctx_tool_use INTEGER NOT NULL DEFAULT 0,
+                ctx_duplicate INTEGER NOT NULL DEFAULT 0,
+                ctx_image INTEGER NOT NULL DEFAULT 0,
+                saved_ingest_filter INTEGER NOT NULL DEFAULT 0,
+                saved_pixel_compress INTEGER NOT NULL DEFAULT 0,
+                saved_ccr INTEGER NOT NULL DEFAULT 0
+            );
+            INSERT INTO usage_records
+                (ts, tokens_in, tokens_saved, cost_usd, cost_without, routed_from, status)
+            VALUES ('2026-06-30T23:59:59+00:00', 700, 9, 80, 100, 'big', 200),
+                   ('2026-07-01T00:00:00+00:00', 100, 3, 2, 4, 'big', 200),
+                   ('2026-07-01 08:00:00', 50, 0, 1, 1, NULL, 200),
+                   ('2026-07-02T09:00:00.5+00:00', 10, 0, 0, 0, NULL, 500);",
+        )
+        .expect("seed requests either side of the window start");
+        drop(conn);
+
+        let all = read_gain_summary_at(&db_path, None).expect("all-time summary");
+        assert_eq!((all.cost_actual_usd, all.cost_without_usd), (83.0, 105.0));
+
+        let s = read_gain_summary_at(&db_path, Some("2026-07-01")).expect("windowed summary");
+        assert_eq!((s.total_requests, s.tokens_in, s.tokens_saved), (3, 160, 3));
+        assert_eq!((s.cost_actual_usd, s.cost_without_usd), (3.0, 5.0));
+        assert_eq!((s.routed_requests, s.routed_tokens_in), (1, 100));
+        assert_eq!((s.routed_saved_usd, s.routed_cost_usd), (2.0, 2.0));
+        assert_eq!((s.trimmed_requests, s.failed_requests), (1, 1));
     }
 
     #[test]
