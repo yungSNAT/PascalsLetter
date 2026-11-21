@@ -305,6 +305,14 @@ fn read_gain_summary_at(db: &std::path::Path, since: Option<&str>) -> Option<Pro
     // older proxy lacks them and this connection is read-only, so it cannot be
     // migrated here -- fall back to the older column list rather than losing
     // the whole summary over a few missing sums.
+    // A plain range on `ts` when windowed, so SQLite searches its `ts` index
+    // instead of scanning every row; no predicate at all for all time.
+    let (window, and_window) = if since.is_some() {
+        (" WHERE ts >= ?1", " AND ts >= ?1")
+    } else {
+        ("", "")
+    };
+    let params = || rusqlite::params_from_iter(since);
     let totals = |cache: bool| {
         let cache_cols = if cache {
             ", COALESCE(SUM(cache_read_tokens),0), COALESCE(SUM(cache_creation_tokens),0), \
@@ -321,9 +329,9 @@ fn read_gain_summary_at(db: &std::path::Path, since: Option<&str>) -> Option<Pro
                  COALESCE(SUM(saved_ingest_filter),0), COALESCE(SUM(saved_pixel_compress),0), \
                  COALESCE(SUM(saved_ccr),0), \
                  COALESCE(SUM(CASE WHEN status >= 400 THEN 1 ELSE 0 END),0){cache_cols} \
-                 FROM usage_records WHERE ?1 IS NULL OR ts >= ?1"
+                 FROM usage_records{window}"
             ),
-            [since],
+            params(),
             |r| {
                 Ok(ProxyGainSummary {
                     total_requests: r.get(0)?,
@@ -362,8 +370,8 @@ fn read_gain_summary_at(db: &std::path::Path, since: Option<&str>) -> Option<Pro
         s.cache_fractures = count_cache_fractures(&conn).unwrap_or(0);
     }
     if let Ok((actual, without, routed_n, routed_in, routed_saved, routed_cost)) = conn.query_row(
-        "SELECT COALESCE(SUM(CASE WHEN status < 400 THEN cost_usd ELSE 0 END),0),                 COALESCE(SUM(CASE WHEN status < 400 THEN cost_without ELSE 0 END),0),                 COALESCE(SUM(CASE WHEN routed_from IS NOT NULL THEN 1 ELSE 0 END),0),                 COALESCE(SUM(CASE WHEN routed_from IS NOT NULL THEN tokens_in ELSE 0 END),0),                 COALESCE(SUM(CASE WHEN routed_from IS NOT NULL AND status < 400 THEN cost_without - cost_usd ELSE 0 END),0),                 COALESCE(SUM(CASE WHEN routed_from IS NOT NULL AND status < 400 THEN cost_usd ELSE 0 END),0)          FROM usage_records WHERE ?1 IS NULL OR ts >= ?1",
-        [since],
+        &format!("SELECT COALESCE(SUM(CASE WHEN status < 400 THEN cost_usd ELSE 0 END),0),                 COALESCE(SUM(CASE WHEN status < 400 THEN cost_without ELSE 0 END),0),                 COALESCE(SUM(CASE WHEN routed_from IS NOT NULL THEN 1 ELSE 0 END),0),                 COALESCE(SUM(CASE WHEN routed_from IS NOT NULL THEN tokens_in ELSE 0 END),0),                 COALESCE(SUM(CASE WHEN routed_from IS NOT NULL AND status < 400 THEN cost_without - cost_usd ELSE 0 END),0),                 COALESCE(SUM(CASE WHEN routed_from IS NOT NULL AND status < 400 THEN cost_usd ELSE 0 END),0)          FROM usage_records{window}"),
+        params(),
         |r| {
             Ok((
                 r.get::<_, f64>(0)?,
@@ -383,8 +391,8 @@ fn read_gain_summary_at(db: &std::path::Path, since: Option<&str>) -> Option<Pro
         s.routed_cost_usd = routed_cost;
     }
     if let Ok(n) = conn.query_row(
-        "SELECT COUNT(*) FROM usage_records WHERE tokens_saved > 0 AND (?1 IS NULL OR ts >= ?1)",
-        [since],
+        &format!("SELECT COUNT(*) FROM usage_records WHERE tokens_saved > 0{and_window}"),
+        params(),
         |r| r.get::<_, i64>(0),
     ) {
         s.trimmed_requests = n;
