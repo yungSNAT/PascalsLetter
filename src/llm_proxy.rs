@@ -248,7 +248,9 @@ pub fn read_gain_summary() -> Option<ProxyGainSummary> {
 
 /// [`read_gain_summary`] over the requests recorded in the last `days` days
 /// (from the start of the UTC day `days` ago, the same window the hook
-/// attribution uses), for figures labelled with that window.
+/// attribution uses), for figures labelled with that window. Only the
+/// engine build prints such a figure (the efficiency panel).
+#[cfg(feature = "engine")]
 pub fn read_gain_summary_since(days: u32) -> Option<ProxyGainSummary> {
     let path = db_path()?;
     if !path.is_file() {
