@@ -708,7 +708,7 @@ pub fn run(
         }
         println!();
         #[cfg(feature = "engine")]
-        print_efficiency_ledger(&tracker, crate::llm_proxy::read_gain_summary().as_ref());
+        print_efficiency_ledger(&tracker);
         return Ok(());
     }
 
@@ -894,7 +894,7 @@ pub fn run(
         }
 
         #[cfg(feature = "engine")]
-        print_efficiency_ledger(&tracker, proxy_summary.as_ref());
+        print_efficiency_ledger(&tracker);
 
         // Lightweight RTK_DISABLED bypass check (best-effort, silent on failure)
         if let Some(warning) = check_rtk_disabled_bypass() {
@@ -1123,8 +1123,12 @@ pub fn run(
 }
 
 #[cfg(feature = "engine")]
-fn print_efficiency_ledger(tracker: &Tracker, proxy: Option<&crate::llm_proxy::ProxyGainSummary>) {
+fn print_efficiency_ledger(tracker: &Tracker) {
     const WINDOW_DAYS: u32 = 30;
+    // The proxy's bill is read over the same window as the hook figures: the
+    // panel is headed "last 30 days", so older requests must not count.
+    let proxy = crate::llm_proxy::read_gain_summary_since(WINDOW_DAYS);
+    let proxy = proxy.as_ref();
     let sum = |kind: &str| -> (i64, i64, i64) {
         tracker
             .attribution_site("hook", kind, WINDOW_DAYS)
@@ -1212,14 +1216,12 @@ fn print_efficiency_ledger(tracker: &Tracker, proxy: Option<&crate::llm_proxy::P
     }
     match proxy_costs {
         Some((actual, without)) => {
-            let pct = if without > 0.0 {
-                (without - actual) / without * 100.0
-            } else {
-                0.0
-            };
             print_kpi(
                 "Bill (proxy)",
-                format!("${actual:.2} actual vs ~${without:.2} without pipeline (−{pct:.0}%)"),
+                format!(
+                    "${actual:.2} actual vs ~${without:.2} without pipeline ({})",
+                    bill_change(actual, without)
+                ),
             );
             if let Some(p) = proxy
                 && p.routed_requests > 0
@@ -1258,6 +1260,19 @@ fn print_efficiency_ledger(tracker: &Tracker, proxy: Option<&crate::llm_proxy::P
         println!("  ~ {note}");
     }
     println!();
+}
+
+/// Change from the bill without the pipeline to the actual bill, as a whole
+/// signed percent: `−50%` for a saving, `+50%` when the pipeline cost more.
+/// `without` must be positive (the caller only prices requests that have it).
+#[cfg(feature = "engine")]
+fn bill_change(actual: f64, without: f64) -> String {
+    let pct = ((actual - without) / without * 100.0).round();
+    if pct == 0.0 {
+        String::from("0%")
+    } else {
+        format!("{pct:+.0}%").replace('-', "−")
+    }
 }
 
 // ── Display helpers (TTY-aware) ── // added: entire section
@@ -1898,6 +1913,20 @@ fn print_pro_hint_if_due(tracker: &Tracker) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "engine")]
+    #[test]
+    fn bill_change_signs_savings_and_increases() {
+        assert_eq!(bill_change(2.0, 4.0), "−50%");
+        assert_eq!(bill_change(6.0, 4.0), "+50%");
+        assert_eq!(bill_change(4.0, 4.0), "0%");
+        assert_eq!(
+            bill_change(3.99, 4.0),
+            "0%",
+            "rounds to a whole percent first"
+        );
+        assert_eq!(bill_change(199.0, 200.0), "−1%");
+    }
 
     #[test]
     fn pro_hint_never_shows_in_this_fork() {
