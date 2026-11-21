@@ -1114,13 +1114,15 @@ impl CardData {
     }
 
     pub fn print_terminal(&self) {
-        print_terminal_card(
+        for line in terminal_card(
             &self.display,
             &self.stats(),
             self.published.as_deref(),
             env!("CARGO_PKG_VERSION"),
             &self.date,
-        );
+        ) {
+            println!("{line}");
+        }
     }
 
     /// The one number worth putting in a repo description, if any lever has
@@ -1372,27 +1374,28 @@ struct CardStats<'a> {
 /// drawn as panels in `rtk gain`'s visual language so a screenshot of it is
 /// presentable as-is. The markdown stays the paste artifact — this never
 /// prints TOML, and ends by saying how to get the markdown.
-fn print_terminal_card(
+fn terminal_card(
     name: &str,
     stats: &CardStats,
     published: Option<&str>,
     version: &str,
     date: &str,
-) {
+) -> Vec<String> {
     use crate::core::utils::format_tokens;
     use colored::Colorize;
     const W: usize = 74;
+    let mut out = Vec::new();
     let hr = |title: &str| {
         let title = format!(" {title} ");
         let fill = W.saturating_sub(title.chars().count() + 2);
-        println!("{}", format!("┌─{title}{}┐", "─".repeat(fill)).cyan());
+        format!("┌─{title}{}┐", "─".repeat(fill)).cyan().to_string()
     };
     let row_cols = |left: String, right: String| {
         let text = format!("{left} {right}");
         let pad = W.saturating_sub(text.chars().count() + 3);
-        println!("{} {}{} {}", "│".cyan(), text, " ".repeat(pad), "│".cyan());
+        format!("{} {}{} {}", "│".cyan(), text, " ".repeat(pad), "│".cyan())
     };
-    let end_panel = || println!("{}", format!("└{}┘", "─".repeat(W - 1)).cyan());
+    let end_panel = || format!("└{}┘", "─".repeat(W - 1)).cyan().to_string();
     let trunc = |text: &str, max: usize| -> String {
         if text.chars().count() <= max {
             text.to_string()
@@ -1402,12 +1405,12 @@ fn print_terminal_card(
         }
     };
 
-    hr(&format!("rtk pipeline · {name}"));
+    out.push(hr(&format!("rtk pipeline · {name}")));
     if stats.what.is_empty() {
-        row_cols(
+        out.push(row_cols(
             "(built-in — see its file comments for what it does)".to_string(),
             String::new(),
-        );
+        ));
     }
     for (position, does, when) in stats.what {
         let left = format!("{position:<18} {does:<22}");
@@ -1416,11 +1419,11 @@ fn print_terminal_card(
         } else {
             trunc(when, W.saturating_sub(left.chars().count() + 5))
         };
-        row_cols(left, right);
+        out.push(row_cols(left, right));
     }
-    end_panel();
+    out.push(end_panel());
 
-    hr("Measured impact");
+    out.push(hr("Measured impact"));
     let mut any = false;
     // Each row carries its own unit word (removed / cached), so the panel
     // explains itself inline instead of through a legend below it.
@@ -1436,7 +1439,7 @@ fn print_terminal_card(
         let text = format!("{label:<28} {activity:>14}  ");
         let unit_str = format!(" {unit}");
         let pad = W.saturating_sub(text.chars().count() + 10 + 4 + 5 + unit_str.chars().count());
-        println!(
+        format!(
             "{} {}{} {:>4.0}%{}{} {}",
             "│".cyan(),
             text,
@@ -1445,25 +1448,25 @@ fn print_terminal_card(
             unit_str.dimmed(),
             " ".repeat(pad),
             "│".cyan()
-        );
+        )
     };
     if let Some(f) = stats.filtering.filter(|f| f.total_commands > 0) {
-        bar_row(
+        out.push(bar_row(
             "command filtering",
             format!("{} commands", f.total_commands),
             f.avg_savings_pct,
             "removed",
-        );
+        ));
         any = true;
     }
     if let Some(hook_row) = stats.hook.filter(|r| r.tokens_in > 0) {
         let pct = hook_row.saved().max(0) as f64 / hook_row.tokens_in as f64 * 100.0;
-        bar_row(
+        out.push(bar_row(
             "agent hooks (30d)",
             format!("{} outputs", hook_row.calls),
             pct,
             "removed",
-        );
+        ));
         any = true;
     }
     for (label, calls, tokens_in, saved) in stats.hook_slices {
@@ -1471,12 +1474,12 @@ fn print_terminal_card(
             continue;
         }
         let pct = (*saved).max(0) as f64 / *tokens_in as f64 * 100.0;
-        bar_row(
+        out.push(bar_row(
             &format!("· {label}"),
             format!("{calls} outputs"),
             pct,
             "removed",
-        );
+        ));
         any = true;
     }
     for task in stats.tasks {
@@ -1487,14 +1490,14 @@ fn print_terminal_card(
         // Laid out on the bar rows' grid (label column, activity column) so
         // the panel reads as one table.
         let kept = (task.tokens_in - task.tokens_out).max(0);
-        row_cols(
+        out.push(row_cols(
             format!(
                 "{:<28} {:>14}",
                 trunc(&format!("delegated · {}", task.name), 28),
                 format!("{} reads", task.calls)
             ),
             format!(" {} kept out of context", format_tokens(kept as usize)),
-        );
+        ));
         any = true;
     }
     if let Some(proxy_row) = stats.proxy {
@@ -1505,91 +1508,93 @@ fn print_terminal_card(
         if raw > 0 && proxy_row.tokens_saved > 0 {
             let pct = proxy_row.tokens_saved.max(0) as f64 / raw as f64 * 100.0;
             if pct >= 1.0 {
-                bar_row(
+                out.push(bar_row(
                     "llm proxy input",
                     format!("{} requests", proxy_row.requests),
                     pct,
                     "removed",
-                );
+                ));
                 any = true;
             }
         }
         let prefix = proxy_row.cache_read + proxy_row.cache_created;
         if prefix > 0 {
             let hit = proxy_row.cache_read as f64 / prefix as f64 * 100.0;
-            bar_row(
+            out.push(bar_row(
                 "prompt-cache hit",
                 format!("{} requests", proxy_row.requests),
                 hit,
                 "cached",
-            );
+            ));
             any = true;
         }
     }
     if !any {
-        row_cols(
+        out.push(row_cols(
             "no recorded activity yet — run sessions with this pipeline active".to_string(),
             String::new(),
-        );
+        ));
     }
     // The one caveat that cannot live inline: sizes are estimates. A single
     // dimmed row inside the panel, instead of a legend paragraph below it.
     if any {
         let note = "~ estimates (≈ bytes/4) — ratios reliable, absolutes approximate";
         let pad = W.saturating_sub(note.chars().count() + 3);
-        println!(
+        out.push(format!(
             "{} {}{} {}",
             "│".cyan(),
             note.dimmed(),
             " ".repeat(pad),
             "│".cyan()
-        );
+        ));
     }
-    end_panel();
+    out.push(end_panel());
     // The share CTA is the card's one next action — a panel in the card's
     // own visual language, not a footnote, with the command ready to paste.
     // Once published it flips to the repo link and the line others run.
     let row_accent = |text: &str| {
         let pad = W.saturating_sub(text.chars().count() + 3);
-        println!(
+        format!(
             "{} {}{} {}",
             "│".cyan(),
             text.green().bold(),
             " ".repeat(pad),
             "│".cyan()
-        );
+        )
     };
     match published {
         Some(install) => {
-            hr("Published");
-            let kv = |label: &str, value: &str| {
-                row_cols(trunc(&format!("{label:<18} {value}"), W - 4), String::new());
+            out.push(hr("Published"));
+            let mut kv = |label: &str, value: &str| {
+                out.push(row_cols(trunc(&format!("{label:<18} {value}"), W - 4), String::new()));
             };
             if let Some(repo) = install.strip_prefix("github:") {
                 kv("live at:", &format!("https://github.com/{repo}"));
             }
             kv("others install it:", &format!("rtk pipeline add {install}"));
             kv("update the repo:", "rtk pipeline share publish");
-            end_panel();
+            out.push(end_panel());
         }
         None => {
-            hr("Share it");
+            out.push(hr("Share it"));
             let hook = if any {
                 "Proud of these numbers? Put your pipeline in everyone's hands:"
             } else {
                 "Put your pipeline in everyone's hands — one command:"
             };
-            row_cols(hook.to_string(), String::new());
-            row_cols(String::new(), String::new());
-            row_accent("   ▶ rtk pipeline share publish");
-            row_cols(String::new(), String::new());
-            end_panel();
+            out.push(row_cols(hook.to_string(), String::new()));
+            out.push(row_cols(String::new(), String::new()));
+            out.push(row_accent("   ▶ rtk pipeline share publish"));
+            out.push(row_cols(String::new(), String::new()));
+            out.push(end_panel());
         }
     }
-    println!(
-        "{}",
-        format!("  rtk v{version} · {date} · markdown: rtk pipeline share --md").dimmed()
+    out.push(
+        format!("  rtk v{version} · {date} · markdown: rtk pipeline share --md")
+            .dimmed()
+            .to_string(),
     );
+    out
 }
 
 fn share_card(
@@ -2236,6 +2241,56 @@ mod tests {
         BUILTIN_NAMES, Scope, SourceFile, ValidateCtx, builtin_text, has_errors, parse, resolve,
         validate,
     };
+
+    #[test]
+    fn terminal_card_keeps_its_width_and_prints_published_actions_whole() {
+        let what = vec![(
+            "before every command".repeat(2),
+            "compress [ansi, dedupe, progress]".to_string(),
+            "command_matches=目錄變更".repeat(8),
+        )];
+        let slices = vec![(
+            "a hook slice whose label runs past the label column".to_string(),
+            4,
+            100,
+            40,
+        )];
+        let tasks = vec![crate::core::tracking::AttributionRow {
+            name: "資料集".repeat(20),
+            calls: 3,
+            tokens_in: 900,
+            tokens_out: 100,
+        }];
+        let stats = super::CardStats {
+            what: &what,
+            filtering: None,
+            hook: None,
+            hook_slices: &slices,
+            tasks: &tasks,
+            proxy: None,
+        };
+        let repo = format!("fixture-owner/{}fixture", "wide-name-".repeat(7));
+        let install = format!("github:{repo}");
+        let lines = super::terminal_card(
+            &"資料集".repeat(30),
+            &stats,
+            Some(&install),
+            "1.0.0",
+            "2026-11-22",
+        );
+        let ansi = regex::Regex::new("\x1b\\[[0-9;]*m").unwrap();
+        let shown: Vec<String> = lines
+            .iter()
+            .map(|line| ansi.replace_all(line, "").into_owned())
+            .collect();
+        for row in shown.iter().filter(|row| row.starts_with(['┌', '│', '└'])) {
+            assert_eq!(ratatui::text::Span::raw(row.as_str()).width(), 75, "{row}");
+        }
+        let shown = shown.join("\n");
+        assert!(shown.contains(&format!("https://github.com/{repo}")), "{shown}");
+        assert!(shown.contains(&format!("rtk pipeline add {install}")), "{shown}");
+        assert!(shown.contains("rtk pipeline share publish"), "{shown}");
+    }
 
     #[test]
     fn extract_toml_pulls_the_fenced_block_from_a_share_card() {

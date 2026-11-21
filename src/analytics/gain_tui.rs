@@ -614,3 +614,44 @@ fn draw_footer(f: &mut Frame, area: Rect) {
     ));
     f.render_widget(Paragraph::new(line), area);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    #[test]
+    fn the_proxy_panel_keeps_cache_rows_beside_routing_and_recovery() {
+        let state = State {
+            tracker_summary: None,
+            proxy_summary: Some(ProxyGainSummary {
+                total_requests: 12,
+                tokens_in: 4_000,
+                tokens_out: 900,
+                tokens_saved: 300,
+                trimmed_requests: 2,
+                routed_requests: 3,
+                routed_tokens_in: 1_200,
+                retrieve_calls: 2,
+                cache_read: 90_000,
+                cache_created: 10_000,
+                cache_fractures: 1,
+                ..Default::default()
+            }),
+            last_refresh: Instant::now(),
+            project_scope: None,
+        };
+        let mut terminal = Terminal::new(TestBackend::new(200, 50)).unwrap();
+        terminal.draw(|f| draw(f, &state)).unwrap();
+        let screen: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .chunks(200)
+            .map(|row| row.iter().map(|cell| cell.symbol()).collect::<String>() + "\n")
+            .collect();
+        for shown in ["Routed", "Recovery", "Cache hit", "recent fractures", "Cache effect"] {
+            assert!(screen.contains(shown), "{shown} missing:\n{screen}");
+        }
+    }
+}
