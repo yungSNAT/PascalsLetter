@@ -60,15 +60,21 @@ fn registered() -> &'static Mutex<Vec<&'static (dyn Method + 'static)>> {
     REGISTERED.get_or_init(|| Mutex::new(Vec::new()))
 }
 
+/// Add `method` under its name. The duplicate check and the insert happen
+/// under one lock, so concurrent registrations of a name keep exactly one.
 pub fn register(method: &'static (dyn Method + 'static)) -> Result<(), String> {
     let name = method.name();
-    if find(name).is_some() {
+    let mut registered = registered()
+        .lock()
+        .map_err(|_| "registry poisoned".to_string())?;
+    if METHODS
+        .iter()
+        .chain(registered.iter())
+        .any(|m| m.name() == name)
+    {
         return Err(format!("method `{name}` is already registered"));
     }
-    registered()
-        .lock()
-        .map_err(|_| "registry poisoned".to_string())?
-        .push(method);
+    registered.push(method);
     Ok(())
 }
 
