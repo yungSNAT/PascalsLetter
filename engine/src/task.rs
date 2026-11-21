@@ -266,13 +266,19 @@ pub fn register_kind(kind: &'static (dyn TaskKind + 'static)) -> Result<(), Stri
             "task kind name `{name}` must be alphanumeric with - or _, starting with a letter"
         ));
     }
-    if find_kind(name).is_some() {
+    // Check and insert under one lock, so concurrent registrations of a name
+    // keep exactly one.
+    let mut registered = registered_kinds()
+        .lock()
+        .map_err(|_| "kind registry poisoned".to_string())?;
+    if TASK_KINDS
+        .iter()
+        .chain(registered.iter())
+        .any(|k| k.name() == name)
+    {
         return Err(format!("task kind `{name}` is already registered"));
     }
-    registered_kinds()
-        .lock()
-        .map_err(|_| "kind registry poisoned".to_string())?
-        .push(kind);
+    registered.push(kind);
     Ok(())
 }
 
