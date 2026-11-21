@@ -74,7 +74,8 @@ pub fn run(path: &Path, verbose: u8) -> Result<()> {
         rtk.push_str(&format!("No dependency files found in {}", dir.display()));
     }
 
-    let shown = never_worse(&raw, &rtk);
+    // With no manifest there is no raw text to fall back to: say so.
+    let shown = if found { never_worse(&raw, &rtk) } else { &rtk };
     print!("{}", shown);
     timer.track("cat */deps", "rtk deps", &raw, shown);
     Ok(())
