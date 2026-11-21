@@ -1,6 +1,7 @@
 //! Integration tests: the proxy bill in `rtk gain`'s "Pipeline efficiency —
 //! last 30 days" panel prices only that window and signs the change.
-#![cfg(any(target_os = "linux", target_os = "macos"))]
+//! The panel is part of the engine build.
+#![cfg(all(feature = "engine", any(target_os = "linux", target_os = "macos")))]
 
 use std::path::{Path, PathBuf};
 
