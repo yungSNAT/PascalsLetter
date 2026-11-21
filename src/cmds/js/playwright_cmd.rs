@@ -58,8 +58,6 @@ struct PlaywrightSuite {
 #[derive(Debug, Deserialize)]
 struct PlaywrightSpec {
     title: String,
-    /// Overall pass/fail status across all projects
-    ok: bool,
     /// Per-project/browser executions
     #[serde(default)]
     tests: Vec<PlaywrightExecution>,
@@ -90,6 +88,19 @@ struct PlaywrightAttempt {
 struct PlaywrightError {
     #[serde(default)]
     message: String,
+    /// Set instead of `message` when something other than an Error was thrown.
+    #[serde(default)]
+    value: String,
+}
+
+impl PlaywrightError {
+    fn text(&self) -> String {
+        if self.message.is_empty() {
+            self.value.clone()
+        } else {
+            self.message.clone()
+        }
+    }
 }
 
 /// Parser for Playwright JSON output
@@ -102,14 +113,19 @@ impl OutputParser for PlaywrightParser {
         // Tier 1: Try JSON parsing
         match serde_json::from_str::<PlaywrightJsonOutput>(input) {
             Ok(json) => {
-                let mut failures = Vec::new();
+                // Errors outside tests first: the compact view lists only the
+                // first few failures, and these explain a whole failed run.
+                let mut failures: Vec<TestFailure> = json
+                    .errors
+                    .iter()
+                    .map(|e| TestFailure {
+                        test_name: "error outside any test".to_string(),
+                        file_path: String::new(),
+                        error_message: e.text(),
+                        stack_trace: None,
+                    })
+                    .collect();
                 collect_test_results(&json.suites, &mut failures);
-                failures.extend(json.errors.iter().map(|e| TestFailure {
-                    test_name: "error outside any test".to_string(),
-                    file_path: String::new(),
-                    error_message: e.message.clone(),
-                    stack_trace: None,
-                }));
                 let stats = &json.stats;
                 // The stats count executions (a test in each project), so
                 // the total does too; a flaky test passed on its retry.
@@ -147,14 +163,16 @@ fn collect_test_results(suites: &[PlaywrightSuite], failures: &mut Vec<TestFailu
     for suite in suites {
         let file_path = suite.file.as_deref().unwrap_or(&suite.title);
 
-        for spec in suite.specs.iter().filter(|spec| !spec.ok) {
+        // Every spec is searched: the reporter can keep `ok` from the first
+        // project when a later one failed.
+        for spec in &suite.specs {
             for test in spec.tests.iter().filter(|t| t.status == "unexpected") {
                 let error_msg = test
                     .results
                     .iter()
                     .find(|r| r.status == "failed" || r.status == "timedOut")
                     .and_then(|r| r.errors.first())
-                    .map(|e| e.message.clone())
+                    .map(PlaywrightError::text)
                     .unwrap_or_else(|| "Test failed".to_string());
                 let test_name = if spec.tests.len() > 1 && !test.project_name.is_empty() {
                     format!("{} [{}]", spec.title, test.project_name)
@@ -523,6 +541,49 @@ mod tests {
             shown.contains("globalTeardown failed: database still locked"),
             "{shown}"
         );
+    }
+
+    #[test]
+    fn a_failure_in_a_later_project_is_listed_when_the_spec_reads_ok() {
+        let json = r#"{
+            "stats": {"expected": 1, "unexpected": 1, "skipped": 0, "flaky": 0, "duration": 1.0},
+            "suites": [{"title": "cart.spec.ts", "specs": [
+                {"title": "adds an item", "ok": true, "tests": [
+                    {"projectName": "chromium", "status": "expected", "results": [{"status": "passed"}]},
+                    {"projectName": "firefox", "status": "unexpected",
+                     "results": [{"status": "failed", "errors": [{"message": "count was 0"}]}]}
+                ]}
+            ]}]
+        }"#;
+        let data = PlaywrightParser::parse(json).unwrap();
+        assert_eq!(data.failed, 1);
+        assert_eq!(data.failures.len(), 1);
+        assert_eq!(data.failures[0].test_name, "adds an item [firefox]");
+        assert_eq!(data.failures[0].error_message, "count was 0");
+    }
+
+    #[test]
+    fn errors_outside_tests_lead_the_failures_and_keep_thrown_values() {
+        let failing: Vec<String> = (1..=5)
+            .map(|i| {
+                format!(
+                    r#"{{"title": "case {i}", "ok": false, "tests": [{{"status": "unexpected",
+                        "results": [{{"status": "failed", "errors": [{{"message": "boom {i}"}}]}}]}}]}}"#
+                )
+            })
+            .collect();
+        let json = format!(
+            r#"{{"stats": {{"expected": 0, "unexpected": 5, "skipped": 0, "duration": 1.0}},
+                "suites": [{{"title": "many.spec.ts", "specs": [{}]}}],
+                "errors": [{{"message": "Error: globalTeardown failed"}}, {{"value": "'stopped'"}}]}}"#,
+            failing.join(",")
+        );
+        let data = PlaywrightParser::parse(&json).unwrap();
+        assert_eq!(data.failures.len(), 7);
+        assert_eq!(data.failures[1].error_message, "'stopped'");
+        let shown = data.format(FormatMode::Compact);
+        assert!(shown.contains("globalTeardown failed"), "{shown}");
+        assert!(shown.contains("'stopped'"), "{shown}");
     }
 
     #[test]
