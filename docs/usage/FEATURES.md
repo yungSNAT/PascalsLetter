@@ -938,7 +938,7 @@ Auto-detects `uv` when available and uses it instead of `pip`.
 rtk deps [path]    # Default: current directory
 ```
 
-Auto-detects `Cargo.toml`, `package.json`, `pyproject.toml`, `go.mod`, `Gemfile`, etc.
+Auto-detects `Cargo.toml`, `package.json`, `requirements.txt`, `pyproject.toml` and `go.mod`. Cargo dependencies are listed under `Dependencies`, `Dev` and `Build`, each in file order.
 
 ---
 
