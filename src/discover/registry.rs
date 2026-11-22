@@ -9442,3 +9442,7 @@ mod compiled_tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "registry_coverage_gen.rs"]
+mod coverage_gen_src_discover_registry;

@@ -1023,3 +1023,7 @@ mod tests {
         assert!(coverage.is_estimated());
     }
 }
+
+#[cfg(test)]
+#[path = "mod_coverage_gen.rs"]
+mod coverage_gen_src_discover_mod;

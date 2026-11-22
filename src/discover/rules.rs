@@ -1193,3 +1193,7 @@ pub const IGNORED_PREFIXES: &[&str] = &[
 pub const IGNORED_EXACT: &[&str] = &[
     "cd", "echo", "true", "false", "wait", "pwd", "bash", "sh", "fi", "done",
 ];
+
+#[cfg(test)]
+#[path = "rules_coverage_gen.rs"]
+mod coverage_gen_src_discover_rules;
