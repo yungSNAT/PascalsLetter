@@ -255,3 +255,7 @@ mod tests {
         assert_eq!(did_you_mean("zzz", names.iter().copied()), None);
     }
 }
+
+#[cfg(test)]
+#[path = "diag_coverage_gen.rs"]
+mod coverage_gen_engine_src_pipeline_diag;

@@ -1954,3 +1954,7 @@ mod rule_shape_checks {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "validate_coverage_gen.rs"]
+mod coverage_gen_engine_src_pipeline_validate;

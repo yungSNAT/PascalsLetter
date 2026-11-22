@@ -128,3 +128,7 @@ mod tests {
         assert_eq!(TRUNCATION_MARKER_TAG, "lines omitted by rtk-proxy");
     }
 }
+
+#[cfg(test)]
+#[path = "marker_coverage_gen.rs"]
+mod coverage_gen_engine_src_marker;

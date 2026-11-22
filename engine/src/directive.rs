@@ -164,3 +164,7 @@ mod tests {
         assert_eq!(merged, "first block\n\nsecond block");
     }
 }
+
+#[cfg(test)]
+#[path = "directive_coverage_gen.rs"]
+mod coverage_gen_engine_src_directive;
