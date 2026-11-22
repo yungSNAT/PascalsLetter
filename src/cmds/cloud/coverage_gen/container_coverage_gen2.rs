@@ -127,7 +127,7 @@ mod cli {
         for &(name, script) in scripts {
             let path = dir.path().join(name);
             fs::write(&path, format!("#!/bin/sh\n{script}\n")).unwrap();
-            fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
         }
         dir
     }

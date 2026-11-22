@@ -52,7 +52,7 @@ esac
 "#,
     )
     .expect("write fake curl");
-    std::fs::set_permissions(&curl, std::fs::Permissions::from_mode(0o755))
+    std::fs::set_permissions(&curl, std::fs::Permissions::from_mode(0o700))
         .expect("make fake curl executable");
 
     let mut cmd = rtk_command();

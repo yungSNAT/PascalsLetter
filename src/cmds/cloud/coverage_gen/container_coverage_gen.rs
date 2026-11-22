@@ -53,7 +53,7 @@ fn run_rtk_with_fake_docker(script: &str, args: &[&str]) -> std::process::Output
     let dir = crate::core::test_isolation::tempdir();
     let tool = dir.path().join("docker");
     std::fs::write(&tool, script).expect("write fake docker");
-    std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755))
+    std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o700))
         .expect("chmod fake docker");
     let mut cmd = crate::core::test_isolation::rtk_command();
     let inherited: String = cmd

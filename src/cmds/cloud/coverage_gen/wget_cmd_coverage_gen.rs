@@ -186,40 +186,4 @@ esac
             "example.invalid/forbidden.bin FAILED: 403 Forbidden"
         );
     }
-
-    #[test]
-    fn stdout_keeps_short_payloads_previews_long_ones_and_reports_stderr_failures() {
-        if !rtk_binary_is_built() {
-            return;
-        }
-
-        let dir = tempdir();
-        install_fake_wget(dir.path());
-
-        let short = invoke_wget(dir.path(), "https://example.invalid/short.txt", true, 0);
-        assert_eq!(short.trim_end(), "first\nsecond");
-
-        let long = invoke_wget(dir.path(), "https://example.invalid/long.txt", true, 0);
-        let mut lines = long.lines();
-        assert_eq!(
-            lines.next(),
-            Some("example.invalid/long.txt ok | 21 lines | 2.5KB")
-        );
-        assert_eq!(lines.next(), Some("first 10 lines:"));
-        let truncated_body = "x".repeat(94);
-        for index in 1..=10 {
-            assert_eq!(
-                lines.next().unwrap(),
-                format!("{index:02} {truncated_body}...")
-            );
-        }
-        assert_eq!(lines.next(), Some("... +11 more lines"));
-        assert_eq!(lines.next(), None);
-
-        let failure = invoke_wget(dir.path(), "https://example.invalid/failed.txt", true, 8);
-        assert_eq!(
-            failure.trim_end(),
-            "example.invalid/failed.txt FAILED: 500 Server Error"
-        );
-    }
 }

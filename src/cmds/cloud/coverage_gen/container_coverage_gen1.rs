@@ -177,7 +177,7 @@ exit 0
     let path = dir.join("docker");
     std::fs::write(&path, script).expect("write fake docker");
     let mut perms = std::fs::metadata(&path).expect("metadata").permissions();
-    perms.set_mode(0o755);
+    perms.set_mode(0o700);
     std::fs::set_permissions(&path, perms).expect("chmod");
 
     let mut cmd = crate::core::test_isolation::rtk_command();

@@ -210,7 +210,7 @@ fn run_with_fake_aws(body: &str, args: &[&str]) -> std::process::Output {
     let script = dir.path().join("aws");
     std::fs::write(&script, format!("#!/bin/sh\n{}\n", body)).unwrap();
     let mut perms = std::fs::metadata(&script).unwrap().permissions();
-    perms.set_mode(0o755);
+    perms.set_mode(0o700);
     std::fs::set_permissions(&script, perms).unwrap();
 
     let mut cmd = crate::core::test_isolation::rtk_command();
