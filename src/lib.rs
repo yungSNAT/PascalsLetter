@@ -4203,7 +4203,8 @@ fn native_command(skip_env: bool) -> Option<(String, Vec<std::ffi::OsString>)> {
 }
 
 /// Returns true for commands that go through the hook pipeline
-/// and therefore require integrity verification.
+/// and therefore require integrity verification. Meta commands (init, gain,
+/// verify, etc.) are excluded: the user runs them directly, not through the hook.
 ///
 /// SECURITY: whitelist pattern — new commands are NOT integrity-checked
 /// until explicitly added here. A forgotten command fails open (no check)
