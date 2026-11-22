@@ -145,6 +145,35 @@ fn cargo_summary_counts_path_git_workspace_and_target_dependencies() {
     );
 }
 
+/// Inline and dotted dependency tables have no header of their own: they sit where their
+/// enclosing table does.
+#[test]
+fn cargo_summary_keeps_file_order_for_inline_and_dotted_tables() {
+    for (manifest, expected) in [
+        (
+            "dependencies = { serde = \"1\" }\n\n[target.'cfg(unix)'.dependencies]\nlibc = \"0.2\"\n",
+            "serde (1)\n    libc (0.2)",
+        ),
+        (
+            "[package]\nname = \"croft\"\n\n[target.'cfg(unix)']\ndependencies.libc = \"0.2\"\n\n\
+             [dependencies]\nserde = \"1\"\n",
+            "libc (0.2)\n    serde (1)",
+        ),
+    ] {
+        let dir = common::tempdir();
+        fs::write(
+            dir.path().join("Cargo.toml"),
+            format!("{PADDING}{manifest}"),
+        )
+        .expect("write Cargo.toml");
+        assert_eq!(
+            deps(dir.path()),
+            format!("Rust (Cargo.toml):\n  Dependencies (2):\n    {expected}\n"),
+            "{manifest}"
+        );
+    }
+}
+
 #[test]
 fn pyproject_summary_separates_optional_dependencies_and_reads_one_line_lists() {
     let dir = common::tempdir();
