@@ -2287,12 +2287,16 @@ mod tests {
             "compress [ansi, dedupe, progress]".to_string(),
             "command_matches=目錄變更".repeat(8),
         )];
-        let slices = vec![(
-            "a hook slice whose label runs past the label column".to_string(),
-            4,
-            100,
-            40,
-        )];
+        let slices = vec![
+            (
+                "a hook slice whose label runs past the label column".to_string(),
+                4,
+                100,
+                40,
+            ),
+            // An activity wider than its column and a percentage over 999.
+            ("busy".to_string(), 10_000_000_000, 1, 100_000),
+        ];
         let tasks = vec![crate::core::tracking::AttributionRow {
             name: "資料集".repeat(20),
             calls: 3,

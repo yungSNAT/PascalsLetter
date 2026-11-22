@@ -641,9 +641,8 @@ mod tests {
     use super::*;
     use ratatui::{Terminal, backend::TestBackend};
 
-    #[test]
-    fn the_proxy_panel_keeps_cache_rows_beside_routing_and_recovery() {
-        let state = State {
+    fn proxy_state() -> State {
+        State {
             tracker_summary: None,
             proxy_summary: Some(ProxyGainSummary {
                 total_requests: 12,
@@ -661,16 +660,24 @@ mod tests {
             }),
             last_refresh: Instant::now(),
             project_scope: None,
-        };
-        let mut terminal = Terminal::new(TestBackend::new(200, 50)).unwrap();
-        terminal.draw(|f| draw(f, &state)).unwrap();
-        let screen: String = terminal
+        }
+    }
+
+    fn screen(height: u16) -> String {
+        let mut terminal = Terminal::new(TestBackend::new(200, height)).unwrap();
+        terminal.draw(|f| draw(f, &proxy_state())).unwrap();
+        terminal
             .backend()
             .buffer()
             .content()
             .chunks(200)
             .map(|row| row.iter().map(|cell| cell.symbol()).collect::<String>() + "\n")
-            .collect();
+            .collect()
+    }
+
+    #[test]
+    fn the_proxy_panel_keeps_cache_rows_beside_routing_and_recovery() {
+        let screen = screen(50);
         for shown in [
             "Routed",
             "Recovery",
@@ -678,6 +685,16 @@ mod tests {
             "recent fractures",
             "Cache effect",
         ] {
+            assert!(screen.contains(shown), "{shown} missing:\n{screen}");
+        }
+    }
+
+    #[test]
+    fn a_terminal_at_the_old_minimum_height_keeps_every_panel() {
+        // Header, KPI row, share panel, context panel, table minimum, footer.
+        let height = 3 + 9 + if share_cta_available() { 3 } else { 0 } + 11 + 5 + 1;
+        let screen = screen(height);
+        for shown in ["Context composition", "By command", "live view"] {
             assert!(screen.contains(shown), "{shown} missing:\n{screen}");
         }
     }
