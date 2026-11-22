@@ -317,3 +317,7 @@ fn extract_number(text: &str, after: &str) -> Option<usize> {
         .and_then(|c| c.get(1))
         .and_then(|m| m.as_str().parse().ok())
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/summary_coverage_gen.rs"]
+mod coverage_gen_src_cmds_system_summary;

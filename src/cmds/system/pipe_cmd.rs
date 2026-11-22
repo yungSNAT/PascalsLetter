@@ -720,3 +720,7 @@ Total Test time (real) =   0.01 sec\n";
         assert!(!out.is_empty());
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/pipe_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_system_pipe_cmd;

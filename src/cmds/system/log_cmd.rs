@@ -279,3 +279,7 @@ mod tests {
         assert!(result.contains("ERRORS"));
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/log_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_system_log_cmd;

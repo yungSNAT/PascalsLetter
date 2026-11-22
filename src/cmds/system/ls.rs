@@ -1474,3 +1474,7 @@ mod tests {
         assert!(entries.is_empty());
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/ls_coverage_gen.rs"]
+mod coverage_gen_src_cmds_system_ls;
