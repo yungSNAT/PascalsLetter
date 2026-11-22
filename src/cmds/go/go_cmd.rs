@@ -1449,3 +1449,7 @@ utils.go:15:5: unreachable code"#;
         assert!(!result.contains("fuzz in"), "got: {}", result);
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/go_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_go_go_cmd;

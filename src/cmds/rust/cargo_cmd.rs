@@ -4115,3 +4115,11 @@ error: could not compile `rtk` (test "repro_compile_fail") due to 1 previous err
         assert!(result.contains("could not compile"), "got: {}", result);
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/cargo_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_rust_cargo_cmd;
+
+#[cfg(test)]
+#[path = "coverage_gen/cargo_cmd_coverage_gen1.rs"]
+mod coverage_gen1_src_cmds_rust_cargo_cmd;
