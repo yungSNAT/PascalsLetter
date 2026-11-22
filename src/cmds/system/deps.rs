@@ -84,21 +84,35 @@ pub fn run(path: &Path, verbose: u8) -> Result<()> {
 
 fn summarize_cargo_str(path: &Path) -> Result<String> {
     let doc = read_toml(path)?;
-    let mut deps = Vec::new();
-    let mut dev_deps = Vec::new();
-    // The manifest's own tables, then each `[target.<cfg>]` table.
+    // (table, is dev) for the manifest's own tables, each `[target.<cfg>]` table's and
+    // `[workspace.dependencies]`, listed in the order the file declares them.
     let mut scopes: Vec<&dyn TableLike> = vec![doc.as_table()];
     if let Some(targets) = doc.get("target").and_then(Item::as_table_like) {
         scopes.extend(targets.iter().filter_map(|(_, t)| t.as_table_like()));
     }
-    for scope in scopes {
-        cargo_deps(scope.get("dependencies"), &mut deps);
-        cargo_deps(scope.get("dev-dependencies"), &mut dev_deps);
+    let mut tables: Vec<(&Item, bool)> = scopes
+        .iter()
+        .flat_map(|scope| {
+            [
+                (scope.get("dependencies"), false),
+                (scope.get("dev-dependencies"), true),
+            ]
+        })
+        .chain([(
+            doc.get("workspace").and_then(|w| w.get("dependencies")),
+            false,
+        )])
+        .filter_map(|(table, dev)| Some((table?, dev)))
+        .collect();
+    tables.sort_by_key(|(table, _)| {
+        let position = table.as_table().and_then(|t| t.position());
+        (position.is_none(), position)
+    });
+    let mut deps = Vec::new();
+    let mut dev_deps = Vec::new();
+    for (table, dev) in tables {
+        cargo_deps(Some(table), if dev { &mut dev_deps } else { &mut deps });
     }
-    cargo_deps(
-        doc.get("workspace").and_then(|w| w.get("dependencies")),
-        &mut deps,
-    );
 
     let mut out = String::new();
     push_section(&mut out, "Dependencies", &deps, MAX_DEPS);
@@ -107,7 +121,7 @@ fn summarize_cargo_str(path: &Path) -> Result<String> {
 }
 
 /// `name (source)` for each entry of a dependency table: its version, else
-/// where it comes from (`path`, `git`, `workspace`).
+/// where it comes from (`path`, `git`, Poetry's `url`, `workspace`).
 fn cargo_deps(table: Option<&Item>, out: &mut Vec<String>) {
     let Some(table) = table.and_then(Item::as_table_like) else {
         return;
@@ -120,6 +134,8 @@ fn cargo_deps(table: Option<&Item>, out: &mut Vec<String>) {
             format!("path {path}")
         } else if let Some(git) = field("git") {
             format!("git {git}")
+        } else if let Some(url) = field("url") {
+            format!("url {url}")
         } else if spec.get("workspace").and_then(Item::as_bool) == Some(true) {
             "workspace".to_string()
         } else {
