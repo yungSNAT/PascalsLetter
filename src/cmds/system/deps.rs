@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use regex::Regex;
 use std::fs;
 use std::path::Path;
-use toml_edit::{DocumentMut, Item, TableLike};
+use toml_edit::{ImDocument, Item, TableLike};
 
 const MAX_DEPS: usize = CAP_WARNINGS;
 // dev deps are secondary to prod — show fewer.
@@ -84,64 +84,36 @@ pub fn run(path: &Path, verbose: u8) -> Result<()> {
 
 fn summarize_cargo_str(path: &Path) -> Result<String> {
     let doc = read_toml(path)?;
-    // The root's dependency tables, each `[target.<cfg>]` table's and
-    // `[workspace.dependencies]`, in the order the file declares them.
-    let root = doc.as_table().position().unwrap_or(0);
-    let both = [("dependencies", false), ("dev-dependencies", true)];
-    let mut tables = Vec::new();
-    dep_tables(doc.as_table(), root, &both, &mut tables);
-    if let Some(target) = doc.get("target") {
-        let target_at = header_at(target, root);
-        for (_, cfg) in target.as_table_like().into_iter().flat_map(|t| t.iter()) {
-            if let Some(scope) = cfg.as_table_like() {
-                dep_tables(scope, header_at(cfg, target_at), &both, &mut tables);
-            }
-        }
+    // The root's dependency tables, each `[target.<cfg>]` table's and `[workspace.dependencies]`.
+    let mut scopes: Vec<&dyn TableLike> = vec![doc.as_table()];
+    if let Some(targets) = doc.get("target").and_then(Item::as_table_like) {
+        scopes.extend(targets.iter().filter_map(|(_, cfg)| cfg.as_table_like()));
     }
-    if let Some(workspace) = doc.get("workspace")
-        && let Some(scope) = workspace.as_table_like()
-    {
-        let deps_only = [("dependencies", false)];
-        dep_tables(scope, header_at(workspace, root), &deps_only, &mut tables);
-    }
-    tables.sort_by_key(|&(at, _, _)| at);
     let mut deps = Vec::new();
     let mut dev_deps = Vec::new();
-    for (_, table, dev) in tables {
-        cargo_deps(Some(table), if dev { &mut dev_deps } else { &mut deps });
+    for scope in scopes {
+        cargo_deps(scope.get("dependencies"), &mut deps);
+        cargo_deps(scope.get("dev-dependencies"), &mut dev_deps);
     }
+    cargo_deps(
+        doc.get("workspace").and_then(|w| w.get("dependencies")),
+        &mut deps,
+    );
+    // Each dependency where the file declares it, whichever table form holds it.
+    let in_file_order = |mut found: Vec<(usize, String)>| -> Vec<String> {
+        found.sort_by_key(|&(at, _)| at);
+        found.into_iter().map(|(_, dep)| dep).collect()
+    };
 
     let mut out = String::new();
-    push_section(&mut out, "Dependencies", &deps, MAX_DEPS);
-    push_section(&mut out, "Dev", &dev_deps, MAX_DEV_DEPS);
+    push_section(&mut out, "Dependencies", &in_file_order(deps), MAX_DEPS);
+    push_section(&mut out, "Dev", &in_file_order(dev_deps), MAX_DEV_DEPS);
     Ok(out)
 }
 
-/// Where the file declares `item`: its own `[header]`'s position, else (an inline or dotted
-/// table) the enclosing header's.
-fn header_at(item: &Item, enclosing: usize) -> usize {
-    item.as_table()
-        .and_then(|t| t.position())
-        .unwrap_or(enclosing)
-}
-
-/// `(position, table, is dev)` for each of `keys` that `scope` holds.
-fn dep_tables<'a>(
-    scope: &'a dyn TableLike,
-    scope_at: usize,
-    keys: &[(&str, bool)],
-    out: &mut Vec<(usize, &'a Item, bool)>,
-) {
-    for &(key, dev) in keys {
-        if let Some(table) = scope.get(key) {
-            out.push((header_at(table, scope_at), table, dev));
-        }
-    }
-}
-
-/// `name (source)` for each entry of a dependency table: its version, else
-/// where it comes from (`path`, `git`, Poetry's `url`, `workspace`).
-fn cargo_deps(table: Option<&Item>, out: &mut Vec<String>) {
+/// `(offset in the file, name (source))` for each entry of a dependency table: its version,
+/// else where it comes from (`path`, `git`, Poetry's `url`, `workspace`).
+fn cargo_deps(table: Option<&Item>, out: &mut Vec<(usize, String)>) {
     let Some(table) = table.and_then(Item::as_table_like) else {
         return;
     };
@@ -160,16 +132,16 @@ fn cargo_deps(table: Option<&Item>, out: &mut Vec<String>) {
         } else {
             "*".to_string()
         };
-        out.push(format!("{name} ({source})"));
+        let at = spec.span().map_or(usize::MAX, |span| span.start);
+        out.push((at, format!("{name} ({source})")));
     }
 }
 
-fn read_toml(path: &Path) -> Result<DocumentMut> {
+/// The parsed manifest, keeping each value's place in the file.
+fn read_toml(path: &Path) -> Result<ImDocument<String>> {
     let content =
         fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
-    content
-        .parse()
-        .with_context(|| format!("Failed to parse {}", path.display()))
+    ImDocument::parse(content).with_context(|| format!("Failed to parse {}", path.display()))
 }
 
 /// `  <title> (<n>):` and up to `max` items, then a count of the rest.
@@ -296,7 +268,12 @@ fn pep508_list(list: Option<&Item>, out: &mut Vec<String>) {
 fn poetry_deps(table: Option<&Item>, out: &mut Vec<String>) {
     let mut found = Vec::new();
     cargo_deps(table, &mut found);
-    out.extend(found.into_iter().filter(|dep| !dep.starts_with("python (")));
+    out.extend(
+        found
+            .into_iter()
+            .map(|(_, dep)| dep)
+            .filter(|dep| !dep.starts_with("python (")),
+    );
 }
 
 /// The values of a table, or nothing.
