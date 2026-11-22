@@ -145,8 +145,8 @@ fn cargo_summary_counts_path_git_workspace_and_target_dependencies() {
     );
 }
 
-/// Inline and dotted dependency tables have no header of their own: they sit where their
-/// enclosing table does.
+/// Inline and dotted dependency tables have no header of their own: each dependency is
+/// listed where the file declares it.
 #[test]
 fn cargo_summary_keeps_file_order_for_inline_and_dotted_tables() {
     for (manifest, expected) in [
@@ -157,6 +157,10 @@ fn cargo_summary_keeps_file_order_for_inline_and_dotted_tables() {
         (
             "[package]\nname = \"croft\"\n\n[target.'cfg(unix)']\ndependencies.libc = \"0.2\"\n\n\
              [dependencies]\nserde = \"1\"\n",
+            "libc (0.2)\n    serde (1)",
+        ),
+        (
+            "target.'cfg(unix)'.dependencies.libc = \"0.2\"\ndependencies = { serde = \"1\" }\n",
             "libc (0.2)\n    serde (1)",
         ),
     ] {
