@@ -114,7 +114,7 @@ fn cargo_passthrough_preserves_arguments_and_child_output() {
         "#!/bin/sh\nprintf '<%s>\\n' \"$@\"\nprintf '%s\\n' passthrough-stderr >&2\n",
     )
     .unwrap();
-    fs::set_permissions(&fake_cargo, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::set_permissions(&fake_cargo, fs::Permissions::from_mode(0o700)).unwrap();
 
     let mut cmd = test_isolation::rtk_command();
     let inherited_path = cmd

@@ -69,7 +69,7 @@ fi
     for name in ["rake", "rails"] {
         let tool = dir.path().join(name);
         fs::write(&tool, script).unwrap();
-        fs::set_permissions(&tool, fs::Permissions::from_mode(0o755)).unwrap();
+        fs::set_permissions(&tool, fs::Permissions::from_mode(0o700)).unwrap();
     }
 
     let mut cmd = rtk_command();

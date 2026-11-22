@@ -165,7 +165,7 @@ esac
 "#,
     )
     .unwrap();
-    fs::set_permissions(&rspec, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::set_permissions(&rspec, fs::Permissions::from_mode(0o700)).unwrap();
 
     let cases: &[(&[&str], bool)] = &[
         (&["--fail-fast"], true),

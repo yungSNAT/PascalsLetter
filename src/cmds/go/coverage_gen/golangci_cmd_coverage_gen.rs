@@ -102,7 +102,7 @@ mod cli {
     fn install_linter(dir: &Path, script: &str) {
         let tool = dir.join("golangci-lint");
         fs::write(&tool, script).unwrap();
-        fs::set_permissions(tool, fs::Permissions::from_mode(0o755)).unwrap();
+        fs::set_permissions(tool, fs::Permissions::from_mode(0o700)).unwrap();
     }
 
     fn isolated_command(dir: &Path) -> Command {

@@ -307,7 +307,7 @@ fn rtk_with_fake_cargo(dir: &std::path::Path) -> std::process::Command {
     let script = dir.join("cargo");
     std::fs::write(&script, FAKE_CARGO).expect("write fake cargo");
     let mut perms = std::fs::metadata(&script).expect("stat").permissions();
-    perms.set_mode(0o755);
+    perms.set_mode(0o700);
     std::fs::set_permissions(&script, perms).expect("chmod");
 
     let mut cmd = crate::core::test_isolation::rtk_command();

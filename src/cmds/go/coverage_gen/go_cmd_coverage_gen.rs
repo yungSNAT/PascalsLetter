@@ -164,7 +164,7 @@ mod cli {
         let dir = test_isolation::tempdir();
         let executable = dir.path().join("go");
         std::fs::write(&executable, format!("#!/bin/sh\n{script}")).unwrap();
-        std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
         dir
     }
 
