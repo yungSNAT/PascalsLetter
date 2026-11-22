@@ -72,7 +72,7 @@ fn verbose_wc_reports_the_command_and_filters_its_output() {
         "#!/bin/sh\nprintf '%s\\n' '      7     11     63 sample.txt'\n",
     )
     .expect("write fake wc");
-    std::fs::set_permissions(&wc, std::fs::Permissions::from_mode(0o755))
+    std::fs::set_permissions(&wc, std::fs::Permissions::from_mode(0o700))
         .expect("make fake wc executable");
 
     let mut cmd = rtk_command();

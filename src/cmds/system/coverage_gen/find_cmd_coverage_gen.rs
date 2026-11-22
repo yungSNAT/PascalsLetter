@@ -181,7 +181,7 @@ esac
 "#,
     )
     .unwrap();
-    fs::set_permissions(&fake_find, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::set_permissions(&fake_find, fs::Permissions::from_mode(0o700)).unwrap();
 
     test_isolation::with_root(home.path(), || {
         let run_find = |pattern: &str| {

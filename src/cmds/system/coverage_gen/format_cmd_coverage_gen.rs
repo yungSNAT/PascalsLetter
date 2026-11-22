@@ -121,7 +121,7 @@ exit "$FORMAT_TEST_STATUS"
 "#,
         )
         .unwrap();
-        fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();
     }
 
     #[test]

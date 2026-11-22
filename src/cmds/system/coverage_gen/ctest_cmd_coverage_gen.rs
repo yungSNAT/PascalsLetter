@@ -113,7 +113,7 @@ printf 'Test project fake-build\n1/1 Test #1: %s .... Passed 0.25 sec\n' "$name"
 "#,
     )
     .unwrap();
-    std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o700)).unwrap();
 
     let invoke = |args: &[&str]| {
         let mut cmd = rtk_command();

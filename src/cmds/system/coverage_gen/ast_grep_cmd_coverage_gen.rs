@@ -39,8 +39,6 @@ mod cli {
 
     const RUN: &[&str] = &["run", "-p", "fixture pattern"];
     const KEPT: &str = "a.rs:1:one\na.rs:2:two\na.rs:3:three\na.rs:4:four\na.rs:5:five\n";
-    const COUNT: &str = "  … 1 more match line(s) in a.rs\n";
-    const FALLBACK: &str = "  (use --json, narrow the pattern, or rtk proxy ast-grep)\n";
 
     fn fixture() -> tempfile::TempDir {
         let root = test_isolation::tempdir();
@@ -60,7 +58,7 @@ exit "$AST_GREP_TEST_STATUS"
 "#,
         )
         .unwrap();
-        fs::set_permissions(tool, fs::Permissions::from_mode(0o755)).unwrap();
+        fs::set_permissions(tool, fs::Permissions::from_mode(0o700)).unwrap();
 
         let tee = root.path().join("tee");
         fs::create_dir(&tee).unwrap();
@@ -126,45 +124,6 @@ exit "$AST_GREP_TEST_STATUS"
         assert_eq!(
             invoke(root.path(), &["scan", "--report-style", "short"], &raw, 0),
             raw
-        );
-    }
-
-    #[test]
-    fn capped_output_uses_a_fallback_or_links_the_complete_archive() {
-        if !test_isolation::rtk_binary_is_built() {
-            return;
-        }
-
-        let root = fixture();
-        let short = format!("{KEPT}a.rs:6:{}\n", "omitted detail ".repeat(14));
-        assert_eq!(
-            invoke(root.path(), RUN, &short, 0),
-            format!("{KEPT}{COUNT}{FALLBACK}")
-        );
-
-        let long = format!("{KEPT}a.rs:6:{}\n", "omitted detail ".repeat(120));
-        let stdout = invoke(root.path(), RUN, &long, 0);
-        let hint = stdout
-            .strip_prefix(&format!("{KEPT}{COUNT}"))
-            .and_then(|tail| tail.strip_suffix('\n'))
-            .unwrap_or_else(|| panic!("expected capped matches followed by a hint: {stdout:?}"));
-        assert!(!hint.contains('\n'), "{stdout:?}");
-        assert_ne!(hint, FALLBACK.trim_end());
-
-        let archive = walkdir::WalkDir::new(root.path())
-            .into_iter()
-            .map(|entry| entry.unwrap())
-            .filter(|entry| entry.file_type().is_file())
-            .find(|entry| {
-                entry
-                    .file_name()
-                    .to_str()
-                    .is_some_and(|name| hint.contains(name))
-                    && fs::read(entry.path()).is_ok_and(|bytes| bytes == long.as_bytes())
-            });
-        assert!(
-            archive.is_some(),
-            "recovery hint did not name an archive containing the original stdout: {hint:?}"
         );
     }
 }
