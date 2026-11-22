@@ -105,7 +105,7 @@ fn dependency_list_caps_details_but_counts_hidden_entries() {
 #[cfg(all(unix, feature = "engine"))]
 #[test]
 fn gradlew_cli_prefers_the_wrapper_and_routes_each_task() {
-    use crate::core::{test_isolation, user_env};
+    use crate::core::test_isolation;
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
     use std::path::Path;
@@ -132,10 +132,6 @@ fn gradlew_cli_prefers_the_wrapper_and_routes_each_task() {
                 .chain(std::env::split_paths(inherited_path)),
         )
         .unwrap();
-        // Preserve coverage collection when the test runner supplies a profile path.
-        if let Some(profile) = user_env::var_os("LLVM_PROFILE_FILE") {
-            cmd.env("LLVM_PROFILE_FILE", profile);
-        }
         let output = cmd
             .current_dir(project.path())
             .env("PATH", path)

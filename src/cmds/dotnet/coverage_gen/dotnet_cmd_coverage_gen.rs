@@ -389,7 +389,7 @@ fn run_rtk_with_fake_dotnet(args: &[&str]) -> std::process::Output {
     let script = bin.join("dotnet");
     std::fs::write(&script, FAKE_DOTNET).expect("write fake dotnet");
     let mut perms = std::fs::metadata(&script).expect("metadata").permissions();
-    perms.set_mode(0o755);
+    perms.set_mode(0o700);
     std::fs::set_permissions(&script, perms).expect("chmod fake dotnet");
 
     let mut cmd = test_isolation::rtk_command();

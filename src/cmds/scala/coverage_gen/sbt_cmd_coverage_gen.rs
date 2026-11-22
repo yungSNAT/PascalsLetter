@@ -180,7 +180,7 @@ esac
 "#,
     )
     .unwrap();
-    fs::set_permissions(&sbt, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::set_permissions(&sbt, fs::Permissions::from_mode(0o700)).unwrap();
 
     let cases = [
         (&["test"][..], "test\n", "sbt test: 7 passed"),
