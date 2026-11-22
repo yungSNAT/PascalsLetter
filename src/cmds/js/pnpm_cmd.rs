@@ -719,3 +719,7 @@ mod tests {
         assert!(eslint.dev_dependency, "eslint should be dev");
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/pnpm_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_js_pnpm_cmd;

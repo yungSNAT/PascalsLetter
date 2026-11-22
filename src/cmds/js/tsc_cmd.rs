@@ -748,3 +748,7 @@ src/app.tsx(20,5): error TS2345: Argument of type 'number' is not assignable.
         assert!(result.contains("TS2345"), "got: {}", result);
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/tsc_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_js_tsc_cmd;
