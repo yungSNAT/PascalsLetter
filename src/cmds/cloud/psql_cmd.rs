@@ -362,3 +362,7 @@ name | bob
         );
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/psql_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_cloud_psql_cmd;
