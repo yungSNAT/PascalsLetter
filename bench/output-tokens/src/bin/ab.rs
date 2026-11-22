@@ -30,6 +30,8 @@ const RTK_HOOK: &str = r#"{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"t
 #[derive(Parser)]
 #[command(about = "Billed A/B over corpus commands, in dtk's ab-test.sh style")]
 struct Args {
+    /// The corpus of the output-tokens run that set up `--repos`, read with the same
+    /// schema, so each repository needs its `url` and `rev`.
     #[arg(long, default_value = "corpus.toml")]
     corpus: PathBuf,
     #[arg(long, default_value = "ab-cases.toml")]
