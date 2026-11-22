@@ -98,7 +98,7 @@ mod binary {
         let path = dir.join(name);
         std::fs::write(&path, script).unwrap();
         let mut perms = std::fs::metadata(&path).unwrap().permissions();
-        perms.set_mode(0o755);
+        perms.set_mode(0o700);
         std::fs::set_permissions(&path, perms).unwrap();
     }
 

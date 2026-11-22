@@ -57,7 +57,7 @@ fn write_script(path: &std::path::Path, body: &str) {
     let mut perms = std::fs::metadata(path)
         .expect("stat fake tool")
         .permissions();
-    perms.set_mode(0o755);
+    perms.set_mode(0o700);
     std::fs::set_permissions(path, perms).expect("chmod fake tool");
 }
 

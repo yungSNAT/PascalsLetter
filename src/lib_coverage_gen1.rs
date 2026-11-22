@@ -54,7 +54,7 @@ mod spawned {
                 );
                 let p = bin.join(tool);
                 std::fs::write(&p, script).expect("write fake tool");
-                std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755))
+                std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o700))
                     .expect("chmod fake tool");
             }
             let inherited = test_isolation::rtk_command()
