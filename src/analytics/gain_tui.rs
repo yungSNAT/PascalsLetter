@@ -83,7 +83,12 @@ fn event_loop(terminal: &mut ratatui::DefaultTerminal, state: &mut State) -> Res
 
 fn draw(f: &mut Frame, state: &State) {
     let area = f.area();
-    let kpi_rows = kpi_text_rows(state);
+    // Extra KPI rows only from height beyond every panel's old minimum, so a short
+    // terminal lays out as before: header, share panel, context, table, footer.
+    let others = 3 + if share_cta_available() { 3 } else { 0 } + 11 + 5 + 1;
+    let kpi_rows = kpi_text_rows(state)
+        .min(area.height.saturating_sub(others + 3))
+        .max(6);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -235,7 +240,7 @@ fn draw_header(f: &mut Frame, area: Rect, state: &State) {
     f.render_widget(paragraph, area);
 }
 
-/// Text rows both KPI panels get: the taller panel's line count, at least 6.
+/// Text rows the taller KPI panel needs.
 fn kpi_text_rows(state: &State) -> u16 {
     let tracker = state
         .tracker_summary
@@ -245,7 +250,7 @@ fn kpi_text_rows(state: &State) -> u16 {
         .proxy_summary
         .as_ref()
         .map_or(0, |p| proxy_lines(p).len());
-    u16::try_from(tracker.max(proxy).max(6)).unwrap_or(u16::MAX)
+    u16::try_from(tracker.max(proxy)).unwrap_or(u16::MAX)
 }
 
 fn draw_kpi_panels(f: &mut Frame, area: Rect, state: &State, text_rows: u16) {

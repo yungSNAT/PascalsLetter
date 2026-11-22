@@ -1465,7 +1465,13 @@ fn terminal_card(
         } else {
             bar.normal().to_string()
         };
-        let text = format!("{} {activity:>14}  ", fit_cells(label, 28));
+        // Each column held to its width: label 28, activity 14 (right-aligned), percent 4.
+        let activity = clip_cells(&activity, 14);
+        let text = format!(
+            "{} {}{activity}  ",
+            fit_cells(label, 28),
+            " ".repeat(14 - cells(&activity))
+        );
         let unit_str = format!(" {unit}");
         let pad = W.saturating_sub(cells(&text) + 10 + 4 + 5 + cells(&unit_str));
         format!(
@@ -1473,7 +1479,7 @@ fn terminal_card(
             "│".cyan(),
             text,
             colored_bar,
-            pct,
+            pct.clamp(-999.0, 999.0),
             unit_str.dimmed(),
             " ".repeat(pad),
             "│".cyan()
@@ -1521,7 +1527,7 @@ fn terminal_card(
         let kept = (task.tokens_in - task.tokens_out).max(0);
         out.push(row_cols(
             format!(
-                "{:<28} {:>14}",
+                "{} {:>14}",
                 fit_cells(&format!("delegated · {}", task.name), 28),
                 format!("{} reads", task.calls)
             ),
