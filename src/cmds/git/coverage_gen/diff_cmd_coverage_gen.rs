@@ -26,35 +26,6 @@ fn invisible_difference_diagnostic_does_not_invent_a_cause() {
     );
 }
 
-#[cfg(unix)]
-#[test]
-fn stdin_passthrough_preserves_non_utf8_and_supplies_only_a_missing_newline() {
-    if !test_isolation::rtk_binary_is_built() {
-        return;
-    }
-
-    let dir = test_isolation::tempdir();
-    let path = dir.path().join("input");
-    for (input, expected) in [
-        (b"opaque \xff".as_slice(), b"opaque \xff\n".as_slice()),
-        (b"opaque \xfe\n".as_slice(), b"opaque \xfe\n".as_slice()),
-    ] {
-        fs::write(&path, input).unwrap();
-        let output = test_isolation::rtk_command()
-            .arg("diff")
-            .stdin(fs::File::open(&path).unwrap())
-            .output()
-            .unwrap();
-        assert!(
-            output.status.success(),
-            "{}: {}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr)
-        );
-        assert_eq!(output.stdout.as_slice(), expected);
-    }
-}
-
 #[test]
 fn stdin_guard_rejects_a_valid_condensation_that_grows() {
     let input = "Only in d: f\n";

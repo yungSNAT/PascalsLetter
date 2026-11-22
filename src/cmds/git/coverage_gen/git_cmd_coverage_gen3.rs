@@ -45,7 +45,7 @@ mod cli {
     fn install_fake_git(dir: &Path, body: &str) {
         let script = dir.join("git");
         fs::write(&script, format!("#!/bin/sh\n{body}")).expect("write fake git");
-        fs::set_permissions(&script, fs::Permissions::from_mode(0o755))
+        fs::set_permissions(&script, fs::Permissions::from_mode(0o700))
             .expect("make fake git executable");
     }
 

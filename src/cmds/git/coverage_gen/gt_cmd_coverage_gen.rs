@@ -56,7 +56,7 @@ mod cli {
         fs::create_dir_all(&bin).unwrap();
         let tool = bin.join(name);
         fs::write(&tool, script).unwrap();
-        fs::set_permissions(tool, fs::Permissions::from_mode(0o755)).unwrap();
+        fs::set_permissions(tool, fs::Permissions::from_mode(0o700)).unwrap();
     }
 
     fn isolated_command(root: &Path) -> Command {
