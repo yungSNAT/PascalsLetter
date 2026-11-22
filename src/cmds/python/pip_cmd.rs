@@ -293,3 +293,7 @@ mod tests {
         assert!(result.contains("7.4.0 → 8.0.0"));
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/pip_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_python_pip_cmd;
