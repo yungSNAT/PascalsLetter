@@ -727,3 +727,7 @@ mod tests {
         assert_eq!(periods[0].metrics.cache_read_tokens, 0);
     }
 }
+
+#[cfg(test)]
+#[path = "ccusage_coverage_gen.rs"]
+mod coverage_gen_src_analytics_ccusage;

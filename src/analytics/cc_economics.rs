@@ -1297,3 +1297,7 @@ mod tests {
         assert!(totals.active_cpt.is_some());
     }
 }
+
+#[cfg(test)]
+#[path = "cc_economics_coverage_gen.rs"]
+mod coverage_gen_src_analytics_cc_economics;
