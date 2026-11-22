@@ -466,3 +466,7 @@ mod tests {
         assert_eq!(content.matches("@RTK.md").count(), 1);
     }
 }
+
+#[cfg(test)]
+#[path = "agents_md_coverage_gen.rs"]
+mod coverage_gen_src_hooks_init_agents_md;

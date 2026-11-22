@@ -3398,3 +3398,15 @@ level = "high"
         assert_eq!(fs::read_to_string(path).unwrap(), "old");
     }
 }
+
+#[cfg(test)]
+#[path = "mod_coverage_gen1.rs"]
+mod coverage_gen1_src_hooks_init_mod;
+
+#[cfg(test)]
+#[path = "mod_coverage_gen.rs"]
+mod coverage_gen_src_hooks_init_mod;
+
+#[cfg(test)]
+#[path = "mod_coverage_gen2.rs"]
+mod coverage_gen2_src_hooks_init_mod;

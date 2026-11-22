@@ -322,3 +322,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "instructions_agents_coverage_gen.rs"]
+mod coverage_gen_src_hooks_init_instructions_agents;

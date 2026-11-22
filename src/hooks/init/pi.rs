@@ -1915,3 +1915,7 @@ mod tests {
         assert!(path.exists(), "non-RTK extension must be left in place");
     }
 }
+
+#[cfg(test)]
+#[path = "pi_coverage_gen.rs"]
+mod coverage_gen_src_hooks_init_pi;
