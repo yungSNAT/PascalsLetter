@@ -4127,16 +4127,6 @@ fn run_cli() -> Result<i32> {
     Ok(code)
 }
 
-/// Returns true for commands that are invoked via the hook pipeline
-/// (i.e., commands that process rewritten shell commands).
-/// Meta commands (init, gain, verify, etc.) are excluded because
-/// they are run directly by the user, not through the hook.
-/// Returns true for commands that go through the hook pipeline
-/// and therefore require integrity verification.
-///
-/// SECURITY: whitelist pattern — new commands are NOT integrity-checked
-/// until explicitly added here. A forgotten command fails open (no check)
-/// rather than creating false confidence about what's protected.
 /// True when `cmd` runs the program it is named after with the user's arguments as typed,
 /// so `rtk <cmd> <args>` without rtk is `<cmd> <args>`. Left out: rtk's own views (`read`,
 /// `json`, `test`...), commands that rewrite their arguments or find their program another
@@ -4212,6 +4202,12 @@ fn native_command(skip_env: bool) -> Option<(String, Vec<std::ffi::OsString>)> {
     Some((lossy[start].clone(), args))
 }
 
+/// Returns true for commands that go through the hook pipeline
+/// and therefore require integrity verification.
+///
+/// SECURITY: whitelist pattern — new commands are NOT integrity-checked
+/// until explicitly added here. A forgotten command fails open (no check)
+/// rather than creating false confidence about what's protected.
 fn is_operational_command(cmd: &Commands) -> bool {
     matches!(
         cmd,

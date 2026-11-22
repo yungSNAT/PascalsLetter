@@ -7,8 +7,10 @@
 //! `ANTHROPIC_API_KEY` in the environment.
 
 #[path = "../fact.rs"]
-#[allow(dead_code)] // `copies` serves the facts check only.
+#[allow(dead_code)] // `copies`, `Keep` and some corpus fields serve the output-tokens run only.
 mod fact;
+
+use fact::{Corpus, CorpusCommand, count_tokens, label_value, slug};
 
 use anyhow::{Context, Result, ensure};
 use clap::Parser;
@@ -56,35 +58,6 @@ struct Args {
     /// Only the cases whose command matches this pattern.
     #[arg(long)]
     only: Option<Regex>,
-}
-
-fn label_value(arg: &str) -> Result<(String, String), String> {
-    match arg.split_once('=') {
-        Some((label, value)) if !label.trim().is_empty() && !value.is_empty() => {
-            Ok((label.trim().to_string(), value.to_string()))
-        }
-        _ => Err(format!("expected LABEL=VALUE, got '{arg}'")),
-    }
-}
-
-#[derive(Deserialize)]
-struct Corpus {
-    repo: Vec<Repo>,
-    command: Vec<CorpusCommand>,
-}
-
-#[derive(Deserialize)]
-struct Repo {
-    name: String,
-    #[serde(default)]
-    path: Vec<String>,
-}
-
-#[derive(Deserialize, Debug)]
-struct CorpusCommand {
-    repo: String,
-    run: String,
-    before: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -169,12 +142,6 @@ fn tool_result_text(content: &Value) -> String {
     }
 }
 
-fn count_tokens(text: &str) -> usize {
-    tiktoken_rs::o200k_base_singleton()
-        .encode_ordinary(text)
-        .len()
-}
-
 /// Reads a transcript; `None` when it has no `result` event or that event gives no cost.
 fn parse(transcript: &str) -> Option<Session> {
     let mut s = Session::default();
@@ -229,19 +196,6 @@ fn parse(transcript: &str) -> Option<Session> {
 struct Side {
     label: String,
     rtk: Option<PathBuf>,
-}
-
-fn slug(label: &str) -> String {
-    label
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() {
-                c.to_ascii_lowercase()
-            } else {
-                '-'
-            }
-        })
-        .collect()
 }
 
 /// A session's own home and Claude Code configuration, as THOL isolates a run, so no

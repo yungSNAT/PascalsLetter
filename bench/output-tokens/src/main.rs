@@ -16,7 +16,7 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 mod fact;
-use fact::copies;
+use fact::{Corpus, CorpusCommand, Keep, Repo, Rule, copies, count_tokens, label_value, slug};
 
 #[derive(Parser)]
 #[command(about = "Count the tokens in each tool's output for a fixed command corpus")]
@@ -45,62 +45,6 @@ struct Args {
     /// them: LABEL=DIR, where DIR holds .claude-plugin/plugin.json.
     #[arg(long = "claude-plugin", value_name = "LABEL=DIR", value_parser = label_value)]
     claude_plugin: Vec<(String, String)>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Corpus {
-    repo: Vec<Repo>,
-    command: Vec<CorpusCommand>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Repo {
-    name: String,
-    url: String,
-    /// A full commit hash, so the corpus cannot drift with a moved tag.
-    rev: String,
-    /// Directories, relative to the checkout, put first on PATH.
-    #[serde(default)]
-    path: Vec<String>,
-    /// Shell commands run once after checkout.
-    #[serde(default)]
-    setup: Vec<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct CorpusCommand {
-    repo: String,
-    run: String,
-    /// Run before each side's run, so every side starts from the files and
-    /// build artefacts it resets.
-    before: Option<String>,
-    /// What an agent asks of this output; `keep` names the facts its answer needs.
-    question: Option<String>,
-    keep: Option<Keep>,
-}
-
-/// The facts an answer needs, all taken from the raw output: listed, or by a rule.
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum Keep {
-    Rule(Rule),
-    Facts(Vec<String>),
-}
-
-#[derive(Deserialize, Clone, Copy)]
-#[serde(rename_all = "lowercase")]
-enum Rule {
-    /// Every line.
-    Lines,
-    /// Every grep or rg match line's text, after its `path:N:` or `N:`.
-    Matches,
-    /// Every added or removed line of a patch, with its sign.
-    Diff,
-    /// The last path component of every line.
-    Basenames,
 }
 
 enum Kind {
@@ -191,15 +135,6 @@ struct Row {
     lost: Option<Vec<String>>,
     /// Whether the output names a way to recover what it left out.
     recovery: bool,
-}
-
-fn label_value(arg: &str) -> Result<(String, String), String> {
-    match arg.split_once('=') {
-        Some((label, value)) if !label.trim().is_empty() && !value.is_empty() => {
-            Ok((label.trim().to_string(), value.to_string()))
-        }
-        _ => Err(format!("expected LABEL=VALUE, got '{arg}'")),
-    }
 }
 
 fn validate(corpus: &Corpus) -> Result<()> {
@@ -383,20 +318,6 @@ fn sides(args: &Args) -> Result<Vec<Side>> {
         );
     }
     Ok(sides)
-}
-
-/// A label as a file name.
-fn slug(label: &str) -> String {
-    label
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() {
-                c.to_ascii_lowercase()
-            } else {
-                '-'
-            }
-        })
-        .collect()
 }
 
 /// `text` as one single-quoted POSIX shell word.
@@ -756,12 +677,6 @@ impl HookSession<'_> {
             std::thread::sleep(Duration::from_millis(10));
         }
     }
-}
-
-fn count_tokens(text: &str) -> usize {
-    tiktoken_rs::o200k_base_singleton()
-        .encode_ordinary(text)
-        .len()
 }
 
 /// The environment every side's command runs in: a home and a temporary

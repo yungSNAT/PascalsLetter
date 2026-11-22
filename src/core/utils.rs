@@ -72,18 +72,9 @@ pub(crate) fn decode_backslashes(s: &str, ansi_c: bool) -> Option<String> {
     String::from_utf8(out).ok()
 }
 
-/// Compute `days` ago from now, clamped instead of panicking on overflow.
-///
-/// `days` is typically user-supplied (`--since <days>`) and unbounded. Naively
-/// building a duration of `days as i64` days and subtracting it from now
-/// panicked for a large enough value (chrono's "DateTime - TimeDelta
-/// overflowed") — this happened identically in `rtk discover --since` and `rtk
-/// hook audit --since` before both were routed through this helper. `days` is
-/// capped to `i64::MAX` before the `as i64` cast (a `u64` past `i64::MAX` would
-/// otherwise reinterpret as negative, turning "look back" into "look forward"),
-/// and any remaining overflow building or applying the duration falls back to
-/// `Timestamp::MIN` — an arbitrarily distant cutoff means "no lower
-/// bound", which is exactly what an absurdly large `--since` should behave like.
+/// `days` ago from now. `days` (a user's `--since`) is capped at `i64::MAX`, and a cutoff
+/// past the representable range falls back to `Timestamp::MIN`, so an absurd `--since`
+/// means no lower bound rather than a panic.
 pub fn days_ago_cutoff(days: u64) -> Timestamp {
     let days = days.min(i64::MAX as u64) as i64;
     days.checked_mul(86_400)
