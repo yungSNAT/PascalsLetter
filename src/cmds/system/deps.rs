@@ -84,33 +84,30 @@ pub fn run(path: &Path, verbose: u8) -> Result<()> {
 
 fn summarize_cargo_str(path: &Path) -> Result<String> {
     let doc = read_toml(path)?;
-    // (table, is dev) for the manifest's own tables, each `[target.<cfg>]` table's and
-    // `[workspace.dependencies]`, listed in the order the file declares them.
-    let mut scopes: Vec<&dyn TableLike> = vec![doc.as_table()];
-    if let Some(targets) = doc.get("target").and_then(Item::as_table_like) {
-        scopes.extend(targets.iter().filter_map(|(_, t)| t.as_table_like()));
+    // The root's dependency tables, each `[target.<cfg>]` table's and
+    // `[workspace.dependencies]`, in the order the file declares them.
+    let root = doc.as_table().position().unwrap_or(0);
+    let both = [("dependencies", false), ("dev-dependencies", true)];
+    let mut tables = Vec::new();
+    dep_tables(doc.as_table(), root, &both, &mut tables);
+    if let Some(target) = doc.get("target") {
+        let target_at = header_at(target, root);
+        for (_, cfg) in target.as_table_like().into_iter().flat_map(|t| t.iter()) {
+            if let Some(scope) = cfg.as_table_like() {
+                dep_tables(scope, header_at(cfg, target_at), &both, &mut tables);
+            }
+        }
     }
-    let mut tables: Vec<(&Item, bool)> = scopes
-        .iter()
-        .flat_map(|scope| {
-            [
-                (scope.get("dependencies"), false),
-                (scope.get("dev-dependencies"), true),
-            ]
-        })
-        .chain([(
-            doc.get("workspace").and_then(|w| w.get("dependencies")),
-            false,
-        )])
-        .filter_map(|(table, dev)| Some((table?, dev)))
-        .collect();
-    tables.sort_by_key(|(table, _)| {
-        let position = table.as_table().and_then(|t| t.position());
-        (position.is_none(), position)
-    });
+    if let Some(workspace) = doc.get("workspace")
+        && let Some(scope) = workspace.as_table_like()
+    {
+        let deps_only = [("dependencies", false)];
+        dep_tables(scope, header_at(workspace, root), &deps_only, &mut tables);
+    }
+    tables.sort_by_key(|&(at, _, _)| at);
     let mut deps = Vec::new();
     let mut dev_deps = Vec::new();
-    for (table, dev) in tables {
+    for (_, table, dev) in tables {
         cargo_deps(Some(table), if dev { &mut dev_deps } else { &mut deps });
     }
 
@@ -118,6 +115,28 @@ fn summarize_cargo_str(path: &Path) -> Result<String> {
     push_section(&mut out, "Dependencies", &deps, MAX_DEPS);
     push_section(&mut out, "Dev", &dev_deps, MAX_DEV_DEPS);
     Ok(out)
+}
+
+/// Where the file declares `item`: its own `[header]`'s position, else (an inline or dotted
+/// table) the enclosing header's.
+fn header_at(item: &Item, enclosing: usize) -> usize {
+    item.as_table()
+        .and_then(|t| t.position())
+        .unwrap_or(enclosing)
+}
+
+/// `(position, table, is dev)` for each of `keys` that `scope` holds.
+fn dep_tables<'a>(
+    scope: &'a dyn TableLike,
+    scope_at: usize,
+    keys: &[(&str, bool)],
+    out: &mut Vec<(usize, &'a Item, bool)>,
+) {
+    for &(key, dev) in keys {
+        if let Some(table) = scope.get(key) {
+            out.push((header_at(table, scope_at), table, dev));
+        }
+    }
 }
 
 /// `name (source)` for each entry of a dependency table: its version, else
