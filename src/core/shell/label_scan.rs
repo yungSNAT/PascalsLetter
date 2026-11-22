@@ -509,3 +509,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "label_scan_coverage_gen.rs"]
+mod coverage_gen_src_core_shell_label_scan;

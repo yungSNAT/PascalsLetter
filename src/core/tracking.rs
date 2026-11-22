@@ -4647,3 +4647,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "tracking_coverage_gen.rs"]
+mod coverage_gen_src_core_tracking;
