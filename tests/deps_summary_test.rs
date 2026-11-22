@@ -119,3 +119,123 @@ fn a_manifest_shorter_than_its_summary_is_printed_as_is() {
     fs::write(dir.path().join("Cargo.toml"), raw).expect("write Cargo.toml");
     assert_eq!(deps(dir.path()), raw);
 }
+
+/// Pads a manifest so its summary is the shorter of the two.
+const PADDING: &str =
+    "# A comment long enough that the summary is shorter than the manifest it reads.\n";
+
+#[test]
+fn cargo_summary_counts_path_git_workspace_and_target_dependencies() {
+    let dir = common::tempdir();
+    let toml = format!(
+        "{PADDING}[package]\nname = \"croft\"\n\n[dependencies]\nserde = \"1\"\n\
+         local = {{ path = \"../local\" }}\nfork = {{ git = \"https://example.com/fork.git\" }}\n\
+         shared = {{ workspace = true }}\n\n\
+         [target.'cfg(unix)'.dependencies]\nlibc = \"0.2\"\n\n\
+         [target.'cfg(windows)'.dev-dependencies]\nwinapi-util = \"0.1\"\n\n\
+         [dev-dependencies]\ntempfile = \"3\"\n\n\
+         [workspace.dependencies]\nanyhow = \"1\"\n"
+    );
+    fs::write(dir.path().join("Cargo.toml"), toml).expect("write Cargo.toml");
+    assert_eq!(
+        deps(dir.path()),
+        "Rust (Cargo.toml):\n  Dependencies (6):\n    serde (1)\n    local (path ../local)\n    \
+         fork (git https://example.com/fork.git)\n    shared (workspace)\n    libc (0.2)\n    anyhow (1)\n\
+         \x20 Dev (2):\n    winapi-util (0.1)\n    tempfile (3)\n"
+    );
+}
+
+/// Inline and dotted dependency tables have no header of their own: each dependency is
+/// listed where the file declares it.
+#[test]
+fn cargo_summary_keeps_file_order_for_inline_and_dotted_tables() {
+    for (manifest, expected) in [
+        (
+            "dependencies = { serde = \"1\" }\n\n[target.'cfg(unix)'.dependencies]\nlibc = \"0.2\"\n",
+            "serde (1)\n    libc (0.2)",
+        ),
+        (
+            "[package]\nname = \"croft\"\n\n[target.'cfg(unix)']\ndependencies.libc = \"0.2\"\n\n\
+             [dependencies]\nserde = \"1\"\n",
+            "libc (0.2)\n    serde (1)",
+        ),
+        (
+            "target.'cfg(unix)'.dependencies.libc = \"0.2\"\ndependencies = { serde = \"1\" }\n",
+            "libc (0.2)\n    serde (1)",
+        ),
+        (
+            "[dependencies]\nserde.workspace = true\nanyhow = \"1\"\n",
+            "serde (workspace)\n    anyhow (1)",
+        ),
+    ] {
+        let dir = common::tempdir();
+        fs::write(
+            dir.path().join("Cargo.toml"),
+            format!("{PADDING}{manifest}"),
+        )
+        .expect("write Cargo.toml");
+        assert_eq!(
+            deps(dir.path()),
+            format!("Rust (Cargo.toml):\n  Dependencies (2):\n    {expected}\n"),
+            "{manifest}"
+        );
+    }
+}
+
+#[test]
+fn pyproject_summary_separates_optional_dependencies_and_reads_one_line_lists() {
+    let dir = common::tempdir();
+    let toml = format!(
+        "{PADDING}[project]\nname = \"croft\"\ndependencies = [\"requests>=2.32\", \"click\"]\n\n\
+         [project.optional-dependencies]\ntest = [\n  \"pytest>=8\",\n]\n\n\
+         [dependency-groups]\nlint = [\"ruff>=0.8\"]\n\n\
+         [tool.ruff]\nline-length = 100\n"
+    );
+    fs::write(dir.path().join("pyproject.toml"), toml).expect("write pyproject.toml");
+    assert_eq!(
+        deps(dir.path()),
+        "Python (pyproject.toml):\n  Dependencies (2):\n    requests>=2.32\n    click\n\
+         \x20 Dev and optional (2):\n    pytest>=8\n    ruff>=0.8\n"
+    );
+}
+
+#[test]
+fn pyproject_summary_reads_poetry_tables() {
+    let dir = common::tempdir();
+    let toml = format!(
+        "{PADDING}[tool.poetry]\nname = \"croft\"\n\n[tool.poetry.dependencies]\npython = \"^3.12\"\n\
+         httpx = \"^0.28\"\nlocal = {{ path = \"../local\" }}\n\
+         remote = {{ url = \"https://example.com/remote.whl\" }}\n\n\
+         [tool.poetry.dev-dependencies]\nblack = \"^24\"\n\n\
+         [tool.poetry.group.dev.dependencies]\nmypy = \"^1.13\"\n\n\
+         [tool.black]\nline-length = 100\n"
+    );
+    fs::write(dir.path().join("pyproject.toml"), toml).expect("write pyproject.toml");
+    assert_eq!(
+        deps(dir.path()),
+        "Python (pyproject.toml):\n  Dependencies (3):\n    httpx (^0.28)\n    local (path ../local)\n    \
+         remote (url https://example.com/remote.whl)\n\
+         \x20 Dev and optional (2):\n    black (^24)\n    mypy (^1.13)\n"
+    );
+}
+
+#[test]
+fn a_manifest_that_is_not_toml_fails_naming_the_file() {
+    let dir = common::tempdir();
+    fs::write(
+        dir.path().join("Cargo.toml"),
+        "[dependencies\nserde = \"1\"\n",
+    )
+    .expect("write Cargo.toml");
+    let output = common::rtk_command()
+        .arg("deps")
+        .arg(dir.path())
+        .output()
+        .expect("spawn rtk deps");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!output.status.success(), "{stderr}");
+    assert!(
+        stderr.contains("Failed to parse") && stderr.contains("Cargo.toml"),
+        "{stderr}"
+    );
+}
