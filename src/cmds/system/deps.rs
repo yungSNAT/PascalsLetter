@@ -303,15 +303,7 @@ fn summarize_gomod_str(path: &Path) -> Result<String> {
     if !module_name.is_empty() {
         out.push_str(&format!("  {} (go {})\n", module_name, go_version));
     }
-    if !deps.is_empty() {
-        out.push_str(&format!("  Dependencies ({}):\n", deps.len()));
-        for d in deps.iter().take(MAX_DEPS) {
-            out.push_str(&format!("    {}\n", d));
-        }
-        if deps.len() > MAX_DEPS {
-            out.push_str(&format!("    ... +{} more\n", deps.len() - MAX_DEPS));
-        }
-    }
+    push_section(&mut out, "Dependencies", &deps, MAX_DEPS);
     Ok(out)
 }
 
