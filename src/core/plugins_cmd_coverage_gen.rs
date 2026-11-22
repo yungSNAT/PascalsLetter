@@ -137,7 +137,7 @@ fn plugin_cli_lists_scaffolds_and_distinguishes_cargo_failures() {
          [ \"$1\" != \"$RTK_TEST_FAIL_STEP\" ]\n",
     )
     .unwrap();
-    fs::set_permissions(cargo, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::set_permissions(cargo, fs::Permissions::from_mode(0o700)).unwrap();
 
     let command = || {
         let mut cmd = test_isolation::rtk_command();
