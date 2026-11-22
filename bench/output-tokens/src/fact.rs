@@ -49,7 +49,7 @@ pub struct Repo {
     pub setup: Vec<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct CorpusCommand {
     pub repo: String,
@@ -63,14 +63,14 @@ pub struct CorpusCommand {
 }
 
 /// The facts an answer needs, all taken from the raw output: listed, or by a rule.
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 #[serde(untagged)]
 pub enum Keep {
     Rule(Rule),
     Facts(Vec<String>),
 }
 
-#[derive(Deserialize, Clone, Copy)]
+#[derive(Deserialize, Clone, Copy, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum Rule {
     /// Every line.
