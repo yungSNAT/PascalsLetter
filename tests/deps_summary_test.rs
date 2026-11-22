@@ -121,7 +121,8 @@ fn a_manifest_shorter_than_its_summary_is_printed_as_is() {
 }
 
 /// Pads a manifest so its summary is the shorter of the two.
-const PADDING: &str = "# A comment long enough that the summary is shorter than the manifest it reads.\n";
+const PADDING: &str =
+    "# A comment long enough that the summary is shorter than the manifest it reads.\n";
 
 #[test]
 fn cargo_summary_counts_path_git_workspace_and_target_dependencies() {

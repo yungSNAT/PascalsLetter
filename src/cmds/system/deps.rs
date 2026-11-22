@@ -7,6 +7,7 @@ use anyhow::{Context, Result};
 use regex::Regex;
 use std::fs;
 use std::path::Path;
+use toml_edit::{DocumentMut, Item, TableLike};
 
 const MAX_DEPS: usize = CAP_WARNINGS;
 // dev deps are secondary to prod — show fewer.
@@ -82,60 +83,72 @@ pub fn run(path: &Path, verbose: u8) -> Result<()> {
 }
 
 fn summarize_cargo_str(path: &Path) -> Result<String> {
-    let content =
-        fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
-    let dep_re =
-        Regex::new(r#"^([a-zA-Z0-9_-]+)\s*=\s*(?:"([^"]+)"|.*version\s*=\s*"([^"]+)")"#).unwrap();
-    let section_re = Regex::new(r"^\[([^\]]+)\]").unwrap();
-    let mut current_section = String::new();
+    let doc = read_toml(path)?;
     let mut deps = Vec::new();
     let mut dev_deps = Vec::new();
+    // The manifest's own tables, then each `[target.<cfg>]` table.
+    let mut scopes: Vec<&dyn TableLike> = vec![doc.as_table()];
+    if let Some(targets) = doc.get("target").and_then(Item::as_table_like) {
+        scopes.extend(targets.iter().filter_map(|(_, t)| t.as_table_like()));
+    }
+    for scope in scopes {
+        cargo_deps(scope.get("dependencies"), &mut deps);
+        cargo_deps(scope.get("dev-dependencies"), &mut dev_deps);
+    }
+    cargo_deps(
+        doc.get("workspace").and_then(|w| w.get("dependencies")),
+        &mut deps,
+    );
+
     let mut out = String::new();
-
-    for line in content.lines() {
-        if let Some(caps) = section_re.captures(line) {
-            current_section = caps
-                .get(1)
-                .map(|m| m.as_str().to_string())
-                .unwrap_or_default();
-        } else if let Some(caps) = dep_re.captures(line) {
-            let name = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-            let version = caps
-                .get(2)
-                .or(caps.get(3))
-                .map(|m| m.as_str())
-                .unwrap_or("*");
-            let dep = format!("{} ({})", name, version);
-            match current_section.as_str() {
-                "dependencies" => deps.push(dep),
-                "dev-dependencies" => dev_deps.push(dep),
-                _ => {}
-            }
-        }
-    }
-
-    if !deps.is_empty() {
-        out.push_str(&format!("  Dependencies ({}):\n", deps.len()));
-        for d in deps.iter().take(MAX_DEPS) {
-            out.push_str(&format!("    {}\n", d));
-        }
-        if deps.len() > MAX_DEPS {
-            out.push_str(&format!("    ... +{} more\n", deps.len() - MAX_DEPS));
-        }
-    }
-    if !dev_deps.is_empty() {
-        out.push_str(&format!("  Dev ({}):\n", dev_deps.len()));
-        for d in dev_deps.iter().take(MAX_DEV_DEPS) {
-            out.push_str(&format!("    {}\n", d));
-        }
-        if dev_deps.len() > MAX_DEV_DEPS {
-            out.push_str(&format!(
-                "    ... +{} more\n",
-                dev_deps.len() - MAX_DEV_DEPS
-            ));
-        }
-    }
+    push_section(&mut out, "Dependencies", &deps, MAX_DEPS);
+    push_section(&mut out, "Dev", &dev_deps, MAX_DEV_DEPS);
     Ok(out)
+}
+
+/// `name (source)` for each entry of a dependency table: its version, else
+/// where it comes from (`path`, `git`, `workspace`).
+fn cargo_deps(table: Option<&Item>, out: &mut Vec<String>) {
+    let Some(table) = table.and_then(Item::as_table_like) else {
+        return;
+    };
+    for (name, spec) in table.iter() {
+        let field = |key: &str| spec.get(key).and_then(Item::as_str);
+        let source = if let Some(version) = spec.as_str().or_else(|| field("version")) {
+            version.to_string()
+        } else if let Some(path) = field("path") {
+            format!("path {path}")
+        } else if let Some(git) = field("git") {
+            format!("git {git}")
+        } else if spec.get("workspace").and_then(Item::as_bool) == Some(true) {
+            "workspace".to_string()
+        } else {
+            "*".to_string()
+        };
+        out.push(format!("{name} ({source})"));
+    }
+}
+
+fn read_toml(path: &Path) -> Result<DocumentMut> {
+    let content =
+        fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
+    content
+        .parse()
+        .with_context(|| format!("Failed to parse {}", path.display()))
+}
+
+/// `  <title> (<n>):` and up to `max` items, then a count of the rest.
+fn push_section(out: &mut String, title: &str, items: &[String], max: usize) {
+    if items.is_empty() {
+        return;
+    }
+    out.push_str(&format!("  {title} ({}):\n", items.len()));
+    for item in items.iter().take(max) {
+        out.push_str(&format!("    {item}\n"));
+    }
+    if items.len() > max {
+        out.push_str(&format!("    ... +{} more\n", items.len() - max));
+    }
 }
 
 fn summarize_package_json_str(path: &Path) -> Result<String> {
@@ -209,40 +222,53 @@ fn summarize_requirements_str(path: &Path) -> Result<String> {
 }
 
 fn summarize_pyproject_str(path: &Path) -> Result<String> {
-    let content =
-        fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
-    let mut in_deps = false;
+    let doc = read_toml(path)?;
     let mut deps = Vec::new();
+    let mut optional = Vec::new();
+    // PEP 621 and PEP 735.
+    let project = doc.get("project");
+    pep508_list(project.and_then(|p| p.get("dependencies")), &mut deps);
+    for extra in entries(project.and_then(|p| p.get("optional-dependencies")))
+        .chain(entries(doc.get("dependency-groups")))
+    {
+        pep508_list(Some(extra), &mut optional);
+    }
+    // Poetry.
+    let poetry = doc.get("tool").and_then(|t| t.get("poetry"));
+    poetry_deps(poetry.and_then(|p| p.get("dependencies")), &mut deps);
+    poetry_deps(
+        poetry.and_then(|p| p.get("dev-dependencies")),
+        &mut optional,
+    );
+    for group in entries(poetry.and_then(|p| p.get("group"))) {
+        poetry_deps(group.get("dependencies"), &mut optional);
+    }
+
     let mut out = String::new();
-
-    for line in content.lines() {
-        if line.contains("dependencies") && line.contains("[") {
-            in_deps = true;
-            continue;
-        }
-        if in_deps {
-            if line.trim() == "]" {
-                break;
-            }
-            let line = line
-                .trim()
-                .trim_matches(|c| c == '"' || c == '\'' || c == ',');
-            if !line.is_empty() {
-                deps.push(line.to_string());
-            }
-        }
-    }
-
-    if !deps.is_empty() {
-        out.push_str(&format!("  Dependencies ({}):\n", deps.len()));
-        for d in deps.iter().take(MAX_DEPS) {
-            out.push_str(&format!("    {}\n", d));
-        }
-        if deps.len() > MAX_DEPS {
-            out.push_str(&format!("    ... +{} more\n", deps.len() - MAX_DEPS));
-        }
-    }
+    push_section(&mut out, "Dependencies", &deps, MAX_DEPS);
+    push_section(&mut out, "Dev and optional", &optional, MAX_DEV_DEPS);
     Ok(out)
+}
+
+/// The requirement strings of a PEP 508 array; anything else is skipped.
+fn pep508_list(list: Option<&Item>, out: &mut Vec<String>) {
+    if let Some(list) = list.and_then(Item::as_array) {
+        out.extend(list.iter().filter_map(|v| v.as_str()).map(str::to_string));
+    }
+}
+
+/// A Poetry dependency table, without its `python` constraint.
+fn poetry_deps(table: Option<&Item>, out: &mut Vec<String>) {
+    let mut found = Vec::new();
+    cargo_deps(table, &mut found);
+    out.extend(found.into_iter().filter(|dep| !dep.starts_with("python (")));
+}
+
+/// The values of a table, or nothing.
+fn entries(item: Option<&Item>) -> impl Iterator<Item = &Item> {
+    item.and_then(Item::as_table_like)
+        .into_iter()
+        .flat_map(|t| t.iter().map(|(_, v)| v))
 }
 
 fn summarize_gomod_str(path: &Path) -> Result<String> {
