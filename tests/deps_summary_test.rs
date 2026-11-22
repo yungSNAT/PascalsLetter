@@ -119,3 +119,60 @@ fn a_manifest_shorter_than_its_summary_is_printed_as_is() {
     fs::write(dir.path().join("Cargo.toml"), raw).expect("write Cargo.toml");
     assert_eq!(deps(dir.path()), raw);
 }
+
+/// Pads a manifest so its summary is the shorter of the two.
+const PADDING: &str = "# A comment long enough that the summary is shorter than the manifest it reads.\n";
+
+#[test]
+fn cargo_summary_counts_path_git_workspace_and_target_dependencies() {
+    let dir = common::tempdir();
+    let toml = format!(
+        "{PADDING}[package]\nname = \"croft\"\n\n[dependencies]\nserde = \"1\"\n\
+         local = {{ path = \"../local\" }}\nfork = {{ git = \"https://example.com/fork.git\" }}\n\
+         shared = {{ workspace = true }}\n\n\
+         [target.'cfg(unix)'.dependencies]\nlibc = \"0.2\"\n\n\
+         [target.'cfg(windows)'.dev-dependencies]\nwinapi-util = \"0.1\"\n\n\
+         [dev-dependencies]\ntempfile = \"3\"\n\n\
+         [workspace.dependencies]\nanyhow = \"1\"\n"
+    );
+    fs::write(dir.path().join("Cargo.toml"), toml).expect("write Cargo.toml");
+    assert_eq!(
+        deps(dir.path()),
+        "Rust (Cargo.toml):\n  Dependencies (6):\n    serde (1)\n    local (path ../local)\n    \
+         fork (git https://example.com/fork.git)\n    shared (workspace)\n    libc (0.2)\n    anyhow (1)\n\
+         \x20 Dev (2):\n    tempfile (3)\n    winapi-util (0.1)\n"
+    );
+}
+
+#[test]
+fn pyproject_summary_separates_optional_dependencies_and_reads_one_line_lists() {
+    let dir = common::tempdir();
+    let toml = format!(
+        "{PADDING}[project]\nname = \"croft\"\ndependencies = [\"requests>=2.32\", \"click\"]\n\n\
+         [project.optional-dependencies]\ntest = [\n  \"pytest>=8\",\n]\n\n\
+         [tool.ruff]\nline-length = 100\n"
+    );
+    fs::write(dir.path().join("pyproject.toml"), toml).expect("write pyproject.toml");
+    assert_eq!(
+        deps(dir.path()),
+        "Python (pyproject.toml):\n  Dependencies (2):\n    requests>=2.32\n    click\n\
+         \x20 Dev and optional (1):\n    pytest>=8\n"
+    );
+}
+
+#[test]
+fn pyproject_summary_reads_poetry_tables() {
+    let dir = common::tempdir();
+    let toml = format!(
+        "{PADDING}[tool.poetry]\nname = \"croft\"\n\n[tool.poetry.dependencies]\npython = \"^3.12\"\n\
+         httpx = \"^0.28\"\nlocal = {{ path = \"../local\" }}\n\n\
+         [tool.poetry.group.dev.dependencies]\nmypy = \"^1.13\"\n\n\
+         [tool.black]\nline-length = 100\n"
+    );
+    fs::write(dir.path().join("pyproject.toml"), toml).expect("write pyproject.toml");
+    assert_eq!(
+        deps(dir.path()),
+        "Python (pyproject.toml):\n  Dependencies (2):\n    httpx (^0.28)\n    local (path ../local)\n\
+         \x20 Dev and optional (1):\n    mypy (^1.13)\n"
+    );
+}
