@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use regex::Regex;
 use std::fs;
 use std::path::Path;
-use toml_edit::{ImDocument, Item, TableLike};
+use toml_edit::{ImDocument, Item, Key, TableLike};
 
 const MAX_DEPS: usize = CAP_WARNINGS;
 // dev deps are secondary to prod — show fewer.
@@ -111,7 +111,7 @@ fn summarize_cargo_str(path: &Path) -> Result<String> {
     Ok(out)
 }
 
-/// `(offset in the file, name (source))` for each entry of a dependency table: its version,
+/// `(offset of its key in the file, name (source))` for each entry of a dependency table: its version,
 /// else where it comes from (`path`, `git`, Poetry's `url`, `workspace`).
 fn cargo_deps(table: Option<&Item>, out: &mut Vec<(usize, String)>) {
     let Some(table) = table.and_then(Item::as_table_like) else {
@@ -132,12 +132,17 @@ fn cargo_deps(table: Option<&Item>, out: &mut Vec<(usize, String)>) {
         } else {
             "*".to_string()
         };
-        let at = spec.span().map_or(usize::MAX, |span| span.start);
+        // The key always has a span; a dotted entry (`serde.workspace = true`) has none.
+        let at = table
+            .key(name)
+            .and_then(Key::span)
+            .or_else(|| spec.span())
+            .map_or(usize::MAX, |span| span.start);
         out.push((at, format!("{name} ({source})")));
     }
 }
 
-/// The parsed manifest, keeping each value's place in the file.
+/// The parsed manifest, keeping each key's place in the file.
 fn read_toml(path: &Path) -> Result<ImDocument<String>> {
     let content =
         fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
