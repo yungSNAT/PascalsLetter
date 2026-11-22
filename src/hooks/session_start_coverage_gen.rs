@@ -17,6 +17,7 @@ fn unset_and_non_loopback_session_urls_are_silent() {
 
 fn with_unresponsive_gateway(check: impl FnOnce(&str, &str)) {
     // Keep an ephemeral port occupied without answering the health check.
+    // nosemgrep: raw-socket-usage -- a test: a loopback listener stands in for the session's gateway
     let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).expect("bind gateway");
     listener
         .set_nonblocking(true)

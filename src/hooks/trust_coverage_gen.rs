@@ -149,10 +149,16 @@ fn noninteractive_trust_distinguishes_empty_unreadable_and_invalid_inputs() {
 
         fs::remove_dir(&pipeline).unwrap();
         fs::write(&pipeline, "[pipeline\n").unwrap();
-        assert_eq!(
-            run_trust(false, true).unwrap_err().to_string(),
-            "Filter file present but not valid TOML — see the error above."
-        );
-        assert!(list_trusted().unwrap().is_empty());
+        let result = run_trust(false, true);
+        // The Apache-2.0 edition treats pipeline files as inert, so it trusts without parsing.
+        if cfg!(feature = "engine") {
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "Filter file present but not valid TOML — see the error above."
+            );
+            assert!(list_trusted().unwrap().is_empty());
+        } else {
+            result.unwrap();
+        }
     });
 }
