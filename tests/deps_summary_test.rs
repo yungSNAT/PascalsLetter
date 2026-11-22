@@ -163,6 +163,10 @@ fn cargo_summary_keeps_file_order_for_inline_and_dotted_tables() {
             "target.'cfg(unix)'.dependencies.libc = \"0.2\"\ndependencies = { serde = \"1\" }\n",
             "libc (0.2)\n    serde (1)",
         ),
+        (
+            "[dependencies]\nserde.workspace = true\nanyhow = \"1\"\n",
+            "serde (workspace)\n    anyhow (1)",
+        ),
     ] {
         let dir = common::tempdir();
         fs::write(
