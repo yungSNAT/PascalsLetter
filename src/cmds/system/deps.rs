@@ -10,7 +10,7 @@ use std::path::Path;
 use toml_edit::{ImDocument, Item, Key, TableLike};
 
 const MAX_DEPS: usize = CAP_WARNINGS;
-// dev deps are secondary to prod — show fewer.
+// dev and build deps are secondary to prod — show fewer.
 const MAX_DEV_DEPS: usize = reduced(CAP_WARNINGS, 5);
 
 /// Summarize project dependencies
@@ -91,9 +91,11 @@ fn summarize_cargo_str(path: &Path) -> Result<String> {
     }
     let mut deps = Vec::new();
     let mut dev_deps = Vec::new();
+    let mut build_deps = Vec::new();
     for scope in scopes {
         cargo_deps(scope.get("dependencies"), &mut deps);
         cargo_deps(scope.get("dev-dependencies"), &mut dev_deps);
+        cargo_deps(scope.get("build-dependencies"), &mut build_deps);
     }
     cargo_deps(
         doc.get("workspace").and_then(|w| w.get("dependencies")),
@@ -108,6 +110,7 @@ fn summarize_cargo_str(path: &Path) -> Result<String> {
     let mut out = String::new();
     push_section(&mut out, "Dependencies", &in_file_order(deps), MAX_DEPS);
     push_section(&mut out, "Dev", &in_file_order(dev_deps), MAX_DEV_DEPS);
+    push_section(&mut out, "Build", &in_file_order(build_deps), MAX_DEV_DEPS);
     Ok(out)
 }
 
