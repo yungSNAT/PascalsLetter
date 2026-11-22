@@ -74,6 +74,7 @@ use = ["dedup"]
     // Use one isolated child environment for both installation and measurement.
     let base = test_isolation::rtk_command();
     let rtk = || {
+        // nosemgrep: dynamic-command-execution -- a test: runs the rtk binary under test from test_isolation::rtk_command
         let mut command = Command::new(base.get_program());
         command
             .args(base.get_args())

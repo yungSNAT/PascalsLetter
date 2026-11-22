@@ -21,6 +21,7 @@ fn stopped_status_without_an_exit_code_or_terminating_signal_falls_back_to_one()
 fn help_request_for_missing_program_returns_the_spawn_error() {
     let scratch = crate::core::test_isolation::tempdir();
     let program = scratch.path().join("missing-help-tool.exe");
+    // nosemgrep: dynamic-command-execution -- a test: a deliberately missing program in a temp dir
     let mut cmd = Command::new(&program);
     cmd.env_clear().arg("--help");
 

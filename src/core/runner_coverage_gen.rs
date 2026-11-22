@@ -214,6 +214,7 @@ fn runner_modes_report_spawn_errors_under_the_tool_name() {
     test_isolation::with_root(root.path(), || {
         let missing = root.path().join("missing-runner-tool");
         let command = || {
+            // nosemgrep: dynamic-command-execution -- a test: a deliberately missing program in a temp dir
             let mut cmd = Command::new(&missing);
             cmd.env_clear().current_dir(root.path());
             cmd

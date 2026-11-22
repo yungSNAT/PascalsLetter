@@ -28,9 +28,10 @@ fn scan_flags_email_addresses() {
         "# maintained by alice@example.com\n[pipeline]\nname = \"demo\"\n".to_string(),
     )];
     let hits = scan_for_secrets(&sources);
+    // Keep the hits out of the failure message: they are the flagged text.
     assert!(
         hits.iter().any(|h| h == "email address: alice@example.com"),
-        "{hits:?}"
+        "the scan did not flag the email address"
     );
 }
 
