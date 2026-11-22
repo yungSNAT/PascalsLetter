@@ -90,7 +90,7 @@ fn php_cli_forwards_arguments_and_selects_the_output_filter() {
             ),
         )
         .unwrap();
-        fs::set_permissions(&php, fs::Permissions::from_mode(0o755)).unwrap();
+        fs::set_permissions(&php, fs::Permissions::from_mode(0o700)).unwrap();
 
         let mut cmd = rtk_command();
         let mut paths = vec![scratch.path().to_path_buf()];

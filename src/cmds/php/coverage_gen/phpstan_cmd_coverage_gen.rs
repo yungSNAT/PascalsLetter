@@ -107,7 +107,7 @@ esac
 "#,
     )
     .unwrap();
-    fs::set_permissions(&tool, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::set_permissions(&tool, fs::Permissions::from_mode(0o700)).unwrap();
 
     let cases: &[(&[&str], i32, &str, &str)] = &[
         (

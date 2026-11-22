@@ -70,7 +70,7 @@ else
 fi
 "#,
     )?;
-    fs::set_permissions(&tool, Permissions::from_mode(0o755))?;
+    fs::set_permissions(&tool, Permissions::from_mode(0o700))?;
 
     let mut cmd = rtk_command();
     let inherited_path = cmd

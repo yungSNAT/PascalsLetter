@@ -33,7 +33,7 @@ esac
         ),
     )
     .unwrap();
-    fs::set_permissions(&tool, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::set_permissions(&tool, fs::Permissions::from_mode(0o700)).unwrap();
 
     for (args, summarize) in [
         (&["source file.php"][..], true),

@@ -23,7 +23,7 @@ printf '%s\n' 'Pest 5.0.0' '.....' 'PASS  Tests\Unit\ExampleTest'
 "#,
     )
     .expect("write fake Pest executable");
-    fs::set_permissions(&pest, fs::Permissions::from_mode(0o755))
+    fs::set_permissions(&pest, fs::Permissions::from_mode(0o700))
         .expect("make fake Pest executable");
 
     for (verbose, args, expected_args) in [

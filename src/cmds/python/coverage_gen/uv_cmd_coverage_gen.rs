@@ -135,7 +135,7 @@ fn uv_cli_filters_run_but_passes_other_subcommands_through() {
         "#!/bin/sh\nprintf 'payload for %s %s\\n\\n' \"$1\" \"$2\"\nprintf 'fixture diagnostic\\n' >&2\n",
     )
     .expect("write fake uv");
-    fs::set_permissions(&fake_uv, fs::Permissions::from_mode(0o755))
+    fs::set_permissions(&fake_uv, fs::Permissions::from_mode(0o700))
         .expect("make fake uv executable");
 
     let invoke = |args: [&str; 2]| {

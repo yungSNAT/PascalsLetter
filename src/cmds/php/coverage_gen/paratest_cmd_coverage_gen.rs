@@ -26,7 +26,7 @@ printf '%s\n' \
 "#,
     )
     .unwrap();
-    fs::set_permissions(&tool, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::set_permissions(&tool, fs::Permissions::from_mode(0o700)).unwrap();
 
     for (cli_args, expected_args, expected_trace) in [
         (
