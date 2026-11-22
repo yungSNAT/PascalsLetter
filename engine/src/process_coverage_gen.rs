@@ -14,6 +14,7 @@ fn gate_waits_for_capacity_and_tolerates_a_poisoned_lock() {
             "::gate_waits_for_capacity_and_tolerates_a_poisoned_lock"
         );
         let (_, test_name) = qualified_name.split_once("::").expect("libtest test name");
+        // nosemgrep: dynamic-command-execution -- a test: re-runs this test binary so the poisoned lock stays in a child process
         let output = Command::new(std::env::current_exe().expect("test executable"))
             .args(["--exact", test_name, "--nocapture"])
             .env(CHILD_FLAG, "1")
