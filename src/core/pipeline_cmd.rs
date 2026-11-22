@@ -1370,6 +1370,42 @@ struct CardStats<'a> {
     proxy: Option<&'a crate::llm_proxy::ProxyPipelineRow>,
 }
 
+/// Terminal cells `text` takes (wide characters take 2).
+fn cells(text: &str) -> usize {
+    ratatui::text::Span::raw(text).width()
+}
+
+/// `text` cut to `max` terminal cells on a grapheme boundary, ending in `…`
+/// when cut.
+fn clip_cells(text: &str, max: usize) -> String {
+    if cells(text) <= max {
+        return text.to_string();
+    }
+    let mut kept = String::new();
+    let mut room = max.saturating_sub(1);
+    for grapheme in
+        ratatui::text::Span::raw(text).styled_graphemes(ratatui::style::Style::default())
+    {
+        let width = cells(grapheme.symbol);
+        if width > room {
+            break;
+        }
+        kept.push_str(grapheme.symbol);
+        room -= width;
+    }
+    if max > 0 {
+        kept.push('…');
+    }
+    kept
+}
+
+/// `text` clipped or space-padded to exactly `width` cells.
+fn fit_cells(text: &str, width: usize) -> String {
+    let text = clip_cells(text, width);
+    let pad = width - cells(&text);
+    format!("{text}{}", " ".repeat(pad))
+}
+
 /// The terminal rendering of a share card: the same facts as the markdown,
 /// drawn as panels in `rtk gain`'s visual language so a screenshot of it is
 /// presentable as-is. The markdown stays the paste artifact — this never
@@ -1385,25 +1421,18 @@ fn terminal_card(
     use colored::Colorize;
     const W: usize = 74;
     let mut out = Vec::new();
+    // Every panel line is W + 1 cells: borders and padding are counted in
+    // terminal cells, and text that does not fit is clipped with `…`.
     let hr = |title: &str| {
-        let title = format!(" {title} ");
-        let fill = W.saturating_sub(title.chars().count() + 2);
+        let title = format!(" {} ", clip_cells(title, W - 4));
+        let fill = W - 2 - cells(&title);
         format!("┌─{title}{}┐", "─".repeat(fill)).cyan().to_string()
     };
     let row_cols = |left: String, right: String| {
-        let text = format!("{left} {right}");
-        let pad = W.saturating_sub(text.chars().count() + 3);
-        format!("{} {}{} {}", "│".cyan(), text, " ".repeat(pad), "│".cyan())
+        let text = fit_cells(&format!("{left} {right}"), W - 3);
+        format!("{} {} {}", "│".cyan(), text, "│".cyan())
     };
     let end_panel = || format!("└{}┘", "─".repeat(W - 1)).cyan().to_string();
-    let trunc = |text: &str, max: usize| -> String {
-        if text.chars().count() <= max {
-            text.to_string()
-        } else {
-            let cut: String = text.chars().take(max.saturating_sub(1)).collect();
-            format!("{cut}…")
-        }
-    };
 
     out.push(hr(&format!("rtk pipeline · {name}")));
     if stats.what.is_empty() {
@@ -1417,7 +1446,7 @@ fn terminal_card(
         let right = if when.is_empty() {
             String::new()
         } else {
-            trunc(when, W.saturating_sub(left.chars().count() + 5))
+            clip_cells(when, W.saturating_sub(cells(&left) + 5))
         };
         out.push(row_cols(left, right));
     }
@@ -1436,9 +1465,9 @@ fn terminal_card(
         } else {
             bar.normal().to_string()
         };
-        let text = format!("{label:<28} {activity:>14}  ");
+        let text = format!("{} {activity:>14}  ", fit_cells(label, 28));
         let unit_str = format!(" {unit}");
-        let pad = W.saturating_sub(text.chars().count() + 10 + 4 + 5 + unit_str.chars().count());
+        let pad = W.saturating_sub(cells(&text) + 10 + 4 + 5 + cells(&unit_str));
         format!(
             "{} {}{} {:>4.0}%{}{} {}",
             "│".cyan(),
@@ -1493,7 +1522,7 @@ fn terminal_card(
         out.push(row_cols(
             format!(
                 "{:<28} {:>14}",
-                trunc(&format!("delegated · {}", task.name), 28),
+                fit_cells(&format!("delegated · {}", task.name), 28),
                 format!("{} reads", task.calls)
             ),
             format!(" {} kept out of context", format_tokens(kept as usize)),
@@ -1565,8 +1594,16 @@ fn terminal_card(
     match published {
         Some(install) => {
             out.push(hr("Published"));
+            // A link or command is only useful whole, so one too wide for the
+            // panel is printed in full below it instead of clipped.
+            let mut below = Vec::new();
             let mut kv = |label: &str, value: &str| {
-                out.push(row_cols(trunc(&format!("{label:<18} {value}"), W - 4), String::new()));
+                let line = format!("{label:<18} {value}");
+                if cells(&line) <= W - 4 {
+                    out.push(row_cols(line, String::new()));
+                } else {
+                    below.push(format!("  {label} {value}"));
+                }
             };
             if let Some(repo) = install.strip_prefix("github:") {
                 kv("live at:", &format!("https://github.com/{repo}"));
@@ -1574,6 +1611,7 @@ fn terminal_card(
             kv("others install it:", &format!("rtk pipeline add {install}"));
             kv("update the repo:", "rtk pipeline share publish");
             out.push(end_panel());
+            out.extend(below);
         }
         None => {
             out.push(hr("Share it"));
@@ -2287,8 +2325,14 @@ mod tests {
             assert_eq!(ratatui::text::Span::raw(row.as_str()).width(), 75, "{row}");
         }
         let shown = shown.join("\n");
-        assert!(shown.contains(&format!("https://github.com/{repo}")), "{shown}");
-        assert!(shown.contains(&format!("rtk pipeline add {install}")), "{shown}");
+        assert!(
+            shown.contains(&format!("https://github.com/{repo}")),
+            "{shown}"
+        );
+        assert!(
+            shown.contains(&format!("rtk pipeline add {install}")),
+            "{shown}"
+        );
         assert!(shown.contains("rtk pipeline share publish"), "{shown}");
     }
 
