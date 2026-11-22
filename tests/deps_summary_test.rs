@@ -221,7 +221,9 @@ fn cargo_summary_reads_underscore_dev_and_build_tables() {
     let dir = common::tempdir();
     fs::write(
         dir.path().join("Cargo.toml"),
-        format!("{PADDING}[dev_dependencies]\ntempfile = \"3\"\n\n[build_dependencies]\ncc = \"1\"\n"),
+        format!(
+            "{PADDING}[dev_dependencies]\ntempfile = \"3\"\n\n[build_dependencies]\ncc = \"1\"\n"
+        ),
     )
     .expect("write Cargo.toml");
     assert_eq!(

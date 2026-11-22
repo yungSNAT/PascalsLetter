@@ -94,8 +94,10 @@ fn summarize_cargo_str(path: &Path) -> Result<String> {
     let mut build_deps = Vec::new();
     for scope in scopes {
         cargo_deps(scope.get("dependencies"), &mut deps);
-        cargo_deps(scope.get("dev-dependencies"), &mut dev_deps);
-        cargo_deps(scope.get("build-dependencies"), &mut build_deps);
+        // Cargo reads the underscore spellings before edition 2024.
+        let either = |key: &str| scope.get(key).or_else(|| scope.get(&key.replace('-', "_")));
+        cargo_deps(either("dev-dependencies"), &mut dev_deps);
+        cargo_deps(either("build-dependencies"), &mut build_deps);
     }
     cargo_deps(
         doc.get("workspace").and_then(|w| w.get("dependencies")),
