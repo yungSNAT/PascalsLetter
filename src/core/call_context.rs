@@ -368,3 +368,7 @@ mod tests {
         assert!(intent.ends_with(" end"), "the latest words are kept");
     }
 }
+
+#[cfg(test)]
+#[path = "call_context_coverage_gen.rs"]
+mod coverage_gen_src_core_call_context;

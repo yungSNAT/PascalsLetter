@@ -381,3 +381,7 @@ enum FlagPrefix {
 fn positional(text: &str, source_index: usize) -> Token<'_> {
     token(TokenKind::Positional, text, source_index, FlagPrefix::Dash)
 }
+
+#[cfg(test)]
+#[path = "frozen_coverage_gen.rs"]
+mod coverage_gen_src_core_arg_tokenizer_frozen;
