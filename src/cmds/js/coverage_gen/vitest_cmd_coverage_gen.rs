@@ -167,7 +167,7 @@ printf '{\n  "numTotalTests": %s,\n  "numPassedTests": %s,\n  "numFailedTests": 
     ] {
         let path = bin.join(name);
         std::fs::write(&path, script).unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
     }
 
     for (framework, passed) in [("vitest", 13), ("jest", 17)] {

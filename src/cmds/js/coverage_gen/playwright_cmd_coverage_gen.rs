@@ -169,7 +169,7 @@ fn cli_routes_playwright_through_the_package_manager_and_preserves_status() {
 
         let executable = bin.path().join(tool);
         fs::write(&executable, script).unwrap();
-        fs::set_permissions(&executable, fs::Permissions::from_mode(0o755)).unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
     }
 
     for (tool, lockfile, args, _, _, expected, status) in cases {

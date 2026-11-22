@@ -21,7 +21,7 @@ mod cli {
     fn install_tool(dir: &Path, name: &str, script: &str) {
         let path = dir.join(name);
         fs::write(&path, script).unwrap();
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
     }
 
     fn command_with_tools(dir: &Path) -> Command {

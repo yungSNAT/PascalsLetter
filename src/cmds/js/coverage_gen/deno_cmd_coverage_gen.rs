@@ -16,7 +16,7 @@ fn run_fake_deno(args: &[&str], raw_stdout: &str, verbose: bool) -> (String, Str
         "#!/bin/sh\nprintf '%s\\n' \"$@\" > deno-argv.txt && cat deno-stdout.txt\n",
     )
     .unwrap();
-    fs::set_permissions(&tool, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::set_permissions(&tool, fs::Permissions::from_mode(0o700)).unwrap();
 
     let mut cmd = test_isolation::rtk_command();
     let inherited_path = cmd

@@ -9,7 +9,7 @@ use std::process::{Output, Stdio};
 fn install_fake_tool(dir: &Path, name: &str, body: &str) {
     let path = dir.join(name);
     fs::write(&path, format!("#!/bin/sh\n{body}")).expect("write fake tool");
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o755))
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o700))
         .expect("make fake tool executable");
 }
 

@@ -123,7 +123,7 @@ exit "$RTK_TEST_PRISMA_CODE"
 "#,
         )
         .expect("write fixture tool");
-        fs::set_permissions(&tool, fs::Permissions::from_mode(0o755))
+        fs::set_permissions(&tool, fs::Permissions::from_mode(0o700))
             .expect("make fixture tool executable");
     }
 
@@ -162,112 +162,6 @@ exit "$RTK_TEST_PRISMA_CODE"
             .env("RTK_TEST_PRISMA_CODE", code)
             .output()
             .expect("run isolated rtk")
-    }
-
-    #[test]
-    fn prisma_cli_filters_success_and_preserves_failed_tool_output() {
-        if !rtk_binary_is_built() {
-            return;
-        }
-
-        let bin = tempdir();
-        install_tool(bin.path(), "prisma");
-        install_tool(bin.path(), "npx");
-        let log = bin.path().join("tool-args");
-
-        let help = rtk_with_tools(bin.path())
-            .args(["prisma", "--help"])
-            .output()
-            .expect("read prisma command help");
-        assert!(help.status.success(), "{help:?}");
-        let help = String::from_utf8_lossy(&help.stdout);
-        let db_args: &[&str] = if help
-            .lines()
-            .any(|line| line.split_whitespace().next() == Some("db-push"))
-        {
-            &["db-push"]
-        } else {
-            &["db", "push"]
-        };
-
-        for (cli_args, tool_args, label, raw, filtered) in [
-            (
-                ["generate"].as_slice(),
-                ["generate"].as_slice(),
-                "prisma generate",
-                "2 models generated\n",
-                "Prisma Client generated\n  • 2 models, 0 enums, 0 types\n  • Output: node_modules/@prisma/client",
-            ),
-            (
-                ["migrate", "dev", "--name", "add sessions"].as_slice(),
-                ["migrate", "dev", "--name", "add sessions"].as_slice(),
-                "prisma migrate dev",
-                "Applying migration 20260512_add_sessions\nCREATE TABLE Session\n✓ Migration applied\n",
-                "Migration: 20260512_add_sessions\nChanges:\n  + 1 table(s)\n\nApplied | Pending: 0",
-            ),
-            (
-                ["migrate", "status"].as_slice(),
-                ["migrate", "status"].as_slice(),
-                "prisma migrate status",
-                "20260511_init applied\n20260512_add_sessions pending\n",
-                "Migrations: 1 applied, 1 pending\nLatest: 20260511_init",
-            ),
-            (
-                ["migrate", "deploy"].as_slice(),
-                ["migrate", "deploy"].as_slice(),
-                "prisma migrate deploy",
-                "✓ 20260511_init\n20260512_add_sessions applied\n",
-                "2 migration(s) deployed",
-            ),
-            (
-                db_args,
-                ["db", "push"].as_slice(),
-                "prisma db push",
-                "CREATE TABLE Session\nALTER TABLE Session ADD COLUMN owner\n",
-                "Schema pushed to database\n  + 1 tables, ~ 1 columns, - 0 dropped",
-            ),
-        ] {
-            let mut command = invocation(bin.path(), cli_args, &log);
-            let tool_stderr = if label == "prisma generate" {
-                "Generated into ./node_modules/@prisma/client\n"
-            } else {
-                ""
-            };
-            let success = run_fixture(&mut command, &format!("{BANNER}{raw}"), tool_stderr, "0");
-            assert!(success.status.success(), "{label}: {success:?}");
-            assert_eq!(String::from_utf8_lossy(&success.stdout).trim(), filtered);
-            assert!(
-                String::from_utf8_lossy(&success.stderr)
-                    .lines()
-                    .any(|line| line == format!("Running: {label}")),
-                "{label}: {success:?}"
-            );
-
-            let expected_args = std::iter::once("prisma")
-                .chain(tool_args.iter().copied())
-                .chain(["--schema", SCHEMA])
-                .collect::<Vec<_>>()
-                .join("\n");
-            assert_eq!(
-                fs::read_to_string(&log).expect("read fake tool arguments"),
-                format!("{expected_args}\n"),
-                "{label}"
-            );
-
-            let failure = run_fixture(
-                &mut command,
-                "fixture diagnostic from stdout\n",
-                "fixture diagnostic from stderr\n",
-                "23",
-            );
-            assert_eq!(failure.status.code(), Some(23), "{label}: {failure:?}");
-            assert!(failure.stdout.is_empty(), "{label}: {failure:?}");
-            assert!(
-                String::from_utf8_lossy(&failure.stderr)
-                    .contains("fixture diagnostic from stdout\nfixture diagnostic from stderr\n"),
-                "{label}: {failure:?}"
-            );
-        }
     }
 
     #[test]

@@ -76,7 +76,7 @@ exit 2
     ] {
         let tool = scratch.path().join(name);
         fs::write(&tool, script).expect("write fake Prettier launcher");
-        fs::set_permissions(&tool, fs::Permissions::from_mode(0o755))
+        fs::set_permissions(&tool, fs::Permissions::from_mode(0o700))
             .expect("make fake Prettier launcher executable");
     }
 

@@ -216,7 +216,7 @@ mod cli {
         let dir = tempdir();
         let tool = dir.path().join("pnpm");
         std::fs::write(&tool, format!("#!/bin/sh\n{body}\n")).unwrap();
-        std::fs::set_permissions(tool, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::set_permissions(tool, std::fs::Permissions::from_mode(0o700)).unwrap();
         dir
     }
 
