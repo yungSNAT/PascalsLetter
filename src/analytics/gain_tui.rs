@@ -83,11 +83,18 @@ fn event_loop(terminal: &mut ratatui::DefaultTerminal, state: &mut State) -> Res
 
 fn draw(f: &mut Frame, state: &State) {
     let area = f.area();
+    // Extra KPI rows only from height beyond every panel's old minimum, so a short
+    // terminal lays out as before: header, share panel, context, table, footer.
+    let others = 3 + if share_cta_available() { 3 } else { 0 } + 11 + 5 + 1;
+    let kpi_rows = kpi_text_rows(state)
+        .min(area.height.saturating_sub(others + 3))
+        .max(6);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3),
-            Constraint::Length(9),
+            // Text rows, the gauge row and 2 borders.
+            Constraint::Length(kpi_rows + 3),
             Constraint::Length(if share_cta_available() { 3 } else { 0 }),
             Constraint::Length(11),
             Constraint::Min(5),
@@ -96,7 +103,7 @@ fn draw(f: &mut Frame, state: &State) {
         .split(area);
 
     draw_header(f, chunks[0], state);
-    draw_kpi_panels(f, chunks[1], state);
+    draw_kpi_panels(f, chunks[1], state, kpi_rows);
     if share_cta_available() {
         draw_share_cta(f, chunks[2]);
     }
@@ -233,20 +240,33 @@ fn draw_header(f: &mut Frame, area: Rect, state: &State) {
     f.render_widget(paragraph, area);
 }
 
-fn draw_kpi_panels(f: &mut Frame, area: Rect, state: &State) {
+/// Text rows the taller KPI panel needs.
+fn kpi_text_rows(state: &State) -> u16 {
+    let tracker = state
+        .tracker_summary
+        .as_ref()
+        .map_or(0, |s| tracker_lines(s).len());
+    let proxy = state
+        .proxy_summary
+        .as_ref()
+        .map_or(0, |p| proxy_lines(p).len());
+    u16::try_from(tracker.max(proxy)).unwrap_or(u16::MAX)
+}
+
+fn draw_kpi_panels(f: &mut Frame, area: Rect, state: &State, text_rows: u16) {
     let cols = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(area);
 
-    draw_tracker_panel(f, cols[0], state.tracker_summary.as_ref());
-    draw_proxy_panel(f, cols[1], state.proxy_summary.as_ref());
+    draw_tracker_panel(f, cols[0], state.tracker_summary.as_ref(), text_rows);
+    draw_proxy_panel(f, cols[1], state.proxy_summary.as_ref(), text_rows);
 }
 
-fn kpi_layout(area: Rect) -> (Rect, Rect) {
+fn kpi_layout(area: Rect, text_rows: u16) -> (Rect, Rect) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(5), Constraint::Length(1)])
+        .constraints([Constraint::Length(text_rows), Constraint::Length(1)])
         .split(area);
     (rows[0], rows[1])
 }
@@ -261,7 +281,7 @@ fn accent_block(title: &str, accent: Color) -> Block<'static> {
         ))
 }
 
-fn draw_tracker_panel(f: &mut Frame, area: Rect, summary: Option<&TrackerSummary>) {
+fn draw_tracker_panel(f: &mut Frame, area: Rect, summary: Option<&TrackerSummary>, text_rows: u16) {
     let block = accent_block("Command filtering (rtk git/npm/cargo/...)", TRACKER_ACCENT);
     let Some(s) = summary else {
         f.render_widget(
@@ -272,8 +292,12 @@ fn draw_tracker_panel(f: &mut Frame, area: Rect, summary: Option<&TrackerSummary
     };
     let inner = block.inner(area);
     f.render_widget(block, area);
-    let (text_area, gauge_area) = kpi_layout(inner);
+    let (text_area, gauge_area) = kpi_layout(inner, text_rows);
+    f.render_widget(Paragraph::new(tracker_lines(s)), text_area);
+    f.render_widget(savings_gauge(s.avg_savings_pct), gauge_area);
+}
 
+fn tracker_lines(s: &TrackerSummary) -> Vec<Line<'static>> {
     let lines = vec![
         kpi_line("Commands", s.total_commands.to_string()),
         kpi_line("Input", format_tokens(s.total_input)),
@@ -295,11 +319,10 @@ fn draw_tracker_panel(f: &mut Frame, area: Rect, summary: Option<&TrackerSummary
             format!("{} outputs counted at the agent cap", s.oversized_capped),
         ));
     }
-    f.render_widget(Paragraph::new(lines), text_area);
-    f.render_widget(savings_gauge(s.avg_savings_pct), gauge_area);
+    lines
 }
 
-fn draw_proxy_panel(f: &mut Frame, area: Rect, summary: Option<&ProxyGainSummary>) {
+fn draw_proxy_panel(f: &mut Frame, area: Rect, summary: Option<&ProxyGainSummary>, text_rows: u16) {
     // Spelled from the running executable, so a binary installed under another
     // name is not told to run a command it does not have. See `llm_proxy::cli_name`.
     let cli = crate::llm_proxy::cli_name();
@@ -317,8 +340,16 @@ fn draw_proxy_panel(f: &mut Frame, area: Rect, summary: Option<&ProxyGainSummary
     };
     let inner = block.inner(area);
     f.render_widget(block, area);
-    let (text_area, gauge_area) = kpi_layout(inner);
+    let (text_area, gauge_area) = kpi_layout(inner, text_rows);
+    f.render_widget(Paragraph::new(proxy_lines(p)), text_area);
+    // The gauge shows the panel's real lever: the share of input the cache
+    // kept off the bill. A trim-over-all-input percentage would sit near zero
+    // whenever caching works, punishing exactly the healthy state.
+    let cache_saved_pct = p.cache_effect_pct().unwrap_or(0.0);
+    f.render_widget(savings_gauge(cache_saved_pct), gauge_area);
+}
 
+fn proxy_lines(p: &ProxyGainSummary) -> Vec<Line<'static>> {
     let lines = vec![
         kpi_line("Requests", p.total_requests.to_string()),
         kpi_line(
@@ -396,12 +427,7 @@ fn draw_proxy_panel(f: &mut Frame, area: Rect, summary: Option<&ProxyGainSummary
             ));
         }
     }
-    f.render_widget(Paragraph::new(lines), text_area);
-    // The gauge shows the panel's real lever: the share of input the cache
-    // kept off the bill. A trim-over-all-input percentage would sit near zero
-    // whenever caching works, punishing exactly the healthy state.
-    let cache_saved_pct = p.cache_effect_pct().unwrap_or(0.0);
-    f.render_widget(savings_gauge(cache_saved_pct), gauge_area);
+    lines
 }
 
 /// One category's accent color, reused for its bar and its share label.
@@ -613,4 +639,68 @@ fn draw_footer(f: &mut Frame, area: Rect) {
             .add_modifier(Modifier::ITALIC),
     ));
     f.render_widget(Paragraph::new(line), area);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    fn proxy_state() -> State {
+        State {
+            tracker_summary: None,
+            proxy_summary: Some(ProxyGainSummary {
+                total_requests: 12,
+                tokens_in: 4_000,
+                tokens_out: 900,
+                tokens_saved: 300,
+                trimmed_requests: 2,
+                routed_requests: 3,
+                routed_tokens_in: 1_200,
+                retrieve_calls: 2,
+                cache_read: 90_000,
+                cache_created: 10_000,
+                cache_fractures: 1,
+                ..Default::default()
+            }),
+            last_refresh: Instant::now(),
+            project_scope: None,
+        }
+    }
+
+    fn screen(height: u16) -> String {
+        let mut terminal = Terminal::new(TestBackend::new(200, height)).unwrap();
+        terminal.draw(|f| draw(f, &proxy_state())).unwrap();
+        terminal
+            .backend()
+            .buffer()
+            .content()
+            .chunks(200)
+            .map(|row| row.iter().map(|cell| cell.symbol()).collect::<String>() + "\n")
+            .collect()
+    }
+
+    #[test]
+    fn the_proxy_panel_keeps_cache_rows_beside_routing_and_recovery() {
+        let screen = screen(50);
+        for shown in [
+            "Routed",
+            "Recovery",
+            "Cache hit",
+            "recent fractures",
+            "Cache effect",
+        ] {
+            assert!(screen.contains(shown), "{shown} missing:\n{screen}");
+        }
+    }
+
+    #[test]
+    fn a_terminal_at_the_old_minimum_height_keeps_every_panel() {
+        // Header, KPI row, share panel, context panel, table minimum, footer.
+        let height = 3 + 9 + if share_cta_available() { 3 } else { 0 } + 11 + 5 + 1;
+        let screen = screen(height);
+        for shown in ["Context composition", "By command", "live view"] {
+            assert!(screen.contains(shown), "{shown} missing:\n{screen}");
+        }
+    }
 }
