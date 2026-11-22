@@ -3745,3 +3745,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "hook_cmd_coverage_gen.rs"]
+mod coverage_gen_src_hooks_hook_cmd;

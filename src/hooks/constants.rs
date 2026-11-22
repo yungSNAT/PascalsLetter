@@ -203,3 +203,7 @@ mod tests {
         assert!(claude_matcher(&[]).is_none());
     }
 }
+
+#[cfg(test)]
+#[path = "constants_coverage_gen.rs"]
+mod coverage_gen_src_hooks_constants;

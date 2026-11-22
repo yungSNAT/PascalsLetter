@@ -312,3 +312,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "rewrite_cmd_coverage_gen.rs"]
+mod coverage_gen_src_hooks_rewrite_cmd;

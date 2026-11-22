@@ -697,3 +697,7 @@ mod tests {
         assert!(key.starts_with('/') || key.contains(':'));
     }
 }
+
+#[cfg(test)]
+#[path = "trust_coverage_gen.rs"]
+mod coverage_gen_src_hooks_trust;

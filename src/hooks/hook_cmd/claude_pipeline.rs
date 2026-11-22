@@ -670,3 +670,7 @@ mod tests {
         ));
     }
 }
+
+#[cfg(test)]
+#[path = "claude_pipeline_coverage_gen.rs"]
+mod coverage_gen_src_hooks_hook_cmd_claude_pipeline;
