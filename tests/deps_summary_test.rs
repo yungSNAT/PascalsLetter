@@ -215,6 +215,21 @@ fn cargo_summary_lists_build_dependencies_in_file_order() {
     }
 }
 
+/// Cargo reads the underscore spellings before edition 2024.
+#[test]
+fn cargo_summary_reads_underscore_dev_and_build_tables() {
+    let dir = common::tempdir();
+    fs::write(
+        dir.path().join("Cargo.toml"),
+        format!("{PADDING}[dev_dependencies]\ntempfile = \"3\"\n\n[build_dependencies]\ncc = \"1\"\n"),
+    )
+    .expect("write Cargo.toml");
+    assert_eq!(
+        deps(dir.path()),
+        "Rust (Cargo.toml):\n  Dev (1):\n    tempfile (3)\n  Build (1):\n    cc (1)\n"
+    );
+}
+
 #[test]
 fn pyproject_summary_separates_optional_dependencies_and_reads_one_line_lists() {
     let dir = common::tempdir();
