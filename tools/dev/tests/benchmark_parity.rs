@@ -14,7 +14,7 @@ use std::process::Command;
 
 const REAL_TOOLS: &[&str] = &[
     "bash", "cat", "env", "wc", "tr", "rm", "mkdir", "dirname", "basename", "awk", "sed", "seq",
-    "head", "sleep", "mktemp",
+    "head", "sleep",
 ];
 
 const RTK_STUB: &str = r#"#!/bin/sh
@@ -26,7 +26,7 @@ case "$sub" in
     else
       printf 'rtk %s\n' "$*"
     fi ;;
-  find) printf '4F 2D:\n./ Cargo.toml\nsrc/ lib.rs main.rs\nscripts/ keep\next: .rs 2\n' ;;
+  find) printf '4F 2D:\n./ Cargo.toml\nsrc/ lib.rs main.rs\nscripts/ keep\next: .rs 2\n[+3 hidden: rtk recall ab12]\n' ;;
   *)
     if [ "$RTK_STUB_MODE" = good ]; then echo ok; exit 0; fi
     case "$sub" in
@@ -89,14 +89,39 @@ const TREE_STUB: &str = "#!/bin/sh\nprintf '.\\n├── Cargo.toml\\n└──
 
 const RG_STUB: &str = "#!/bin/sh\nprintf 'src/lib.rs:1:pub fn run() {}\\n'\n";
 
+// Stands in for the Python and Go tools: shows where it ran and what it saw.
+const WHERE_STUB: &str = "#!/bin/sh
+echo \"$(basename \"$0\") $*\"
+pwd
+echo *
+";
+
+/// Optional tools a case puts on PATH, by name.
+const STUBS: &[(&str, &str)] = &[
+    ("cargo", CARGO_STUB),
+    ("python3", PYTHON_STUB),
+    ("curl", CURL_STUB),
+    ("wget", CURL_STUB),
+    ("tree", TREE_STUB),
+    ("rg", RG_STUB),
+    ("ruff", WHERE_STUB),
+    ("pytest", WHERE_STUB),
+    ("pip", WHERE_STUB),
+    ("mypy", WHERE_STUB),
+    ("go", WHERE_STUB),
+    ("golangci-lint", WHERE_STUB),
+];
+
 struct Case {
     name: &'static str,
     ci: bool,
     rtk_bin: Option<&'static str>,
     stub_mode: &'static str,
-    extra_tools: bool,
+    tools: &'static [&'static str],
     rtk_in_target: bool,
     rtk_on_path: bool,
+    /// `scripts/benchmark` is a file, so the output folders cannot be made.
+    block_output: bool,
 }
 
 const CASES: &[Case] = &[
@@ -105,54 +130,98 @@ const CASES: &[Case] = &[
         ci: true,
         rtk_bin: Some("rtkbin-é/rtk"),
         stub_mode: "mixed",
-        extra_tools: false,
+        tools: &[],
         rtk_in_target: false,
         rtk_on_path: false,
+        block_output: false,
     },
     Case {
         name: "full-local",
         ci: false,
         rtk_bin: Some("rtkbin/rtk"),
         stub_mode: "mixed",
-        extra_tools: true,
+        tools: &["cargo", "python3", "curl", "wget", "tree", "rg"],
         rtk_in_target: false,
         rtk_on_path: false,
+        block_output: false,
     },
     Case {
         name: "good-target-release",
         ci: true,
         rtk_bin: None,
         stub_mode: "good",
-        extra_tools: false,
+        tools: &[],
         rtk_in_target: true,
         rtk_on_path: false,
+        block_output: false,
     },
     Case {
         name: "good-on-path",
         ci: true,
         rtk_bin: None,
         stub_mode: "good",
-        extra_tools: false,
+        tools: &[],
         rtk_in_target: false,
         rtk_on_path: true,
+        block_output: false,
     },
     Case {
         name: "bad-rtk-bin",
         ci: true,
         rtk_bin: Some("rtkbin/missing"),
         stub_mode: "mixed",
-        extra_tools: false,
+        tools: &[],
         rtk_in_target: false,
         rtk_on_path: false,
+        block_output: false,
     },
     Case {
         name: "no-rtk",
         ci: true,
         rtk_bin: None,
         stub_mode: "mixed",
-        extra_tools: false,
+        tools: &[],
         rtk_in_target: false,
         rtk_on_path: false,
+        block_output: false,
+    },
+    Case {
+        name: "python-go",
+        ci: true,
+        rtk_bin: Some("rtkbin/rtk"),
+        stub_mode: "mixed",
+        tools: &[
+            "python3",
+            "ruff",
+            "pytest",
+            "pip",
+            "mypy",
+            "go",
+            "golangci-lint",
+        ],
+        rtk_in_target: false,
+        rtk_on_path: false,
+        block_output: false,
+    },
+    Case {
+        name: "curl-file-fallback",
+        ci: true,
+        rtk_bin: Some("rtkbin/rtk"),
+        stub_mode: "mixed",
+        tools: &["curl"],
+        rtk_in_target: false,
+        rtk_on_path: false,
+        block_output: false,
+    },
+    Case {
+        name: "output-blocked",
+        ci: false,
+        rtk_bin: Some("rtkbin/rtk"),
+        stub_mode: "mixed",
+        tools: &[],
+        rtk_in_target: false,
+        rtk_on_path: false,
+        block_output: true,
     },
 ];
 
@@ -216,17 +285,29 @@ fn fixture(case: &Case) -> PathBuf {
     ] {
         write_exe(&bin.join(name), body);
     }
-    if case.extra_tools {
-        for (name, body) in [
-            ("cargo", CARGO_STUB),
-            ("python3", PYTHON_STUB),
-            ("curl", CURL_STUB),
-            ("wget", CURL_STUB),
-            ("tree", TREE_STUB),
-            ("rg", RG_STUB),
-        ] {
-            write_exe(&bin.join(name), body);
-        }
+    for tool in case.tools {
+        let (_, body) = STUBS.iter().find(|(name, _)| name == tool).unwrap();
+        write_exe(&bin.join(tool), body);
+    }
+    // Numbered folders and files under `tmp`, so temporary paths are the same
+    // on every run; `tmp` is in the snapshot, so a leaked one shows.
+    fs::create_dir_all(base.join("tmp")).unwrap();
+    write_exe(
+        &bin.join("mktemp"),
+        &format!(
+            "#!/bin/sh
+state={b}/mktemp.n
+n=$(cat \"$state\" 2>/dev/null || echo 0)
+n=$((n + 1))
+echo $n > \"$state\"
+if [ \"$1\" = -d ]; then p={b}/tmp/d$n; mkdir \"$p\"; else p={b}/tmp/f$n; : > \"$p\"; fi
+echo \"$p\"
+",
+            b = base.display()
+        ),
+    );
+    if case.block_output {
+        fs::write(root.join("scripts/benchmark"), "").unwrap();
     }
     write_exe(&base.join("rtkbin/rtk"), RTK_STUB);
     // A non-ASCII path: bash's printf pads by bytes, not characters.
@@ -279,6 +360,7 @@ fn run(case: &Case, program: &[&str]) -> [Vec<u8>; 4] {
         .env("PATH", path)
         .env("PWD", &root)
         .env("LANG", "C.UTF-8")
+        .env("TMPDIR", base.join("tmp"))
         .env("RTK_STUB_MODE", case.stub_mode);
     if case.ci {
         cmd.env("CI", "true");
@@ -288,7 +370,13 @@ fn run(case: &Case, program: &[&str]) -> [Vec<u8>; 4] {
     }
     let out = cmd.output().expect("run the benchmark");
     let code = format!("{}\n", out.status.code().unwrap_or(-1)).into_bytes();
-    [out.stdout, out.stderr, code, snapshot(&root)]
+    let mut files = snapshot(&root);
+    files.extend_from_slice(
+        b"== [tmp]
+",
+    );
+    files.extend(snapshot(&base.join("tmp")));
+    [out.stdout, out.stderr, code, files]
 }
 
 const PARTS: [&str; 4] = ["stdout", "stderr", "code", "files"];
@@ -312,6 +400,10 @@ fn port_matches_the_recorded_script() {
         let parts = run(case, &[env!("CARGO_BIN_EXE_rtk-dev"), "benchmark"]);
         for (part, got) in PARTS.iter().zip(parts) {
             let want = fs::read(cases_dir.join(case.name).join(part)).unwrap();
+            // The error text differs by design (bash names the script and line).
+            if case.block_output && *part == "stderr" && !got.is_empty() && !want.is_empty() {
+                continue;
+            }
             if got != want {
                 failures.push(format!(
                     "{} {part}:\n--- recorded\n{}\n--- port\n{}",

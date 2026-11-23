@@ -515,18 +515,21 @@ jobs:
 
       # tools/dev is its own workspace, so the workspace jobs do not see it. Its
       # parity test replays the cases recorded from the shell benchmark it replaced.
+      # Its build goes outside the checkout: the raw `find .` rows would count it.
       - name: Lint and test the benchmark tool
         run: |
           cargo fmt --manifest-path tools/dev/Cargo.toml --check
           cargo clippy --manifest-path tools/dev/Cargo.toml --locked --all-targets -- -D warnings
           cargo test --manifest-path tools/dev/Cargo.toml --locked
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/rtk-dev-target
 
       # Built, then run directly: `cargo run` would add its CARGO_* variables to
       # the environment the env rows measure.
       - name: Run benchmark
         run: |
-          cargo build --manifest-path tools/dev/Cargo.toml --locked
-          tools/dev/target/debug/rtk-dev benchmark
+          CARGO_TARGET_DIR="$RUNNER_TEMP/rtk-dev-target" cargo build --manifest-path tools/dev/Cargo.toml --locked
+          "$RUNNER_TEMP/rtk-dev-target/debug/rtk-dev" benchmark
         env:
           RTK_BIN: target/debug/rtk
 

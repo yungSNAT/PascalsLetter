@@ -22,9 +22,9 @@ RTK Benchmark
 ✅ read -n                  │ cat -n src/lib.rs                        │ /tmp/rtk-dev-parity/good-target-release/root/target/release/rtk read src/lib.rs -n │     45 →      1 (+97%)
 
 ── find ──
-⚠️ find *                   │ find . -not -path './target/*' -not -path './.git/*' -type f │ /tmp/rtk-dev-parity/good-target-release/root/target/release/rtk find '*' │     36 →     17 (+52%)
-⚠️ find *.rs                │ find . -not -path './target/*' -not -path './.git/*' -name '*.rs' -type f │ /tmp/rtk-dev-parity/good-target-release/root/target/release/rtk find '*.rs' │     36 →     17 (+52%)
-⚠️ find --max 100           │ find . -not -path './target/*' -not -path './.git/*' -type f │ /tmp/rtk-dev-parity/good-target-release/root/target/release/rtk find '*' --max 100 │     36 →     17 (+52%)
+⚠️ find *                   │ find . -not -path './target/*' -not -path './.git/*' -type f │ /tmp/rtk-dev-parity/good-target-release/root/target/release/rtk find '*' │     36 →     24 (+33%)
+⚠️ find *.rs                │ find . -not -path './target/*' -not -path './.git/*' -name '*.rs' -type f │ /tmp/rtk-dev-parity/good-target-release/root/target/release/rtk find '*.rs' │     36 →     24 (+33%)
+⚠️ find --max 100           │ find . -not -path './target/*' -not -path './.git/*' -type f │ /tmp/rtk-dev-parity/good-target-release/root/target/release/rtk find '*' --max 100 │     36 →     24 (+33%)
 ✅ find --max 10 cap        │ rtk find '*' --max 10                    │ 4/4 names displayed
 ✅ find --max 100 cap       │ rtk find '*' --max 100                   │ 4/4 names displayed
 
@@ -51,7 +51,7 @@ RTK Benchmark
 ✅ deps                     │ cat Cargo.toml                           │ /tmp/rtk-dev-parity/good-target-release/root/target/release/rtk deps │     18 →      1 (+94%)
 
 ── env ──
-✅ env                      │ env                                      │ /tmp/rtk-dev-parity/good-target-release/root/target/release/rtk env │     55 →      1 (+98%)
+✅ env                      │ env                                      │ /tmp/rtk-dev-parity/good-target-release/root/target/release/rtk env │     68 →      1 (+98%)
 ✅ env -f PATH              │ env | grep -i '^[^=]*path'               │ /tmp/rtk-dev-parity/good-target-release/root/target/release/rtk env -f PATH │     12 →      1 (+91%)
 
 ── err ──
@@ -89,6 +89,6 @@ RTK Benchmark
 ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
   ✅ 36 good  ⚠️ 4 warn  🔴 0 negative  ❌ 0 fail    36/40 (90%)
-  Tokens: 996 → 79  (-92%)
+  Tokens: 1009 → 100  (-90%)
 
 

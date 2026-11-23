@@ -159,13 +159,14 @@ ok
 
 | Metric | Unix | RTK |
 |--------|------|-----|
-| Tokens | 59 | 1 |
+| Tokens | 69 | 1 |
 
 ## Unix
 ```
 PWD=/tmp/rtk-dev-parity/full-local/root
 LANG=C.UTF-8
 RTK_STUB_MODE=mixed
+TMPDIR=/tmp/rtk-dev-parity/full-local/tmp
 CARGO_TERM_COLOR=never
 SHLVL=1
 PATH=/tmp/rtk-dev-parity/full-local/bin
@@ -954,7 +955,7 @@ git: é ok
 
 | Metric | Unix | RTK |
 |--------|------|-----|
-| Tokens | 36 | 17 |
+| Tokens | 36 | 24 |
 
 ## Unix
 ```
@@ -973,6 +974,7 @@ git: é ok
 src/ lib.rs main.rs
 scripts/ keep
 ext: .rs 2
+[+3 hidden: rtk recall ab12]
 ```
 
 == scripts/benchmark/diff/WARN-find_.md
@@ -981,7 +983,7 @@ ext: .rs 2
 
 | Metric | Unix | RTK |
 |--------|------|-----|
-| Tokens | 36 | 17 |
+| Tokens | 36 | 24 |
 
 ## Unix
 ```
@@ -1000,6 +1002,7 @@ ext: .rs 2
 src/ lib.rs main.rs
 scripts/ keep
 ext: .rs 2
+[+3 hidden: rtk recall ab12]
 ```
 
 == scripts/benchmark/diff/WARN-find_rs.md
@@ -1008,7 +1011,7 @@ ext: .rs 2
 
 | Metric | Unix | RTK |
 |--------|------|-----|
-| Tokens | 36 | 17 |
+| Tokens | 36 | 24 |
 
 ## Unix
 ```
@@ -1027,6 +1030,7 @@ ext: .rs 2
 src/ lib.rs main.rs
 scripts/ keep
 ext: .rs 2
+[+3 hidden: rtk recall ab12]
 ```
 
 == scripts/benchmark/diff/WARN-read_-l_aggressive.md
@@ -1240,6 +1244,7 @@ $ /tmp/rtk-dev-parity/full-local/rtkbin/rtk find '*' --max 100
 src/ lib.rs main.rs
 scripts/ keep
 ext: .rs 2
+[+3 hidden: rtk recall ab12]
 ```
 
 == scripts/benchmark/rtk/find_.md
@@ -1256,6 +1261,7 @@ $ /tmp/rtk-dev-parity/full-local/rtkbin/rtk find '*'
 src/ lib.rs main.rs
 scripts/ keep
 ext: .rs 2
+[+3 hidden: rtk recall ab12]
 ```
 
 == scripts/benchmark/rtk/find_rs.md
@@ -1272,6 +1278,7 @@ $ /tmp/rtk-dev-parity/full-local/rtkbin/rtk find '*.rs'
 src/ lib.rs main.rs
 scripts/ keep
 ext: .rs 2
+[+3 hidden: rtk recall ab12]
 ```
 
 == scripts/benchmark/rtk/git_diff.md
@@ -1843,6 +1850,7 @@ $ env
 PWD=/tmp/rtk-dev-parity/full-local/root
 LANG=C.UTF-8
 RTK_STUB_MODE=mixed
+TMPDIR=/tmp/rtk-dev-parity/full-local/tmp
 CARGO_TERM_COLOR=never
 SHLVL=1
 PATH=/tmp/rtk-dev-parity/full-local/bin
@@ -2490,3 +2498,4 @@ fn main() {
     rtk::run();
 }
 
+== [tmp]

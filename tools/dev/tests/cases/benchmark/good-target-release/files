@@ -34,7 +34,7 @@ case "$sub" in
     else
       printf 'rtk %s\n' "$*"
     fi ;;
-  find) printf '4F 2D:\n./ Cargo.toml\nsrc/ lib.rs main.rs\nscripts/ keep\next: .rs 2\n' ;;
+  find) printf '4F 2D:\n./ Cargo.toml\nsrc/ lib.rs main.rs\nscripts/ keep\next: .rs 2\n[+3 hidden: rtk recall ab12]\n' ;;
   *)
     if [ "$RTK_STUB_MODE" = good ]; then echo ok; exit 0; fi
     case "$sub" in
@@ -52,3 +52,4 @@ case "$sub" in
     esac ;;
 esac
 
+== [tmp]

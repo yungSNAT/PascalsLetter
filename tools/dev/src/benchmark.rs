@@ -11,11 +11,11 @@
 //! Unix only: it needs bash and the measured tools.
 
 use std::fs;
+use std::io;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Child, Command, ExitCode, Stdio};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread::sleep;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 // cargo prints no colour into a pipe, which is how agents read it.
 const CARGO_COLOUR: &str = "never";
@@ -231,7 +231,10 @@ pub fn run() -> ExitCode {
         for sub in ["unix", "rtk", "diff"] {
             let dir = b.bench_dir.join(sub);
             let _ = fs::remove_dir_all(&dir);
-            let _ = fs::create_dir_all(&dir);
+            if let Err(e) = fs::create_dir_all(&dir) {
+                eprintln!("rtk-dev benchmark: {}: {e}", dir.display());
+                return ExitCode::from(1);
+            }
         }
     }
 
@@ -243,156 +246,163 @@ pub fn run() -> ExitCode {
     );
     println!("{}", SINGLE_RULE.repeat(RULE_WIDTH));
 
+    // Like the script under `set -e`, a fixture or output file that cannot be
+    // written stops the run.
     let mut net = NetFixtures::default();
-    b.rows(&root, &mut net);
+    let rows = b.rows(&root, &mut net);
     net.cleanup();
+    if let Err(e) = rows {
+        eprintln!("rtk-dev benchmark: {e}");
+        return ExitCode::from(1);
+    }
     b.summary()
 }
 
 impl Bench {
     /// A row whose rtk side is `$RTK <rtk_args>`.
-    fn b(&mut self, name: &str, unix_cmd: &str, rtk_args: &str) {
+    fn b(&mut self, name: &str, unix_cmd: &str, rtk_args: &str) -> io::Result<()> {
         let rtk_cmd = self.r(rtk_args);
-        self.bench(name, unix_cmd, &rtk_cmd);
+        self.bench(name, unix_cmd, &rtk_cmd)?;
+        Ok(())
     }
 
     fn r(&self, args: &str) -> String {
         format!("{} {args}", self.rtk)
     }
 
-    fn rows(&mut self, root: &Path, net: &mut NetFixtures) {
+    fn rows(&mut self, root: &Path, net: &mut NetFixtures) -> io::Result<()> {
         section("ls");
-        self.b("ls", "ls -la", "ls");
-        self.b("ls src/", "ls -la src/", "ls src/");
-        self.b("ls -l src/", "ls -l src/", "ls -l src/");
-        self.b("ls -la src/", "ls -la src/", "ls -la src/");
-        self.b("ls -lh src/", "ls -lh src/", "ls -lh src/");
-        self.b("ls src/ -l", "ls -l src/", "ls src/ -l");
-        self.b("ls -a", "ls -la", "ls -a");
-        self.b("ls multi", "ls -la src/ scripts/", "ls src/ scripts/");
+        self.b("ls", "ls -la", "ls")?;
+        self.b("ls src/", "ls -la src/", "ls src/")?;
+        self.b("ls -l src/", "ls -l src/", "ls -l src/")?;
+        self.b("ls -la src/", "ls -la src/", "ls -la src/")?;
+        self.b("ls -lh src/", "ls -lh src/", "ls -lh src/")?;
+        self.b("ls src/ -l", "ls -l src/", "ls src/ -l")?;
+        self.b("ls -a", "ls -la", "ls -a")?;
+        self.b("ls multi", "ls -la src/ scripts/", "ls src/ scripts/")?;
 
         if have("tree") {
             section("tree");
-            self.b("tree", "tree -L 2 -I target", "tree -L 2");
-            self.b("tree src/", "tree src/ -L 2", "tree src/ -L 2");
+            self.b("tree", "tree -L 2 -I target", "tree -L 2")?;
+            self.b("tree src/", "tree src/ -L 2", "tree src/ -L 2")?;
         } else {
             skipped("\n⏭️  tree (not installed, skipped)");
         }
 
         section("read");
         // The CLI lives in src/lib.rs; src/main.rs is a 3-line shim.
-        self.b("read", "cat src/lib.rs", "read src/lib.rs");
+        self.b("read", "cat src/lib.rs", "read src/lib.rs")?;
         self.b(
             "read -l minimal",
             "cat src/lib.rs",
             "read src/lib.rs -l minimal",
-        );
+        )?;
         self.b(
             "read -l aggressive",
             "cat src/lib.rs",
             "read src/lib.rs -l aggressive",
-        );
-        self.b("read -n", "cat -n src/lib.rs", "read src/lib.rs -n");
+        )?;
+        self.b("read -n", "cat -n src/lib.rs", "read src/lib.rs -n")?;
 
         section("find");
         let find_all = "find . -not -path './target/*' -not -path './.git/*' -type f";
-        self.b("find *", find_all, "find '*'");
+        self.b("find *", find_all, "find '*'")?;
         self.b(
             "find *.rs",
             "find . -not -path './target/*' -not -path './.git/*' -name '*.rs' -type f",
             "find '*.rs'",
-        );
+        )?;
         // `rtk find --max N` caps the names displayed but still scans the whole
         // tree, so the honest baseline is the full `find` a user would otherwise
         // read. One row carries the savings: the baseline is the same for every N.
-        self.b("find --max 100", find_all, "find '*' --max 100");
+        self.b("find --max 100", find_all, "find '*' --max 100")?;
         // That baseline cannot detect a --max that stops limiting, so assert the cap.
-        self.find_max(10);
-        self.find_max(100);
+        self.find_max(10)?;
+        self.find_max(100)?;
 
         section("git");
-        self.b("git status", "git status", "git status");
-        self.b("git log -n 10", "git log -10", "git log -n 10");
-        self.b("git log -n 5", "git log -5", "git log -n 5");
+        self.b("git status", "git status", "git status")?;
+        self.b("git log -n 10", "git log -10", "git log -n 10")?;
+        self.b("git log -n 5", "git log -5", "git log -n 5")?;
         self.b(
             "git diff",
             "git diff HEAD~1 2>/dev/null || echo ''",
             "git diff HEAD~1",
-        );
+        )?;
         self.b(
             "git show",
             "git show HEAD --stat 2>/dev/null || true",
             "git show HEAD --stat",
-        );
+        )?;
 
         section("grep");
         self.b(
             "grep fn",
             "grep -rn 'fn ' src/ || true",
             "grep -rn 'fn ' src/",
-        );
+        )?;
         self.b(
             "grep struct",
             "grep -rn 'struct ' src/ || true",
             "grep -rn 'struct ' src/",
-        );
+        )?;
         self.b(
             "grep --max-len 40",
             "grep -rn 'fn ' src/ || true",
             "grep --max-len 40 -rn 'fn ' src/",
-        );
+        )?;
         self.b(
             "grep -c",
             "grep -ron 'fn ' src/ || true",
             "grep -rc 'fn ' src/",
-        );
+        )?;
 
         // Native ripgrep: recursive by default, same output filter.
         if have("rg") {
             section("rg");
-            self.b("rg fn", "rg -n 'fn ' src/ || true", "rg 'fn ' src/");
+            self.b("rg fn", "rg -n 'fn ' src/ || true", "rg 'fn ' src/")?;
             self.b(
                 "rg struct",
                 "rg -n 'struct ' src/ || true",
                 "rg 'struct ' src/",
-            );
+            )?;
             self.b(
                 "rg -l files",
                 "rg -l 'fn ' src/ || true",
                 "rg -l 'fn ' src/",
-            );
+            )?;
             self.b(
                 "rg -c count",
                 "rg -c 'fn ' src/ || true",
                 "rg -c 'fn ' src/",
-            );
+            )?;
         } else {
             skipped("\n⏭️  rg (not installed, skipped)");
         }
 
         section("json");
         let json = "/tmp/rtk_bench.json";
-        let _ = fs::write(json, BENCH_JSON);
+        write(json, BENCH_JSON)?;
         self.bench(
             "json",
             &format!("cat {json}"),
             &self.r(&format!("json {json}")),
-        );
+        )?;
         self.bench(
             "json -d 2",
             &format!("cat {json}"),
             &self.r(&format!("json {json} -d 2")),
-        );
+        )?;
         let _ = fs::remove_file(json);
 
         section("deps");
-        self.b("deps", "cat Cargo.toml", "deps");
+        self.b("deps", "cat Cargo.toml", "deps")?;
 
         section("env");
-        self.b("env", "env", "env");
+        self.b("env", "env", "env")?;
         // `-f` keeps every variable whose name holds the text in any case, such as
         // the runners' PSModulePath; a plain `grep PATH` would miss those.
-        self.b("env -f PATH", "env | grep -i '^[^=]*path'", "env -f PATH");
+        self.b("env -f PATH", "env | grep -i '^[^=]*path'", "env -f PATH")?;
 
         section("err");
         if have("cargo") {
@@ -401,7 +411,7 @@ impl Bench {
                 "err cargo build",
                 "cargo build 2>&1 || true",
                 "err cargo build 2>&1",
-            );
+            )?;
         } else {
             skipped("⏭️  err cargo build (cargo not in PATH, skipped)");
         }
@@ -413,15 +423,15 @@ impl Bench {
                 "test cargo test",
                 "cargo test --lib 2>&1 || true",
                 "test cargo test --lib 2>&1",
-            );
+            )?;
         } else {
             skipped("⏭️  test cargo test (cargo not in PATH, skipped)");
         }
 
         section("log");
         let log = "/tmp/rtk_bench_sample.log";
-        let _ = fs::write(log, SAMPLE_LOG);
-        self.bench("log", &format!("cat {log}"), &self.r(&format!("log {log}")));
+        write(log, SAMPLE_LOG)?;
+        self.bench("log", &format!("cat {log}"), &self.r(&format!("log {log}")))?;
         let _ = fs::remove_file(log);
 
         section("summary");
@@ -430,7 +440,7 @@ impl Bench {
                 "summary cargo --help",
                 "cargo --help",
                 "summary cargo --help",
-            );
+            )?;
         } else {
             skipped("⏭️  summary cargo --help (cargo not in PATH, skipped)");
         }
@@ -439,7 +449,7 @@ impl Bench {
                 "summary rustc --help",
                 "rustc --help 2>/dev/null || echo 'rustc not found'",
                 "summary rustc --help",
-            );
+            )?;
         } else {
             skipped("⏭️  summary rustc --help (rustc not in PATH, skipped)");
         }
@@ -451,52 +461,53 @@ impl Bench {
                 "cargo build",
                 "cargo build 2>&1 || true",
                 "cargo build 2>&1",
-            );
+            )?;
             precompile(&["cargo", "test", "--lib", "--no-run"]);
             self.b(
                 "cargo test",
                 "cargo test --lib 2>&1 || true",
                 "cargo test --lib 2>&1",
-            );
+            )?;
             precompile(&["cargo", "clippy"]);
             self.b(
                 "cargo clippy",
                 "cargo clippy 2>&1 || true",
                 "cargo clippy 2>&1",
-            );
+            )?;
             precompile(&["cargo", "check"]);
             self.b(
                 "cargo check",
                 "cargo check 2>&1 || true",
                 "cargo check 2>&1",
-            );
+            )?;
         } else {
             skipped("⏭️  cargo build/test/clippy/check (cargo not in PATH, skipped)");
         }
 
         section("smart");
-        self.b("smart main.rs", "cat src/main.rs", "smart src/main.rs");
+        self.b("smart main.rs", "cat src/main.rs", "smart src/main.rs")?;
 
         section("wc");
         self.b(
             "wc",
             "wc Cargo.toml src/main.rs",
             "wc Cargo.toml src/main.rs",
-        );
+        )?;
 
-        self.net_rows(net);
-        self.js_rows();
-        self.service_rows();
-        self.python_rows(root);
-        self.go_rows(root);
-        self.misc_rows();
-        self.rewrite_rows();
+        self.net_rows(net)?;
+        self.js_rows()?;
+        self.service_rows()?;
+        self.python_rows(root)?;
+        self.go_rows(root)?;
+        self.misc_rows()?;
+        self.rewrite_rows()?;
+        Ok(())
     }
 
     // curl and wget, fully offline: fixed fixtures served from a loopback server,
     // so the responses carry real headers and the JSON gets minified.
-    fn net_rows(&mut self, net: &mut NetFixtures) {
-        net.setup();
+    fn net_rows(&mut self, net: &mut NetFixtures) -> io::Result<()> {
+        net.setup()?;
         let url = net.url.clone();
 
         section("curl");
@@ -506,12 +517,12 @@ impl Bench {
                     "curl json",
                     &format!("curl -s {url}/data.json"),
                     &self.r(&format!("curl {url}/data.json")),
-                );
+                )?;
                 self.bench(
                     "curl text",
                     &format!("curl -s {url}/robots.txt"),
                     &self.r(&format!("curl {url}/robots.txt")),
-                );
+                )?;
             } else {
                 // No python3 to host a server: file:// carries no headers, so no
                 // JSON minification, but it stays offline and deterministic.
@@ -520,12 +531,12 @@ impl Bench {
                     "curl json",
                     &format!("curl -s file://{dir}/data.json"),
                     &self.r(&format!("curl file://{dir}/data.json")),
-                );
+                )?;
                 self.bench(
                     "curl text",
                     &format!("curl -s file://{dir}/robots.txt"),
                     &self.r(&format!("curl file://{dir}/robots.txt")),
-                );
+                )?;
             }
         }
 
@@ -537,7 +548,7 @@ impl Bench {
                     "wget",
                     &format!("wget -qO- {url}/data.json"),
                     &self.r(&format!("wget {url}/data.json")),
-                );
+                )?;
             } else {
                 skipped("⏭️  wget (no local HTTP server available, skipped)");
             }
@@ -550,35 +561,36 @@ impl Bench {
                 "npm list",
                 "npm list -g --depth 0 2>&1 || true",
                 "npm list -g --depth 0",
-            );
+            )?;
         }
+        Ok(())
     }
 
-    fn js_rows(&mut self) {
+    fn js_rows(&mut self) -> io::Result<()> {
         if !is_file("package.json") {
-            return;
+            return Ok(());
         }
         section("modern JS stack");
         let js = |tool: &str| have(tool) || is_file(&format!("node_modules/.bin/{tool}"));
         if js("tsc") {
-            self.b("tsc", "tsc --noEmit 2>&1 || true", "tsc --noEmit 2>&1");
+            self.b("tsc", "tsc --noEmit 2>&1 || true", "tsc --noEmit 2>&1")?;
         }
         if js("prettier") {
             self.b(
                 "prettier --check",
                 "prettier --check . 2>&1 || true",
                 "prettier --check .",
-            );
+            )?;
         }
         if js("eslint") {
-            self.b("lint", "eslint . 2>&1 || true", "lint .");
+            self.b("lint", "eslint . 2>&1 || true", "lint .")?;
         }
         if ["next.config.js", "next.config.mjs", "next.config.ts"]
             .iter()
             .any(|f| is_file(f))
             && js("next")
         {
-            self.b("next build", "next build 2>&1 || true", "next build");
+            self.b("next build", "next build 2>&1 || true", "next build")?;
         }
         if ["playwright.config.ts", "playwright.config.js"]
             .iter()
@@ -589,63 +601,64 @@ impl Bench {
                 "playwright test",
                 "playwright test 2>&1 || true",
                 "playwright test",
-            );
+            )?;
         }
         if is_file("prisma/schema.prisma") && js("prisma") {
             self.b(
                 "prisma generate",
                 "prisma generate 2>&1 || true",
                 "prisma generate",
-            );
+            )?;
         }
         if js("vitest") {
             self.b(
                 "vitest",
                 "vitest run --reporter=json 2>&1 || true",
                 "vitest",
-            );
+            )?;
         }
         if have("pnpm") {
             self.b(
                 "pnpm list",
                 "pnpm list --depth 0 2>&1 || true",
                 "pnpm list --depth 0",
-            );
+            )?;
             self.b(
                 "pnpm outdated",
                 "pnpm outdated 2>&1 || true",
                 "pnpm outdated",
-            );
+            )?;
         }
+        Ok(())
     }
 
-    fn service_rows(&mut self) {
+    fn service_rows(&mut self) -> io::Result<()> {
         if shell_ok("command -v gh && git rev-parse --git-dir && gh auth status") {
             section("gh");
-            self.b("gh pr list", "gh pr list 2>&1 || true", "gh pr list");
-            self.b("gh run list", "gh run list 2>&1 || true", "gh run list");
+            self.b("gh pr list", "gh pr list 2>&1 || true", "gh pr list")?;
+            self.b("gh run list", "gh run list 2>&1 || true", "gh run list")?;
         }
         if have("glab") {
             section("glab");
-            self.b("glab mr list", "glab mr list 2>&1 || true", "glab mr list");
+            self.b("glab mr list", "glab mr list 2>&1 || true", "glab mr list")?;
             self.b(
                 "glab issue list",
                 "glab issue list 2>&1 || true",
                 "glab issue list",
-            );
+            )?;
         }
         if have("gt") {
             section("gt");
-            self.b("gt log", "gt log 2>&1 || true", "gt log");
+            self.b("gt log", "gt log 2>&1 || true", "gt log")?;
         }
         if have("docker") {
             section("docker");
-            self.b("docker ps", "docker ps 2>/dev/null || true", "docker ps");
+            self.b("docker ps", "docker ps 2>/dev/null || true", "docker ps")?;
             self.b(
                 "docker images",
                 "docker images 2>/dev/null || true",
                 "docker images",
-            );
+            )?;
         }
         if have("kubectl") {
             section("kubectl");
@@ -653,78 +666,81 @@ impl Bench {
                 "kubectl pods",
                 "kubectl get pods 2>/dev/null || true",
                 "kubectl pods",
-            );
+            )?;
             self.b(
                 "kubectl services",
                 "kubectl get services 2>/dev/null || true",
                 "kubectl services",
-            );
+            )?;
         }
+        Ok(())
     }
 
-    fn python_rows(&mut self, root: &Path) {
+    fn python_rows(&mut self, root: &Path) -> io::Result<()> {
         if !(have("python3") && have("ruff") && have("pytest")) {
-            return;
+            return Ok(());
         }
         section("python");
-        let dir = temp_dir();
-        let _ = std::env::set_current_dir(&dir);
-        let _ = fs::write("pyproject.toml", PY_PROJECT);
-        let _ = fs::write("sample.py", PY_SAMPLE);
-        let _ = fs::write("test_sample.py", PY_TEST);
-        self.b("ruff check", "ruff check . 2>&1 || true", "ruff check .");
-        self.b("pytest", "pytest -v 2>&1 || true", "pytest -v");
+        let dir = mktemp(true)?;
+        cd(&dir)?;
+        write("pyproject.toml", PY_PROJECT)?;
+        write("sample.py", PY_SAMPLE)?;
+        write("test_sample.py", PY_TEST)?;
+        self.b("ruff check", "ruff check . 2>&1 || true", "ruff check .")?;
+        self.b("pytest", "pytest -v 2>&1 || true", "pytest -v")?;
         if have("pip") {
-            self.b("pip list", "pip list 2>&1 || true", "pip list");
+            self.b("pip list", "pip list 2>&1 || true", "pip list")?;
         }
         if have("mypy") {
-            self.b("mypy", "mypy sample.py 2>&1 || true", "mypy sample.py");
+            self.b("mypy", "mypy sample.py 2>&1 || true", "mypy sample.py")?;
         }
-        let _ = std::env::set_current_dir(root);
+        cd(root)?;
         let _ = fs::remove_dir_all(&dir);
+        Ok(())
     }
 
-    fn go_rows(&mut self, root: &Path) {
+    fn go_rows(&mut self, root: &Path) -> io::Result<()> {
         if !(have("go") && have("golangci-lint")) {
-            return;
+            return Ok(());
         }
         section("go");
-        let dir = temp_dir();
-        let _ = std::env::set_current_dir(&dir);
-        let _ = fs::write("go.mod", GO_MOD);
-        let _ = fs::write("main.go", GO_MAIN);
-        let _ = fs::write("main_test.go", GO_TEST);
+        let dir = mktemp(true)?;
+        cd(&dir)?;
+        write("go.mod", GO_MOD)?;
+        write("main.go", GO_MAIN)?;
+        write("main_test.go", GO_TEST)?;
         self.b(
             "golangci-lint",
             "golangci-lint run 2>&1 || true",
             "golangci-lint run",
-        );
-        self.b("go test", "go test -v 2>&1 || true", "go test -v");
-        self.b("go build", "go build ./... 2>&1 || true", "go build ./...");
-        self.b("go vet", "go vet ./... 2>&1 || true", "go vet ./...");
-        let _ = std::env::set_current_dir(root);
+        )?;
+        self.b("go test", "go test -v 2>&1 || true", "go test -v")?;
+        self.b("go build", "go build ./... 2>&1 || true", "go build ./...")?;
+        self.b("go vet", "go vet ./... 2>&1 || true", "go vet ./...")?;
+        cd(root)?;
         let _ = fs::remove_dir_all(&dir);
+        Ok(())
     }
 
-    fn misc_rows(&mut self) {
+    fn misc_rows(&mut self) -> io::Result<()> {
         if have("ruby") {
             section("ruby");
             if have("rake") {
-                self.b("rake -T", "rake -T 2>&1 || true", "rake -T");
+                self.b("rake -T", "rake -T 2>&1 || true", "rake -T")?;
             }
             if have("rubocop") {
                 self.b(
                     "rubocop",
                     "rubocop --format simple 2>&1 || true",
                     "rubocop --format simple",
-                );
+                )?;
             }
             if have("rspec") {
                 self.b(
                     "rspec --dry-run",
                     "rspec --dry-run 2>&1 || true",
                     "rspec --dry-run",
-                );
+                )?;
             }
         }
         if have("dotnet") {
@@ -733,7 +749,7 @@ impl Bench {
                 "dotnet --info",
                 "dotnet --info 2>&1 || true",
                 "dotnet --info",
-            );
+            )?;
         }
         if have("aws") {
             section("aws");
@@ -741,7 +757,7 @@ impl Bench {
                 "aws --version",
                 "aws --version 2>&1 || true",
                 "aws --version",
-            );
+            )?;
         }
         if have("psql") {
             section("psql");
@@ -749,12 +765,13 @@ impl Bench {
                 "psql --version",
                 "psql --version 2>&1 || true",
                 "psql --version",
-            );
+            )?;
         }
+        Ok(())
     }
 
     // `rtk rewrite`, with and without quotes.
-    fn rewrite_rows(&mut self) {
+    fn rewrite_rows(&mut self) -> io::Result<()> {
         section("rewrite");
         for (name, args, expected) in [
             ("rewrite quoted", "rewrite 'git status'", "rtk git status"),
@@ -780,9 +797,10 @@ impl Bench {
                 self.fail += 1;
             }
         }
+        Ok(())
     }
 
-    fn bench(&mut self, name: &str, unix_cmd: &str, rtk_cmd: &str) {
+    fn bench(&mut self, name: &str, unix_cmd: &str, rtk_cmd: &str) -> io::Result<()> {
         // rtk forwards the stderr it does not filter, so both streams are measured.
         let unix_out = capture(unix_cmd, "2>&1");
         let rtk_out = capture(rtk_cmd, "2>&1");
@@ -849,8 +867,9 @@ impl Bench {
                 &rtk_out,
                 unix_tokens,
                 rtk_tokens,
-            );
+            )?;
         }
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -864,7 +883,7 @@ impl Bench {
         rtk_out: &[u8],
         unix_tokens: i64,
         rtk_tokens: i64,
-    ) {
+    ) -> io::Result<()> {
         let file = safe_name(name);
         let prefix = match tag {
             Tag::Good => "GOOD",
@@ -881,14 +900,14 @@ impl Bench {
             page.extend_from_slice(b"\n```\n");
             page
         };
-        let _ = fs::write(
+        write(
             self.bench_dir.join(format!("unix/{file}.md")),
             page(unix_cmd, unix_out),
-        );
-        let _ = fs::write(
+        )?;
+        write(
             self.bench_dir.join(format!("rtk/{file}.md")),
             page(rtk_cmd, rtk_out),
-        );
+        )?;
 
         let mut diff = format!(
             "# Diff: {name}\n> {ts}\n\n| Metric | Unix | RTK |\n|--------|------|-----|\n| Tokens | {unix_tokens} | {rtk_tokens} |\n\n## Unix\n```\n"
@@ -898,13 +917,14 @@ impl Bench {
         diff.extend_from_slice(b"\n```\n\n## RTK\n```\n");
         diff.extend_from_slice(rtk_out);
         diff.extend_from_slice(b"\n```\n");
-        let _ = fs::write(
+        write(
             self.bench_dir.join(format!("diff/{prefix}-{file}.md")),
             diff,
-        );
+        )?;
+        Ok(())
     }
 
-    fn find_max(&mut self, max: usize) {
+    fn find_max(&mut self, max: usize) -> io::Result<()> {
         let out = text(&capture(
             &self.r(&format!("find '*' --max {max}")),
             "2>/dev/null",
@@ -923,6 +943,7 @@ impl Bench {
             );
             self.fail += 1;
         }
+        Ok(())
     }
 
     fn summary(&self) -> ExitCode {
@@ -987,20 +1008,19 @@ struct NetFixtures {
 }
 
 impl NetFixtures {
-    fn setup(&mut self) {
-        self.dir = temp_dir();
-        self.log = temp_dir().join("server.log");
-        let _ = fs::write(self.dir.join("data.json"), NET_DATA_JSON);
-        let _ = fs::write(self.dir.join("robots.txt"), NET_ROBOTS);
+    fn setup(&mut self) -> io::Result<()> {
+        self.dir = mktemp(true)?;
+        // Outside the served folder, so it is never served itself.
+        self.log = mktemp(false)?;
+        write(self.dir.join("data.json"), NET_DATA_JSON)?;
+        write(self.dir.join("robots.txt"), NET_ROBOTS)?;
         if !have("python3") {
-            return;
+            return Ok(());
         }
         // Port 0 asks the kernel for a free port. The "Serving HTTP on ... port N"
         // line is printed once the socket listens; -u gets it to the log at once.
-        let Ok(log) = fs::File::create(&self.log) else {
-            return;
-        };
-        let Ok(err) = log.try_clone() else { return };
+        let log = fs::File::create(&self.log)?;
+        let err = log.try_clone()?;
         self.server = Command::new("python3")
             .args(["-u", "-m", "http.server", "0", "--bind", "127.0.0.1"])
             .current_dir(&self.dir)
@@ -1016,6 +1036,7 @@ impl NetFixtures {
             }
             sleep(Duration::from_millis(200));
         }
+        Ok(())
     }
 
     fn cleanup(&mut self) {
@@ -1026,8 +1047,8 @@ impl NetFixtures {
         if !self.dir.as_os_str().is_empty() {
             let _ = fs::remove_dir_all(&self.dir);
         }
-        if let Some(log_dir) = self.log.parent().filter(|p| !p.as_os_str().is_empty()) {
-            let _ = fs::remove_dir_all(log_dir);
+        if !self.log.as_os_str().is_empty() {
+            let _ = fs::remove_file(&self.log);
         }
         // `rtk wget <url>/data.json` saves ./data.json; remove it and numbered copies.
         if let Ok(entries) = fs::read_dir(".") {
@@ -1065,6 +1086,9 @@ fn capture(cmd: &str, redirect: &str) -> Vec<u8> {
         .output()
         .map(|o| o.stdout)
         .unwrap_or_default();
+    if out.contains(&0) {
+        eprintln!("rtk-dev benchmark: warning: command substitution: ignored null byte in input");
+    }
     let mut out: Vec<u8> = out.into_iter().filter(|&b| b != 0).collect();
     while out.last() == Some(&b'\n') {
         out.pop();
@@ -1090,7 +1114,7 @@ fn count_tokens(out: &[u8]) -> i64 {
 /// header when it groups, otherwise the names shown plus any "+N more".
 fn count_find(out: &str) -> (usize, usize) {
     let (mut shown, mut total, mut more) = (0, 0, 0);
-    for line in out.lines() {
+    for line in out.split('\n') {
         let fields: Vec<&str> = line.split([' ', '\t']).filter(|f| !f.is_empty()).collect();
         let Some(first) = fields.first() else {
             continue;
@@ -1133,11 +1157,21 @@ fn more_marker(line: &str) -> Option<usize> {
     digits(line.strip_prefix('+')?.strip_suffix(" more")?)
 }
 
-/// `^\[\+[0-9]+ hidden: `
+/// `^\[\+[0-9]+ hidden[ :(]`: the recall hint in each of its forms,
+/// `[+N hidden: ...]`, `[+N hidden (storage limit): ...]` and
+/// `[+N hidden (lines A-B): ...]`. The shell script matched the first only.
 fn hidden_marker(line: &str) -> bool {
-    line.strip_prefix("[+")
-        .and_then(|rest| rest.split_once(" hidden: "))
-        .is_some_and(|(n, _)| digits(n).is_some())
+    let Some(rest) = line.strip_prefix("[+") else {
+        return false;
+    };
+    let end = rest
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(rest.len());
+    end > 0
+        && rest[end..]
+            .strip_prefix(" hidden")
+            .and_then(|tail| tail.chars().next())
+            .is_some_and(|c| matches!(c, ' ' | ':' | '('))
 }
 
 /// Left-aligned to `width` bytes, as bash's printf pads `%-Ns`.
@@ -1205,15 +1239,30 @@ fn safe_name(name: &str) -> String {
         .collect()
 }
 
-fn temp_dir() -> PathBuf {
-    static NEXT: AtomicUsize = AtomicUsize::new(0);
-    let n = NEXT.fetch_add(1, Ordering::Relaxed);
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| d.as_nanos());
-    let dir = std::env::temp_dir().join(format!("rtk-bench-{}-{nanos}-{n}", std::process::id()));
-    let _ = fs::create_dir_all(&dir);
-    dir
+/// A new temporary folder or file from `mktemp`, as the script made them.
+fn mktemp(dir: bool) -> io::Result<PathBuf> {
+    let mut cmd = Command::new("mktemp");
+    if dir {
+        cmd.arg("-d");
+    }
+    let out = cmd.stderr(Stdio::inherit()).output()?;
+    if !out.status.success() {
+        return Err(io::Error::other("mktemp failed"));
+    }
+    Ok(PathBuf::from(text(&out.stdout).trim_end_matches('\n')))
+}
+
+/// `fs::write`, naming the path in the error.
+fn write(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>) -> io::Result<()> {
+    let path = path.as_ref();
+    fs::write(path, bytes).map_err(|e| io::Error::new(e.kind(), format!("{}: {e}", path.display())))
+}
+
+/// `cd`, naming the path in the error.
+fn cd(path: impl AsRef<Path>) -> io::Result<()> {
+    let path = path.as_ref();
+    std::env::set_current_dir(path)
+        .map_err(|e| io::Error::new(e.kind(), format!("cd {}: {e}", path.display())))
 }
 
 /// The working directory as the shell's `pwd` gives it: `$PWD` when it names it.
@@ -1233,8 +1282,9 @@ fn same_file(a: &Path, b: &Path) -> bool {
 }
 
 fn find_rtk(root: &Path) -> Option<String> {
-    let rtk = match std::env::var("RTK_BIN") {
-        Ok(bin) if !bin.is_empty() => {
+    let rtk = match std::env::var_os("RTK_BIN") {
+        Some(bin) if !bin.is_empty() => {
+            let bin = bin.to_string_lossy().into_owned();
             if !is_executable_file(Path::new(&bin)) {
                 println!("Error: RTK_BIN={bin} is not a path to an executable file.");
                 return None;
@@ -1310,6 +1360,19 @@ mod tests {
             "356F 63D:\n./ a b\nsrc/ c\n+256 more\next: .rs 3\n... (8 filtered)\n[+2 hidden: x]\n";
         assert_eq!(count_find(out), (3, 356));
         assert_eq!(count_find("a\nb c\n+5 more\n"), (3, 8));
+    }
+
+    #[test]
+    fn find_skips_every_form_of_the_recall_hint() {
+        for hint in [
+            "[+2 hidden: rtk recall ab12]",
+            "[+2 hidden (storage limit): rtk recall ab12]",
+            "[+2 hidden (lines 3-4): rtk recall ab12]",
+        ] {
+            assert_eq!(count_find(&format!("a b\n{hint}\n")), (2, 2), "{hint}");
+        }
+        // Not a hint: counted as names.
+        assert_eq!(count_find("a b\n[+2 hiddenx]\n"), (4, 4));
     }
 
     #[test]

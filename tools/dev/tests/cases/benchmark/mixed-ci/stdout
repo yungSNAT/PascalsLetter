@@ -22,9 +22,9 @@ RTK Benchmark
 🔴 read -n                  │ cat -n src/lib.rs                        │ /tmp/rtk-dev-parity/mixed-ci/rtkbin-é/rtk read src/lib.rs -n │     45 →     86 (-91%)
 
 ── find ──
-⚠️ find *                   │ find . -not -path './target/*' -not -path './.git/*' -type f │ /tmp/rtk-dev-parity/mixed-ci/rtkbin-é/rtk find '*' │     36 →     17 (+52%)
-⚠️ find *.rs                │ find . -not -path './target/*' -not -path './.git/*' -name '*.rs' -type f │ /tmp/rtk-dev-parity/mixed-ci/rtkbin-é/rtk find '*.rs' │     36 →     17 (+52%)
-⚠️ find --max 100           │ find . -not -path './target/*' -not -path './.git/*' -type f │ /tmp/rtk-dev-parity/mixed-ci/rtkbin-é/rtk find '*' --max 100 │     36 →     17 (+52%)
+⚠️ find *                   │ find . -not -path './target/*' -not -path './.git/*' -type f │ /tmp/rtk-dev-parity/mixed-ci/rtkbin-é/rtk find '*' │     36 →     24 (+33%)
+⚠️ find *.rs                │ find . -not -path './target/*' -not -path './.git/*' -name '*.rs' -type f │ /tmp/rtk-dev-parity/mixed-ci/rtkbin-é/rtk find '*.rs' │     36 →     24 (+33%)
+⚠️ find --max 100           │ find . -not -path './target/*' -not -path './.git/*' -type f │ /tmp/rtk-dev-parity/mixed-ci/rtkbin-é/rtk find '*' --max 100 │     36 →     24 (+33%)
 ✅ find --max 10 cap        │ rtk find '*' --max 10                    │ 4/4 names displayed
 ✅ find --max 100 cap       │ rtk find '*' --max 100                   │ 4/4 names displayed
 
@@ -51,7 +51,7 @@ RTK Benchmark
 🔴 deps                     │ cat Cargo.toml                           │ /tmp/rtk-dev-parity/mixed-ci/rtkbin-é/rtk deps │     18 →     35 (-94%)
 
 ── env ──
-✅ env                      │ env                                      │ /tmp/rtk-dev-parity/mixed-ci/rtkbin-é/rtk env │     59 →      1 (+98%)
+✅ env                      │ env                                      │ /tmp/rtk-dev-parity/mixed-ci/rtkbin-é/rtk env │     69 →      1 (+98%)
 ✅ env -f PATH              │ env | grep -i '^[^=]*path'               │ /tmp/rtk-dev-parity/mixed-ci/rtkbin-é/rtk env -f PATH │     10 →      1 (+90%)
 
 ── err ──
@@ -89,7 +89,7 @@ RTK Benchmark
 ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
   ✅ 30 good  ⚠️ 6 warn  🔴 2 negative  ❌ 2 fail    30/40 (75%)
-  Tokens: 998 → 310  (-68%)
+  Tokens: 1008 → 331  (-67%)
 
 
   BENCHMARK FAILED: 2 filter(s) produced more tokens than raw output
