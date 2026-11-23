@@ -585,7 +585,7 @@ fn store_inner(
 }
 
 #[derive(Debug)]
-struct Row {
+pub(crate) struct Row {
     shown_upto: usize,
     truncated: bool,
     codec: String,
