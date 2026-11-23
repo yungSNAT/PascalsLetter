@@ -9,8 +9,9 @@ use std::sync::{LazyLock, OnceLock};
 use super::lexer::{
     ParsedToken, PipeKind, QuoteScan, TokenKind, advance_quote_state, ansi_c_quote_defeats_lexer,
     blank_comments, coalesce_words, comment_readings_disagree, expansion_quote_defeats_lexer,
-    is_crlf_at, is_heredoc_redirect, is_word_boundary_whitespace, redirect_has_file_target, resolve_word_text,
-    shell_split, split_on_operators, tokenize, tokenize_with_newlines, unattestable_either_reading,
+    is_crlf_at, is_heredoc_redirect, is_word_boundary_whitespace, redirect_has_file_target,
+    resolve_word_text, shell_split, split_on_operators, tokenize, tokenize_with_newlines,
+    unattestable_either_reading,
 };
 use super::rules::{IGNORED_EXACT, IGNORED_PREFIXES, RULES, RtkRule};
 use super::shell_wrapper::parse_shell_wrapper;
