@@ -2135,7 +2135,18 @@ fn rewrite_segment_inner(
             // The inner command may have been dropped because it is excluded.
             // Re-testing the wrapped form would route it through the wrapper's
             // own filter, defeating the exclusion.
-            if is_excluded(ENV_PREFIX.replace(rest, "").trim(), excluded)
+            let inner = ENV_PREFIX.replace(rest, "");
+            let inner = inner.trim();
+            // As the Supported arm below does, test the tool form too, so a
+            // prefixed form of an excluded command (`cargo +stable test`) stays excluded.
+            let excluded_tool_form = match classify_command(inner) {
+                Classification::Supported { rtk_equivalent, .. } => {
+                    is_excluded(&tool_form(inner, rtk_equivalent), excluded)
+                }
+                _ => false,
+            };
+            if is_excluded(inner, excluded)
+                || excluded_tool_form
                 || shell_wrapper_script_opts_out(rest, excluded, 0)
             {
                 return None;
@@ -7618,15 +7629,25 @@ mod tests {
             "cargo\t+stable\ttest --lib",
             "cargo +stable 'te'\"st\" --lib",
             "RUSTUP_TOOLCHAIN=nightly cargo +stable test",
-            // Bash passes `$'test'` as `test`.
-            "cargo +stable $'test' --lib",
+            "uv run cargo +stable test",
         ] {
             assert_eq!(
                 rewrite_command_no_prefixes(command, &["cargo test".to_string()]),
                 None,
                 "{command}"
             );
+            // Rewritten without the exclusion, so the None above is the exclusion's.
+            assert!(
+                rewrite_command_no_prefixes(command, &[]).is_some(),
+                "{command}"
+            );
         }
+        // The literal reading declines a form bash would pass as `test`;
+        // declining is the safe direction.
+        assert_eq!(
+            rewrite_command_no_prefixes("cargo +stable $'test' --lib", &[]),
+            None
+        );
         for command in ["cargo +stable check", "cargo --config test check"] {
             assert_eq!(
                 rewrite_command_no_prefixes(command, &["cargo test".to_string()]),
