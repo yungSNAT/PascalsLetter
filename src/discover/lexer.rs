@@ -1230,7 +1230,7 @@ pub fn strip_quotes(s: &str) -> String {
 /// `as_passed`, the word is read as bash passes it: an unquoted `$'…'` is
 /// decoded, the `$` of an unquoted `$"…"` is dropped and so is a `\<LF>`
 /// outside single quotes.
-fn resolve_word_text(raw: &str, as_passed: bool) -> String {
+pub(super) fn resolve_word_text(raw: &str, as_passed: bool) -> String {
     let mut result = String::new();
     let mut chars = raw.chars().peekable();
     let mut quote: Option<char> = None;
