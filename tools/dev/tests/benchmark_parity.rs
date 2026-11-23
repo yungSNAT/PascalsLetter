@@ -4,7 +4,7 @@
 //! compares stdout, stderr, the exit code and every file left in the folder.
 //!
 //! To record a case again from a shell script:
-//! `RTK_DEV_PARITY_RECORD=/abs/path/benchmark.sh cargo test --test benchmark_parity`.
+//! `RTK_DEV_RECORD_BENCHMARK=/abs/path/benchmark.sh cargo test --test benchmark_parity`.
 #![cfg(target_os = "linux")]
 
 use std::fs;
@@ -187,7 +187,8 @@ const CASES: &[Case] = &[
     },
     Case {
         name: "python-go",
-        ci: true,
+        // Unset, so the output pages record where each fixture row ran.
+        ci: false,
         rtk_bin: Some("rtkbin/rtk"),
         stub_mode: "mixed",
         tools: &[
@@ -384,7 +385,7 @@ const PARTS: [&str; 4] = ["stdout", "stderr", "code", "files"];
 #[test]
 fn port_matches_the_recorded_script() {
     let cases_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/cases/benchmark");
-    if let Ok(script) = std::env::var("RTK_DEV_PARITY_RECORD") {
+    if let Ok(script) = std::env::var("RTK_DEV_RECORD_BENCHMARK") {
         let bash = real_tool("bash").display().to_string();
         for case in CASES {
             let parts = run(case, &[&bash, &script]);

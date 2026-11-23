@@ -1019,8 +1019,14 @@ impl NetFixtures {
         }
         // Port 0 asks the kernel for a free port. The "Serving HTTP on ... port N"
         // line is printed once the socket listens; -u gets it to the log at once.
-        let log = fs::File::create(&self.log)?;
-        let err = log.try_clone()?;
+        // The script redirected a background job here, whose failure did not stop
+        // the run: it went on without a server.
+        let Ok(log) = fs::File::create(&self.log) else {
+            return Ok(());
+        };
+        let Ok(err) = log.try_clone() else {
+            return Ok(());
+        };
         self.server = Command::new("python3")
             .args(["-u", "-m", "http.server", "0", "--bind", "127.0.0.1"])
             .current_dir(&self.dir)
@@ -1039,17 +1045,17 @@ impl NetFixtures {
         Ok(())
     }
 
+    /// The script's EXIT trap, which it set once both temporary paths existed.
     fn cleanup(&mut self) {
+        if self.log.as_os_str().is_empty() {
+            return;
+        }
         if let Some(server) = &mut self.server {
             let _ = server.kill();
             let _ = server.wait();
         }
-        if !self.dir.as_os_str().is_empty() {
-            let _ = fs::remove_dir_all(&self.dir);
-        }
-        if !self.log.as_os_str().is_empty() {
-            let _ = fs::remove_file(&self.log);
-        }
+        let _ = fs::remove_dir_all(&self.dir);
+        let _ = fs::remove_file(&self.log);
         // `rtk wget <url>/data.json` saves ./data.json; remove it and numbered copies.
         if let Ok(entries) = fs::read_dir(".") {
             for entry in entries.flatten() {
