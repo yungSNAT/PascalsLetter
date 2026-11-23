@@ -585,8 +585,8 @@ fn store_inner(
 }
 
 #[derive(Debug)]
-struct Row {
-    shown_upto: usize,
+pub(crate) struct Row {
+    pub(crate) shown_upto: usize,
     truncated: bool,
     codec: String,
     blob: Vec<u8>,
