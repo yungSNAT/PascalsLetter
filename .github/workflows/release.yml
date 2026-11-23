@@ -128,9 +128,45 @@ jobs:
           path: ${{ env.ASSET }}
           if-no-files-found: error
 
+  sbom:
+    name: sbom
+    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Stage root manifest and lockfile for SBOM
+        run: |
+          mkdir -p "$RUNNER_TEMP/sbom-src" "$RUNNER_TEMP/sbom"
+          cp Cargo.toml Cargo.lock "$RUNNER_TEMP/sbom-src/"
+
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          path: ${{ runner.temp }}/sbom-src
+          format: spdx-json
+          syft-version: v1.51.0
+          output-file: ${{ runner.temp }}/sbom/rtk-oss.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Validate the SPDX SBOM
+        run: |
+          set -euo pipefail
+          test -s "$RUNNER_TEMP/sbom/rtk-oss.spdx.json"
+          jq -e '.spdxVersion and (.packages | any(.name == "rtk"))' "$RUNNER_TEMP/sbom/rtk-oss.spdx.json" > /dev/null
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rtk-oss-sbom
+          path: ${{ runner.temp }}/sbom/rtk-oss.spdx.json
+          if-no-files-found: error
+
   checksums:
     name: checksums
-    needs: build
+    needs: [build, sbom]
     timeout-minutes: 10
     runs-on: ubuntu-24.04
     steps:
@@ -140,7 +176,7 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Require exactly the 5 archives and write checksums.txt
+      - name: Require exactly the 5 archives and SBOM, and write checksums.txt
         working-directory: dist
         run: |
           set -euo pipefail
@@ -149,7 +185,8 @@ jobs:
             rtk-oss-aarch64-unknown-linux-musl.tar.gz \
             rtk-oss-x86_64-apple-darwin.tar.gz \
             rtk-oss-x86_64-pc-windows-msvc.zip \
-            rtk-oss-x86_64-unknown-linux-musl.tar.gz)
+            rtk-oss-x86_64-unknown-linux-musl.tar.gz \
+            rtk-oss.spdx.json)
           sha256sum -- * > checksums.txt
           cat checksums.txt
 
@@ -213,6 +250,14 @@ jobs:
         with:
           subject-path: dist/*
 
+      - name: Attest the SPDX SBOM for the release archives
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
+          sbom-path: dist/rtk-oss.spdx.json
+
       # The tag can still move between the check and the draft. A move before
       # the draft stops it; a move whilst it is made fails the run, so the
       # draft is not published as is. A ruleset blocking updates to fork-v*
@@ -237,7 +282,7 @@ jobs:
           gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
             --title "PascalsLetter ${TAG#fork-v}" \
             --generate-notes --notes-start-tag "$previous" \
-            --notes "The Apache-2.0 edition of rtk (\`rtk-oss\`), built from $TAG. Check an archive against \`checksums.txt\`, and its provenance with \`gh attestation verify <archive> --repo $GITHUB_REPOSITORY\`."
+            --notes "The Apache-2.0 edition of rtk (\`rtk-oss\`), built from $TAG. Check an archive against \`checksums.txt\`, its SPDX SBOM in \`rtk-oss.spdx.json\`, and its provenance with \`gh attestation verify <archive> --repo $GITHUB_REPOSITORY\`."
           if ! unmoved; then
             echo "::error::$TAG moved whilst its draft was made; delete the draft, which may name another commit"
             exit 1
