@@ -406,7 +406,7 @@ impl Bench {
 
         section("err");
         if have("cargo") {
-            precompile(&["cargo", "build"]);
+            precompile(&["build"]);
             self.b(
                 "err cargo build",
                 "cargo build 2>&1 || true",
@@ -418,7 +418,7 @@ impl Bench {
 
         section("test");
         if have("cargo") {
-            precompile(&["cargo", "test", "--lib", "--no-run"]);
+            precompile(&["test", "--lib", "--no-run"]);
             self.b(
                 "test cargo test",
                 "cargo test --lib 2>&1 || true",
@@ -456,25 +456,25 @@ impl Bench {
 
         section("cargo");
         if have("cargo") {
-            precompile(&["cargo", "build"]);
+            precompile(&["build"]);
             self.b(
                 "cargo build",
                 "cargo build 2>&1 || true",
                 "cargo build 2>&1",
             )?;
-            precompile(&["cargo", "test", "--lib", "--no-run"]);
+            precompile(&["test", "--lib", "--no-run"]);
             self.b(
                 "cargo test",
                 "cargo test --lib 2>&1 || true",
                 "cargo test --lib 2>&1",
             )?;
-            precompile(&["cargo", "clippy"]);
+            precompile(&["clippy"]);
             self.b(
                 "cargo clippy",
                 "cargo clippy 2>&1 || true",
                 "cargo clippy 2>&1",
             )?;
-            precompile(&["cargo", "check"]);
+            precompile(&["check"]);
             self.b(
                 "cargo check",
                 "cargo check 2>&1 || true",
@@ -1213,19 +1213,18 @@ fn is_file(path: &str) -> bool {
     Path::new(path).is_file()
 }
 
-/// Builds before a row, so a first build's compile output does not land on the
+/// Runs `cargo <args>` before a row, so a first build's compile output does not land on the
 /// raw side alone and read as savings.
 fn precompile(args: &[&str]) {
-    // nosemgrep: dynamic-command-execution -- a benchmark, not rtk: runs the cargo build a row measures, as the script did
-    let ok = Command::new(args[0])
-        .args(&args[1..])
+    let ok = Command::new("cargo")
+        .args(args)
         .env("CARGO_TERM_COLOR", CARGO_COLOUR)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
         .is_ok_and(|s| s.success());
     if !ok {
-        eprintln!("⚠️  precompile failed: {}", args.join(" "));
+        eprintln!("⚠️  precompile failed: cargo {}", args.join(" "));
     }
 }
 
