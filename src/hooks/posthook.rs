@@ -788,7 +788,7 @@ fn process_shell(
             &raw_combined,
             duration_ms,
         );
-        return None;
+        return deliver(config, event, response, command, stdout, stderr, None);
     }
 
     let slug = format!("bash_{first_word}");
@@ -808,7 +808,7 @@ fn process_shell(
             &raw_combined,
             duration_ms,
         );
-        return None;
+        return deliver(config, event, response, command, stdout, stderr, None);
     }
 
     let mut updated = response.clone();
@@ -835,6 +835,114 @@ fn process_shell(
         &emitted_combined,
         duration_ms,
     );
+    let emitted = json!({
+        "hookSpecificOutput": {
+            "hookEventName": POST_TOOL_USE_KEY,
+            "updatedToolOutput": updated,
+        }
+    })
+    .to_string();
+    deliver(
+        config,
+        event,
+        response,
+        command,
+        &composed_stdout,
+        &filtered_stderr,
+        Some(emitted),
+    )
+}
+
+/// Where the last Bash delivery of each agent in a session is remembered.
+fn repeat_dir(config: &Config, event: &Value) -> Option<std::path::PathBuf> {
+    let session = event
+        .get("session_id")?
+        .as_str()
+        .filter(|s| !s.is_empty())?;
+    Some(
+        tee::posthook_recall_dir(config)?
+            .join("repeat")
+            .join(short_hash(session)),
+    )
+}
+
+fn short_hash(text: &str) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(text.as_bytes())[..8]
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// A session that starts, resumes, clears or compacts has lost the outputs a
+/// pointer would refer to.
+pub fn forget_repeats(event: &Value) {
+    if let Ok(config) = Config::load() {
+        forget_repeats_with(&config, event);
+    }
+}
+
+fn forget_repeats_with(config: &Config, event: &Value) {
+    if let Some(dir) = repeat_dir(config, event) {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+/// Hands back what the agent gets for this Bash call (`emitted`, or `None`
+/// for the command's own output), unless `[hooks] dedup_repeats` is on and
+/// the same agent's previous Bash call ran the same command and got these
+/// same bytes: then a pointer to them. Claude Code sends `agent_id` only
+/// from a subagent, so its absence is the main thread; other hosts are left
+/// alone. Every other call becomes the agent's new previous call.
+fn deliver(
+    config: &Config,
+    event: &Value,
+    response: &Value,
+    command: &str,
+    stdout: &str,
+    stderr: &str,
+    emitted: Option<String>,
+) -> Option<String> {
+    if !config.hooks.dedup_repeats
+        || super::hook_agent().as_deref().unwrap_or("claude-code") != "claude-code"
+    {
+        return emitted;
+    }
+    let Some(dir) = repeat_dir(config, event) else {
+        return emitted;
+    };
+    let agent = event
+        .get("agent_id")
+        .and_then(Value::as_str)
+        .unwrap_or("main");
+    let file = dir.join(short_hash(agent));
+    let delivered = combine_streams(stdout, stderr);
+    let seen = format!("{} {}", short_hash(command), short_hash(&delivered));
+    if std::fs::read_to_string(&file).ok().as_deref() != Some(seen.as_str()) {
+        let _ = std::fs::create_dir_all(&dir);
+        let _ = std::fs::write(&file, seen);
+        return emitted;
+    }
+    let crate::core::retriever::Stored::Saved(stored) = crate::core::retriever::store(
+        &config.retriever,
+        delivered.as_bytes(),
+        "posthook:repeat",
+        None,
+        1,
+    ) else {
+        return emitted;
+    };
+    let mut updated = response.clone();
+    let obj = updated.as_object_mut()?;
+    obj.insert(
+        "stdout".into(),
+        json!(format!(
+            "[rtk: same output as the previous run of this command ({} lines): rtk recall {}]",
+            delivered.lines().count(),
+            stored.hash
+        )),
+    );
+    obj.insert("stderr".into(), json!(""));
     Some(
         json!({
             "hookSpecificOutput": {
@@ -1109,6 +1217,102 @@ mod tests {
 
     fn run_with(event: &Value, config: &Config, pipeline: &Resolved) -> Option<String> {
         process_with_config(event, config, pipeline)
+    }
+
+    fn repeat_config(dir: &std::path::Path, on: bool) -> Config {
+        let mut config = test_config();
+        config.retriever.database_path = Some(dir.join("recall.db"));
+        config.retriever.tee_directory = Some(dir.join("tee"));
+        config.hooks.dedup_repeats = on;
+        config
+    }
+
+    fn bash_event(command: &str, stdout: &str, agent: Option<&str>) -> Value {
+        let mut event = serde_json::json!({
+            "session_id": "s1",
+            "tool_name": "Bash",
+            "tool_input": {"command": command},
+            "tool_response": {"stdout": stdout, "stderr": ""},
+            "duration_ms": 10
+        });
+        if let Some(agent) = agent {
+            event["agent_id"] = serde_json::json!(agent);
+        }
+        event
+    }
+
+    fn pointer_of(out: &Option<String>) -> Option<String> {
+        let parsed: Value = serde_json::from_str(out.as_deref()?).ok()?;
+        let stdout = parsed
+            .pointer("/hookSpecificOutput/updatedToolOutput/stdout")?
+            .as_str()?;
+        stdout
+            .starts_with("[rtk: same output as the previous run")
+            .then(|| stdout.to_string())
+    }
+
+    /// Off by default: a repeated output reaches the agent exactly as before.
+    #[test]
+    fn test_repeat_pointer_is_off_by_default() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), false);
+        let output: String = (0..400).map(|i| format!("line {i}\n")).collect();
+        let event = bash_event("make test", &output, None);
+        let first = run_with(&event, &config, &default_pipeline());
+        let second = run_with(&event, &config, &default_pipeline());
+        assert_eq!(first, second);
+        assert!(pointer_of(&second).is_none());
+    }
+
+    #[test]
+    fn test_repeat_pointer_replaces_only_a_consecutive_identical_output() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let pipeline = default_pipeline();
+        let output: String = (0..400).map(|i| format!("line {i}\n")).collect();
+        let run = |command: &str, stdout: &str, agent: Option<&str>| {
+            run_with(&bash_event(command, stdout, agent), &config, &pipeline)
+        };
+
+        let first = run("make test", &output, None);
+        assert!(
+            pointer_of(&first).is_none(),
+            "a first run is delivered whole"
+        );
+        let pointer = pointer_of(&run("make test", &output, None)).expect("a pointer");
+        assert_eq!(
+            pointer
+                .split_once(" lines): rtk recall ")
+                .map(|(head, _)| head),
+            Some("[rtk: same output as the previous run of this command (400"),
+        );
+        let hash = pointer
+            .rsplit_once("rtk recall ")
+            .and_then(|(_, rest)| rest.strip_suffix(']'))
+            .expect("a recall handle");
+        let conn = crate::core::retriever::open_existing(&config.retriever)
+            .unwrap()
+            .unwrap();
+        let row = crate::core::retriever::load_by_hash(&conn, hash)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            crate::core::retriever::decode(&row).unwrap(),
+            output.as_bytes(),
+            "the handle reads back the output the pointer stands for"
+        );
+
+        // Another command in between, other bytes, or another agent: delivered whole.
+        assert!(pointer_of(&run("git status", &output, None)).is_none());
+        assert!(pointer_of(&run("make test", &output, None)).is_none());
+        let changed = format!("{output}one more\n");
+        assert!(pointer_of(&run("make test", &changed, None)).is_none());
+        assert!(pointer_of(&run("make test", &changed, Some("sub-1"))).is_none());
+        assert!(pointer_of(&run("make test", &changed, None)).is_some());
+
+        // A new, resumed, cleared or compacted session forgets.
+        forget_repeats_with(&config, &bash_event("make test", "", None));
+        assert!(pointer_of(&run("make test", &changed, None)).is_none());
     }
 
     fn run_posthook(event: &Value) -> Option<String> {

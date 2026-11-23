@@ -218,7 +218,7 @@ fn with_open<T>(cfg: &RetrieverConfig, f: impl FnOnce(&Connection) -> Result<T>)
     })
 }
 
-fn open_existing(cfg: &RetrieverConfig) -> Result<Option<Connection>> {
+pub(crate) fn open_existing(cfg: &RetrieverConfig) -> Result<Option<Connection>> {
     let path = db_path(cfg)?;
     if !path.exists() {
         return Ok(None);
@@ -607,7 +607,7 @@ fn map_row(r: &rusqlite::Row) -> rusqlite::Result<Row> {
 
 const SELECT_COLS: &str = "shown_upto, truncated, codec, blob, command, hash";
 
-fn load_by_hash(conn: &Connection, hash: &str) -> Result<Option<Row>> {
+pub(crate) fn load_by_hash(conn: &Connection, hash: &str) -> Result<Option<Row>> {
     let exact = format!("SELECT {SELECT_COLS} FROM recall WHERE hash = ?1");
     if let Some(row) = conn.query_row(&exact, params![hash], map_row).optional()? {
         return Ok(Some(row));
@@ -632,7 +632,7 @@ fn load_by_hash(conn: &Connection, hash: &str) -> Result<Option<Row>> {
     }
 }
 
-fn decode(row: &Row) -> Result<Vec<u8>> {
+pub(crate) fn decode(row: &Row) -> Result<Vec<u8>> {
     match row.codec.as_str() {
         "gzip" => gunzip(&row.blob),
         _ => Ok(row.blob.clone()),

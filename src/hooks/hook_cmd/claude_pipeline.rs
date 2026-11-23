@@ -37,6 +37,7 @@ pub(super) fn handle(v: &Value, raw_len: usize) -> Result<bool> {
             return Ok(true);
         }
         Some(SESSION_START_KEY) => {
+            crate::hooks::posthook::forget_repeats(v);
             crate::hooks::session_start::run();
             return Ok(true);
         }

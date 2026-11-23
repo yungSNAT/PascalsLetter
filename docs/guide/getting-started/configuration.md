@@ -59,6 +59,7 @@ enabled = false             # opt-in anonymous daily ping (off by default) — s
 exclude_commands = []       # commands to never auto-rewrite
 suppress_hook_warning = false # suppress the missing-hook warning only
 wrap_fish_scripts = false   # opt in to handing a fish script back as `rtk run --shell fish -c '…'`
+dedup_repeats = false       # Claude Code: a Bash output identical to the same agent's previous run of the same command becomes a one-line `rtk recall` pointer
 
 [awareness]
 level = "default"           # "default", "high", "full" — see Awareness level
