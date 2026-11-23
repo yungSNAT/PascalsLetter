@@ -11,8 +11,6 @@ rules:
         - /src/core/utils.rs
         - /src/llm_proxy.rs
         - /engine/src/process.rs
-        # CI benchmark tool, not shipped in rtk: runs each row through bash, as the script it replaced did.
-        - /tools/dev/src/benchmark.rs
     languages: [rust]
     severity: ERROR
 
@@ -73,10 +71,6 @@ rules:
       Direct interpreter/downloader execution detected.
       RTK proxies user commands — it should never spawn interpreters
       or download tools on its own.
-    paths:
-      exclude:
-        # CI benchmark tool, not shipped in rtk: runs each row through bash, as the script it replaced did.
-        - /tools/dev/src/benchmark.rs
     languages: [rust]
     severity: ERROR
 

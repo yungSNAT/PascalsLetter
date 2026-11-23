@@ -1027,6 +1027,7 @@ impl NetFixtures {
         let Ok(err) = log.try_clone() else {
             return Ok(());
         };
+        // nosemgrep: interpreter-execution -- a benchmark, not rtk: serves the curl and wget rows from a loopback HTTP fixture, as the script did
         self.server = Command::new("python3")
             .args(["-u", "-m", "http.server", "0", "--bind", "127.0.0.1"])
             .current_dir(&self.dir)
@@ -1084,6 +1085,7 @@ fn last_port(line: &str) -> Option<&str> {
 /// Runs `cmd` through `eval` in bash with `redirect` applied, and returns stdout as
 /// command substitution would: trailing newlines and NUL bytes removed.
 fn capture(cmd: &str, redirect: &str) -> Vec<u8> {
+    // nosemgrep: interpreter-execution -- a benchmark, not rtk: runs each row's command through bash, as the script did
     let out = Command::new("bash")
         .args(["-c", &format!("eval \"$1\" {redirect}"), "bash", cmd])
         .env("CARGO_TERM_COLOR", CARGO_COLOUR)
@@ -1194,6 +1196,7 @@ fn skipped(line: &str) {
 }
 
 fn shell_ok(script: &str) -> bool {
+    // nosemgrep: interpreter-execution -- a benchmark, not rtk: tests a shell condition, as the script did
     Command::new("bash")
         .args(["-c", script])
         .stdout(Stdio::null())
@@ -1213,6 +1216,7 @@ fn is_file(path: &str) -> bool {
 /// Builds before a row, so a first build's compile output does not land on the
 /// raw side alone and read as savings.
 fn precompile(args: &[&str]) {
+    // nosemgrep: dynamic-command-execution -- a benchmark, not rtk: runs the cargo build a row measures, as the script did
     let ok = Command::new(args[0])
         .args(&args[1..])
         .env("CARGO_TERM_COLOR", CARGO_COLOUR)
@@ -1299,6 +1303,7 @@ fn find_rtk(root: &Path) -> Option<String> {
         }
         _ if is_file("./target/release/rtk") => "./target/release/rtk".to_string(),
         _ => {
+            // nosemgrep: interpreter-execution -- a benchmark, not rtk: resolves `command -v rtk` in bash, as the script did
             let found = Command::new("bash")
                 .args(["-c", "command -v rtk"])
                 .stderr(Stdio::null())
