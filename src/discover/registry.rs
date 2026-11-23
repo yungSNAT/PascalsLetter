@@ -486,7 +486,7 @@ fn normalize_cargo_command(cmd: &str) -> String {
         let raw_words = coalesce_words(cmd, &tokens);
         let words: Vec<_> = raw_words[1..]
             .iter()
-            .map(|(word, _)| resolve_word_text(word, true))
+            .map(|(word, _)| resolve_word_text(word, false))
             .collect();
         if let Some((command, index)) = crate::cmds::rust::cargo_cmd::CargoCommand::parse(&words) {
             // Preserve the raw suffix so argument-specific exclusions still see its
