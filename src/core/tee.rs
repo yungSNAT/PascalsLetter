@@ -450,16 +450,16 @@ mod tests {
             .and_then(|rest| rest.split_once("): rtk recall "))
             .unwrap_or_else(|| panic!("unexpected hint: {hint}"));
         assert_eq!(range, "31-40");
-        // Nothing hidden: no hint, as before.
-        assert!(
-            force_tee_tail_hint_with(RecoveryMode::Sqlite, &cfg, &content, "cmd", 41).is_none()
-        );
         let conn = retriever::open_existing(&cfg).unwrap().unwrap();
         let row = retriever::load_by_hash(&conn, hash).unwrap().unwrap();
         let full = retriever::decode(&row).unwrap();
         assert_eq!(
             retriever::select_lines(&full, row.shown_upto, false, Some(31), Some(10)),
             retriever::select_lines(&full, row.shown_upto, false, None, None),
+        );
+        // Nothing hidden: no hint, as before. (Last: the same bytes share a row.)
+        assert!(
+            force_tee_tail_hint_with(RecoveryMode::Sqlite, &cfg, &content, "cmd", 41).is_none()
         );
     }
 
