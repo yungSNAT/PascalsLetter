@@ -846,8 +846,8 @@ enum Commands {
         /// Start from this 1-based line of the full output
         #[arg(long)]
         from: Option<usize>,
-        /// Return only the first N lines of the full output
-        #[arg(long, conflicts_with = "from")]
+        /// Return only N lines: the first N of the full output, or N from --from
+        #[arg(long)]
         lines: Option<usize>,
         /// Filter recalled lines by regex
         #[arg(long)]

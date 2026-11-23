@@ -1400,14 +1400,15 @@ fn rtk_recall(repo: &Repo, args: &[&str]) -> Output {
     cmd.output().expect("run rtk recall")
 }
 
-/// Splits `[+N hidden: rtk recall <id>]` into N and the id.
+/// Splits `[+N hidden (lines A-B): rtk recall <id>]` into N and the id.
 fn parse_recall_hint(line: &str) -> (usize, String) {
     let inner = line
         .strip_prefix("[+")
         .and_then(|rest| rest.strip_suffix(']'))
         .unwrap_or_else(|| panic!("not a recall hint: {line:?}"));
     let (hidden, id) = inner
-        .split_once(" hidden: rtk recall ")
+        .split_once(" hidden (lines ")
+        .and_then(|(hidden, rest)| Some((hidden, rest.split_once("): rtk recall ")?.1)))
         .unwrap_or_else(|| panic!("not a recall hint: {line:?}"));
     (hidden.parse().expect("hidden count"), id.to_string())
 }
