@@ -702,6 +702,7 @@ fn process_shell(
             .and_then(Value::as_bool)
             .unwrap_or(false)
     {
+        forget_last_call(config, event);
         return None;
     }
 
@@ -718,6 +719,7 @@ fn process_shell(
             .is_some_and(|d| command.contains(&d.display().to_string()))
     {
         record_recovery(command);
+        forget_last_call(config, event);
         return None;
     }
 
@@ -730,6 +732,7 @@ fn process_shell(
         .and_then(|s| s.as_str())
         .unwrap_or("");
     if stdout.len() + stderr.len() < pipeline.guards.min_size {
+        forget_last_call(config, event);
         return None;
     }
 
@@ -866,6 +869,24 @@ fn repeat_dir(config: &Config, event: &Value) -> Option<std::path::PathBuf> {
     )
 }
 
+/// The agent's own record: `agent_id` is sent only from a subagent.
+fn last_call_file(config: &Config, event: &Value) -> Option<std::path::PathBuf> {
+    let agent = event
+        .get("agent_id")
+        .and_then(Value::as_str)
+        .unwrap_or("main");
+    Some(repeat_dir(config, event)?.join(short_hash(agent)))
+}
+
+/// A Bash call the hook leaves alone still ends the run of identical calls.
+fn forget_last_call(config: &Config, event: &Value) {
+    if config.hooks.dedup_repeats
+        && let Some(file) = last_call_file(config, event)
+    {
+        let _ = std::fs::remove_file(file);
+    }
+}
+
 fn short_hash(text: &str) -> String {
     use sha2::{Digest, Sha256};
     Sha256::digest(text.as_bytes())[..8]
@@ -908,18 +929,15 @@ fn deliver(
     {
         return emitted;
     }
-    let Some(dir) = repeat_dir(config, event) else {
+    let Some(file) = last_call_file(config, event) else {
         return emitted;
     };
-    let agent = event
-        .get("agent_id")
-        .and_then(Value::as_str)
-        .unwrap_or("main");
-    let file = dir.join(short_hash(agent));
     let delivered = combine_streams(stdout, stderr);
     let seen = format!("{} {}", short_hash(command), short_hash(&delivered));
     if std::fs::read_to_string(&file).ok().as_deref() != Some(seen.as_str()) {
-        let _ = std::fs::create_dir_all(&dir);
+        if let Some(dir) = file.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
         let _ = std::fs::write(&file, seen);
         return emitted;
     }
@@ -1302,6 +1320,9 @@ mod tests {
             "the handle reads back the output the pointer stands for"
         );
 
+        // A call the hook passes over (below its size floor) in between ends the run.
+        assert!(pointer_of(&run("true", "", None)).is_none());
+        assert!(pointer_of(&run("make test", &output, None)).is_none());
         // Another command in between, other bytes, or another agent: delivered whole.
         assert!(pointer_of(&run("git status", &output, None)).is_none());
         assert!(pointer_of(&run("make test", &output, None)).is_none());
