@@ -1,0 +1,2 @@
+# Recorded benchmark cases are compared byte for byte.
+tests/cases/** -text

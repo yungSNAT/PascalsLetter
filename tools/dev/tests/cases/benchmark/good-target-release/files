@@ -1,0 +1,54 @@
+== Cargo.toml
+[package]
+name = "rtk"
+version = "1.2.0"
+
+[dependencies]
+anyhow = "1"
+
+== scripts/keep
+
+== src/lib.rs
+//! Fixture.
+
+pub struct Config {
+    pub depth: usize,
+}
+
+pub fn run() -> usize {
+    Config { depth: 2 }.depth
+}
+
+== src/main.rs
+fn main() {
+    rtk::run();
+}
+
+== target/release/rtk
+#!/bin/sh
+sub=$1; shift
+case "$sub" in
+  rewrite)
+    if [ "$RTK_STUB_MODE" = good ]; then
+      printf 'rtk %s\n' "$*" | sed 's/&& /\&\& rtk /'
+    else
+      printf 'rtk %s\n' "$*"
+    fi ;;
+  find) printf '4F 2D:\n./ Cargo.toml\nsrc/ lib.rs main.rs\nscripts/ keep\next: .rs 2\n' ;;
+  *)
+    if [ "$RTK_STUB_MODE" = good ]; then echo ok; exit 0; fi
+    case "$sub" in
+      read)
+        case "$*" in
+          *minimal*) cat src/lib.rs ;;
+          *aggressive*) head -c 60 src/lib.rs ;;
+          *-n*) cat src/lib.rs src/lib.rs src/lib.rs ;;
+          *) echo short ;;
+        esac ;;
+      json) case "$*" in *-d*) ;; *) echo '{"name":"rtk"}' ;; esac ;;
+      deps) cat Cargo.toml Cargo.toml ;;
+      git) echo "git: é ok" >&2 ;;
+      *) echo ok ;;
+    esac ;;
+esac
+
