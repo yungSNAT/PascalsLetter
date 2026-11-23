@@ -27,20 +27,15 @@ rust-version = "1.91"
 authors = ["RTK AI Labs"]
 description = "Rust Token Killer - High-performance CLI proxy to minimize LLM token consumption"
 license = "Apache-2.0"
-homepage = "https://github.com/yungSNAT/PascalsLetter"
 repository = "https://github.com/yungSNAT/PascalsLetter"
 readme = "README.md"
 keywords = ["cli", "llm", "token", "filter", "productivity"]
 categories = ["command-line-utilities", "development-tools"]
 
-# `cargo binstall rtk` installs the latest Apache-2.0 (`rtk-oss`) release archive
-# instead of building from source. Tags follow `fork-v<upstream>[-N]` rather than
-# `v{ version }`, so `releases/latest/download` resolves the published asset names.
 [package.metadata.binstall]
 pkg-url = "{ repo }/releases/latest/download/rtk-oss-{ target }.tar.gz"
 bin-dir = "{ bin }{ binary-ext }"
 pkg-fmt = "tgz"
-
 [package.metadata.binstall.overrides.'cfg(target_os = "windows")']
 pkg-url = "{ repo }/releases/latest/download/rtk-oss-{ target }.zip"
 pkg-fmt = "zip"
