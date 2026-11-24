@@ -9,9 +9,12 @@
 #![cfg(target_os = "linux")]
 
 use std::fs;
-use std::os::unix::fs::{PermissionsExt, symlink};
+use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+mod common;
+use common::{real_tool, snapshot, write_exe};
 
 /// Real tools the script needs; the port needs none of them.
 const REAL_TOOLS: &[&str] = &["bash", "cat", "grep", "head", "rm", "seq"];
@@ -122,20 +125,6 @@ const CASES: &[Case] = &[
     },
 ];
 
-fn write_exe(path: &Path, body: &str) {
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    fs::write(path, body).unwrap();
-    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
-}
-
-fn real_tool(name: &str) -> PathBuf {
-    let path = std::env::var_os("PATH").expect("PATH");
-    std::env::split_paths(&path)
-        .map(|d| d.join(name))
-        .find(|p| p.is_file())
-        .unwrap_or_else(|| panic!("{name} not on PATH"))
-}
-
 /// The case folder: `root` (the repository stand-in), `bin` (the stubs and the
 /// real tools the script needs), `rtkbin` (the rtk stub), `tmp`.
 fn fixture(case: &Case) -> PathBuf {
@@ -176,32 +165,6 @@ echo \"$p\"
     );
     write_exe(&base.join("rtkbin/rtk"), RTK_STUB);
     base
-}
-
-/// Every file under `dir`, sorted, as `== path` followed by its bytes.
-fn snapshot(dir: &Path) -> Vec<u8> {
-    fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
-        for entry in fs::read_dir(dir).unwrap().flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                walk(&path, out);
-            } else {
-                out.push(path);
-            }
-        }
-    }
-    let mut files = Vec::new();
-    walk(dir, &mut files);
-    files.sort();
-    let mut snap = Vec::new();
-    for file in files {
-        snap.extend_from_slice(
-            format!("== {}\n", file.strip_prefix(dir).unwrap().display()).as_bytes(),
-        );
-        snap.extend_from_slice(&fs::read(&file).unwrap());
-        snap.push(b'\n');
-    }
-    snap
 }
 
 /// stdout with the `Date:` line's value masked.
