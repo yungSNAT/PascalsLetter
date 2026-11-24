@@ -267,7 +267,7 @@ For how to write tests (fixtures, snapshots, token savings verification), see [d
 |------|-------|----------|
 | **Unit tests** | `#[cfg(test)] mod tests` in each module | `cargo test` |
 | **Snapshot tests** | `#[cfg(test)]` create snapshots for filters modules | `cargo test` |
-| **Smoke tests** | `scripts/test-all.sh` | `bash scripts/test-all.sh` |
+| **Smoke tests** | `tools/dev/src/smoke.rs` | `cargo run --manifest-path tools/dev/Cargo.toml -- smoke` (installed binary required) |
 | **Integration tests** | `#[ignore]` tests requiring installed binary | `cargo test --ignored` |
 
 ### Pre-Commit Gate (mandatory)
