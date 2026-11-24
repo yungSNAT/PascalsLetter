@@ -79,7 +79,13 @@ fn capture(args: &[&str], input: Option<&[u8]>) -> (bool, Option<i32>, Vec<u8>) 
         let status = child.wait()?;
         Ok::<_, io::Error>((status.success(), status.code(), output))
     })();
-    spawned.unwrap_or_else(|e| (false, None, format!("rtk-dev smoke: rtk: {e}\n").into_bytes()))
+    spawned.unwrap_or_else(|e| {
+        (
+            false,
+            None,
+            format!("rtk-dev smoke: rtk: {e}\n").into_bytes(),
+        )
+    })
 }
 
 /// Whether `rtk <args>` succeeds, output discarded.
@@ -295,7 +301,11 @@ pub fn run() -> ExitCode {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
-    out(format!("{BOLD}RTK Smoke Test Suite{NC}\nBinary: {}\nVersion: ", rtk.display()).as_bytes());
+    out(format!(
+        "{BOLD}RTK Smoke Test Suite{NC}\nBinary: {}\nVersion: ",
+        rtk.display()
+    )
+    .as_bytes());
     out(trim_newlines(&version));
     out(format!("\nDate: {}\n", utc(now)).as_bytes());
 
@@ -382,7 +392,10 @@ fn checks(s: &mut Suite) {
     s.ok("rtk git status", &["git", "status"]);
     s.ok("rtk git status --short", &["git", "status", "--short"]);
     s.ok("rtk git status -s", &["git", "status", "-s"]);
-    s.ok("rtk git status --porcelain", &["git", "status", "--porcelain"]);
+    s.ok(
+        "rtk git status --porcelain",
+        &["git", "status", "--porcelain"],
+    );
     s.ok("rtk git log", &["git", "log"]);
     s.ok("rtk git log -5", &["git", "log", "--", "-5"]);
     s.ok("rtk git diff", &["git", "diff"]);
@@ -477,7 +490,10 @@ fn checks(s: &mut Suite) {
     }
 
     s.section("Grep (extra args passthrough)");
-    s.ok("rtk grep -i case insensitive", &["grep", "fn", "src/", "-i"]);
+    s.ok(
+        "rtk grep -i case insensitive",
+        &["grep", "fn", "src/", "-i"],
+    );
     s.ok(
         "rtk grep -A context lines",
         &["grep", "fn run", "src/", "-A", "2"],
@@ -589,7 +605,10 @@ fn checks(s: &mut Suite) {
 
     s.section("Global flags");
     s.ok("rtk -u ls .", &["-u", "ls", "."]);
-    s.ok("rtk --skip-env npm --help", &["--skip-env", "npm", "--help"]);
+    s.ok(
+        "rtk --skip-env npm --help",
+        &["--skip-env", "npm", "--help"],
+    );
 
     s.section("CcEconomics");
     s.ok("rtk cc-economics", &["cc-economics"]);
@@ -599,14 +618,26 @@ fn checks(s: &mut Suite) {
     s.ok("rtk learn (no sessions)", &["learn", "--since", "0"]);
 
     s.section("Rewrite");
-    s.contains("rewrite git status", "rtk git status", &["rewrite", "git status"]);
-    s.contains("rewrite cargo test", "rtk cargo test", &["rewrite", "cargo test"]);
+    s.contains(
+        "rewrite git status",
+        "rtk git status",
+        &["rewrite", "git status"],
+    );
+    s.contains(
+        "rewrite cargo test",
+        "rtk cargo test",
+        &["rewrite", "cargo test"],
+    );
     s.contains(
         "rewrite compound &&",
         "rtk git status",
         &["rewrite", "git status && cargo test"],
     );
-    s.contains("rewrite pipe preserves", "| head", &["rewrite", "git log | head"]);
+    s.contains(
+        "rewrite pipe preserves",
+        "| head",
+        &["rewrite", "git log | head"],
+    );
 
     s.section("Rewrite (#345: RTK_DISABLED skip)");
     s.fails(
@@ -630,26 +661,43 @@ fn checks(s: &mut Suite) {
         "rewrite gh --json skip",
         &["rewrite", "gh pr list --json number"],
     );
-    s.fails("rewrite gh --jq skip", &["rewrite", "gh api /repos --jq .name"]);
+    s.fails(
+        "rewrite gh --jq skip",
+        &["rewrite", "gh api /repos --jq .name"],
+    );
     s.fails(
         "rewrite gh --template skip",
         &["rewrite", "gh pr view 1 --template '{{.title}}'"],
     );
-    s.contains("rewrite gh normal works", "rtk gh pr list", &["rewrite", "gh pr list"]);
+    s.contains(
+        "rewrite gh normal works",
+        "rtk gh pr list",
+        &["rewrite", "gh pr list"],
+    );
 
     s.section("Verify");
     s.ok("rtk verify", &["verify"]);
 
     s.section("Proxy");
     s.ok("rtk bypass echo hello", &["bypass", "echo", "hello"]);
-    s.contains("rtk bypass passthrough", "hello", &["bypass", "echo", "hello"]);
+    s.contains(
+        "rtk bypass passthrough",
+        "hello",
+        &["bypass", "echo", "hello"],
+    );
 
     s.section("Discover");
     s.ok("rtk discover", &["discover"]);
 
     s.section("Diff");
-    s.ok("rtk diff identical files", &["diff", "Cargo.toml", "Cargo.toml"]);
-    s.fails("rtk diff differing files", &["diff", "Cargo.toml", "LICENSE"]);
+    s.ok(
+        "rtk diff identical files",
+        &["diff", "Cargo.toml", "Cargo.toml"],
+    );
+    s.fails(
+        "rtk diff differing files",
+        &["diff", "Cargo.toml", "LICENSE"],
+    );
     // Differing files exit 1 and print the classic `<` lines.
     let (_, code, output) = capture(&["diff", "Cargo.toml", "LICENSE"], None);
     s.judge_contains(
@@ -677,7 +725,11 @@ fn checks(s: &mut Suite) {
     }
 
     s.section("Hook check (#344)");
-    s.contains("rtk init --show hook version", "version", &["init", "--show"]);
+    s.contains(
+        "rtk init --show hook version",
+        "version",
+        &["init", "--show"],
+    );
 }
 
 #[cfg(test)]

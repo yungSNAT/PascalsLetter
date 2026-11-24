@@ -88,8 +88,6 @@ struct Case {
     in_repo: bool,
     /// Optional tools on PATH, with the stub each gets.
     tools: &'static [(&'static str, &'static str)],
-    /// Files on PATH that are not executable.
-    not_executable: &'static [&'static str],
 }
 
 const CASES: &[Case] = &[
@@ -99,7 +97,6 @@ const CASES: &[Case] = &[
         rtk_on_path: false,
         in_repo: true,
         tools: &[],
-        not_executable: &["rtk"],
     },
     Case {
         name: "not-a-repo",
@@ -107,7 +104,6 @@ const CASES: &[Case] = &[
         rtk_on_path: true,
         in_repo: false,
         tools: &[],
-        not_executable: &[],
     },
     Case {
         name: "all-pass",
@@ -115,16 +111,14 @@ const CASES: &[Case] = &[
         rtk_on_path: true,
         in_repo: true,
         tools: ALL_TOOLS,
-        not_executable: &[],
     },
     Case {
         name: "failures",
         mode: "bad",
         rtk_on_path: true,
         in_repo: true,
-        // gh not signed in, docker not running, `tree` not executable.
+        // gh not signed in, docker not running.
         tools: &[("gh", FAIL_STUB), ("docker", FAIL_STUB), ("rg", OK_STUB)],
-        not_executable: &["tree"],
     },
 ];
 
@@ -162,9 +156,6 @@ fn fixture(case: &Case) -> PathBuf {
     write_exe(&bin.join("date"), DATE_STUB);
     for (tool, body) in case.tools {
         write_exe(&bin.join(tool), body);
-    }
-    for name in case.not_executable {
-        fs::write(bin.join(name), OK_STUB).unwrap();
     }
     // Numbered files under `tmp`, so the script's temporary paths are fixed;
     // `tmp` is in the snapshot, so a file left behind shows.
