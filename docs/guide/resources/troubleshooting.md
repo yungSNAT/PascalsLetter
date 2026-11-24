@@ -204,7 +204,7 @@ rtk cc-economics
 
 ## Network calls fail behind a proxy
 
-RTK's own HTTP calls (`rtk pipeline add <url>`, `rtk pipeline search`, task workers with a remote upstream, the telemetry ping) follow `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` and `NO_PROXY`. Filtered commands and the hook make no network call.
+The `rtk` binary's HTTP calls (`rtk pipeline add <url>`, `rtk pipeline search`, task workers with a remote upstream, the telemetry ping, and an LLM classifier a pipeline's hook rules call) follow `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` and `NO_PROXY`. Filtered commands make no network call, and the hook makes one only through such a classifier. `rtk-proxy` uses a different HTTP client; this section does not cover it.
 
 If one of these calls reports `Connection refused` while the target is reachable, check the proxy variables in that shell:
 
