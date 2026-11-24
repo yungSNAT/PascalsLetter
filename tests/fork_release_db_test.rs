@@ -125,7 +125,11 @@ fn a_failed_migration_leaves_the_release_tracking_database_usable() {
     );
     assert!(stdout.contains("\"total_commands\": 6"), "{stdout}");
 
-    assert_eq!(pragma(&tracking, "user_version"), 2, "no stamp for a failed step");
+    assert_eq!(
+        pragma(&tracking, "user_version"),
+        2,
+        "no stamp for a failed step"
+    );
     assert_eq!(pragma(&tracking, "application_id"), 0, "no tag either");
     assert_eq!(count(&tracking, "commands"), 6);
     let check: String = Connection::open(&tracking)
