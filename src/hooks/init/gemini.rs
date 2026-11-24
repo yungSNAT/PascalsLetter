@@ -24,7 +24,7 @@ fn is_gemini_hook_command(command: &str, installed: &str) -> bool {
     command.trim() == installed
         || crate::hooks::is_rtk_hook_command(command, "gemini")
         || crate::hooks::simple_command_words(command)
-            .is_some_and(|words| matches!(words.as_slice(), [word] if is_script(word)))
+            .is_some_and(|words| matches!(words.as_slice(), [word] if is_script(word) || is_script(command.trim())))
 }
 
 /// True when a BeforeTool group runs RTK's hook among its commands.
@@ -553,6 +553,11 @@ mod tests {
             &settings_with(vec![group(&[
                 "/usr/bin/env bash /opt/x/rtk-hook-gemini.sh"
             ])]),
+            HOOK
+        ));
+        // An unspaced Windows path from an earlier home is one shell word.
+        assert!(configured_in(
+            &settings_with(vec![group(&[r"D:\old\.gemini\hooks\rtk-hook-gemini.sh"])]),
             HOOK
         ));
         // rtk init writes its script's path unquoted; the shell reading drops
