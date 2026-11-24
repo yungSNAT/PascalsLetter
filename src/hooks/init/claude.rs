@@ -498,7 +498,17 @@ pub(super) fn required_claude_events_scoped(
 /// With `[hooks] dedup_repeats`, both tool events fire for each tool a
 /// repeat pointer can replace: PreToolUse marks the call in flight and
 /// PostToolUse delivers it.
-pub(super) fn add_repeat_tools(_events: &mut Vec<(&'static str, String)>) {}
+pub(super) fn add_repeat_tools(events: &mut Vec<(&'static str, String)>) {
+    const REPEAT_TOOLS: &[&str] = &["Bash", "Read", "Grep", "Glob"];
+    for key in [PRE_TOOL_USE_KEY, POST_TOOL_USE_KEY] {
+        match events.iter_mut().find(|(k, _)| *k == key) {
+            Some((_, matcher)) => {
+                *matcher = crate::hooks::constants::claude_matcher_with(matcher, REPEAT_TOOLS);
+            }
+            None => events.push((key, REPEAT_TOOLS.join("|"))),
+        }
+    }
+}
 
 /// Global-surface view, for `rtk init --show` status against the global file.
 pub(super) fn required_claude_events() -> Vec<(&'static str, String)> {
