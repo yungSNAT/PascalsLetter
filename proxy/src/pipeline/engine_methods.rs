@@ -218,6 +218,10 @@ fn tool_names(body: &serde_json::Value) -> HashMap<String, String> {
     map
 }
 
+fn rule_credits(by_rule: Vec<(String, i64)>) -> Vec<(String, i64)> {
+    by_rule
+}
+
 fn subject_of(tool_name: &str) -> Subject {
     rtk_engine::harness::profile("claude-code")
         .map(|p| p.map_tool(tool_name))
@@ -296,7 +300,7 @@ impl Transform for EngineMethodsTransform {
                 }
             }
         }
-        for (rule, saved) in by_rule {
+        for (rule, saved) in rule_credits(by_rule) {
             req.record_rule_saving(&rule, saved);
         }
         let saved = before.saturating_sub(after) as i64;
@@ -404,6 +408,19 @@ mod tests {
 
     fn runnable(name: &str) -> bool {
         runs_in_proxy(rtk_engine::registry::find(name).expect("registered"))
+    }
+
+    #[test]
+    fn rule_credits_never_exceed_the_stage_saving() {
+        let saved =
+            |v: &[(&str, i64)]| rule_credits(v.iter().map(|(n, d)| (n.to_string(), *d)).collect());
+        assert_eq!(
+            saved(&[("a", 100), ("b", 150)]),
+            vec![("a".to_string(), 100), ("b".to_string(), 150)]
+        );
+        // b grew a result by more than it saved: the stage saved 100, so
+        // crediting a and c 250 would overstate it.
+        assert!(saved(&[("a", 100), ("b", -150), ("c", 150)]).is_empty());
     }
 
     #[test]
