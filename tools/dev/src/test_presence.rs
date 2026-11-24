@@ -24,10 +24,14 @@ fn self_test() -> ExitCode {
         eprintln!("rtk-dev check-test-presence: {SELF_TEST_FILE}: {e}");
         return ExitCode::from(1);
     }
-    let caught = !has_tests(SELF_TEST_FILE);
-    let _ = fs::remove_file(SELF_TEST_FILE);
-    if !caught {
+    if has_tests(SELF_TEST_FILE) {
+        let _ = fs::remove_file(SELF_TEST_FILE);
         println!("FAIL: self-test broken (false negative)");
+        return ExitCode::from(1);
+    }
+    // The script's `rm` under `set -e` stopped it before PASS.
+    if let Err(e) = fs::remove_file(SELF_TEST_FILE) {
+        eprintln!("rtk-dev check-test-presence: {SELF_TEST_FILE}: {e}");
         return ExitCode::from(1);
     }
     println!("PASS: --self-test detection works correctly");

@@ -20,6 +20,8 @@ struct Case {
     /// Files committed on `base`, then the files changed on HEAD (None deletes).
     base: &'static [(&'static str, &'static str)],
     head: &'static [(&'static str, Option<&'static str>)],
+    /// Files removed from the work tree after the HEAD commit.
+    removed: &'static [&'static str],
     /// The error text differs by design (bash names the script and line).
     stderr_differs: bool,
 }
@@ -46,6 +48,7 @@ const CASES: &[Case] = &[
             ("src/core/runner.rs", Some("// changed\n")),
             ("crates/x/src/cmds/deep_cmd.rs", Some(WITHOUT_TESTS)),
         ],
+        removed: &[],
         stderr_differs: false,
     },
     Case {
@@ -56,6 +59,7 @@ const CASES: &[Case] = &[
             ("src/cmds/git/new_cmd.rs", Some(WITH_TESTS)),
             ("src/cmds/git/old_cmd.rs", Some(WITH_TESTS)),
         ],
+        removed: &[],
         stderr_differs: false,
     },
     Case {
@@ -63,6 +67,7 @@ const CASES: &[Case] = &[
         args: &["base"],
         base: BASE_FILES,
         head: &[("src/core/runner.rs", Some("// changed\n"))],
+        removed: &[],
         stderr_differs: false,
     },
     Case {
@@ -71,6 +76,19 @@ const CASES: &[Case] = &[
         args: &["base"],
         base: BASE_FILES,
         head: &[(" lead/src/cmds/a_cmd.rs", Some(WITHOUT_TESTS))],
+        removed: &[],
+        stderr_differs: false,
+    },
+    Case {
+        // The script skipped a listed name that is no longer a file.
+        name: "removed-after-commit",
+        args: &["base"],
+        base: BASE_FILES,
+        head: &[
+            ("src/cmds/git/new_cmd.rs", Some(WITHOUT_TESTS)),
+            ("src/cmds/git/old_cmd.rs", Some(WITHOUT_TESTS)),
+        ],
+        removed: &["src/cmds/git/new_cmd.rs"],
         stderr_differs: false,
     },
     Case {
@@ -78,6 +96,7 @@ const CASES: &[Case] = &[
         args: &["no-such-ref"],
         base: BASE_FILES,
         head: &[("src/cmds/git/new_cmd.rs", Some(WITHOUT_TESTS))],
+        removed: &[],
         stderr_differs: false,
     },
     Case {
@@ -85,6 +104,7 @@ const CASES: &[Case] = &[
         args: &["--self-test"],
         base: BASE_FILES,
         head: &[],
+        removed: &[],
         stderr_differs: false,
     },
     Case {
@@ -92,6 +112,7 @@ const CASES: &[Case] = &[
         args: &["--self-test"],
         base: &[("README.md", "x\n")],
         head: &[],
+        removed: &[],
         stderr_differs: true,
     },
 ];
@@ -149,6 +170,9 @@ fn fixture(case: &Case) -> PathBuf {
         }
         git(&root, &["add", "-A"]);
         git(&root, &["commit", "-q", "-m", "topic"]);
+        for path in case.removed {
+            put(&root, path, None);
+        }
     }
     root
 }
