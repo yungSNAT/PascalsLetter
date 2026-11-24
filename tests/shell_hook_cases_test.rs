@@ -2,8 +2,11 @@
 //! (hooks/claude/test-rtk-rewrite.sh and hooks/copilot/test-rtk-rewrite.sh),
 //! run against the native hooks `rtk init` installs: `rtk hook claude` and
 //! `rtk hook copilot`. Each run gets a sandboxed HOME with no permission rules.
-//! Cases about the shell script itself (its audit log, jq checks and
-//! first-segment-only rewriting) went with it.
+//! Cases about the shell script itself (its audit log and jq checks) went with
+//! it. Where the native hooks answer differently, the case follows them: `rg`
+//! keeps its own command, a command already using rtk gets no rewrite, both
+//! sides of `&` are rewritten, and Copilot CLI gets `modifiedArgs` in place of
+//! a deny.
 
 use std::io::Write;
 use std::process::{Command, Stdio};
@@ -23,10 +26,10 @@ const CLAUDE_CASES: &[(&str, &str, Option<&str>)] = &[
     (r#"curl -s https://example.com"#, r#"curl -s https://example.com"#, Some(r#"rtk curl -s https://example.com"#)),
     (r#"cat package.json"#, r#"cat package.json"#, Some(r#"rtk read package.json"#)),
     (r#"grep -rn pattern src/"#, r#"grep -rn pattern src/"#, Some(r#"rtk grep -rn pattern src/"#)),
-    (r#"rg pattern src/"#, r#"rg pattern src/"#, Some(r#"rtk grep pattern src/"#)),
+    (r#"rg pattern src/"#, r#"rg pattern src/"#, Some(r#"rtk rg pattern src/"#)),
     (r#"cargo test"#, r#"cargo test"#, Some(r#"rtk cargo test"#)),
     (r#"npx prisma migrate"#, r#"npx prisma migrate"#, Some(r#"rtk prisma migrate"#)),
-    (r#"rtk git status"#, r#"rtk git status"#, Some(r#"rtk git status"#)),
+    (r#"rtk git status (already rtk)"#, r#"rtk git status"#, None),
     (r#"env + playwright"#, r#"TEST_SESSION_ID=2 npx playwright test --config=foo"#, Some(r#"TEST_SESSION_ID=2 rtk playwright test --config=foo"#)),
     (r#"env + git status"#, r#"GIT_PAGER=cat git status"#, Some(r#"GIT_PAGER=cat rtk git status"#)),
     (r#"env + git log"#, r#"GIT_PAGER=cat git log --oneline -10"#, Some(r#"GIT_PAGER=cat rtk git log --oneline -10"#)),
@@ -59,7 +62,7 @@ const CLAUDE_CASES: &[(&str, &str, Option<&str>)] = &[
     (r#"cargo test 2>&1 | head"#, r#"cargo test 2>&1 | head"#, Some(r#"rtk cargo test 2>&1 | head"#)),
     (r#"cargo test 2>&1"#, r#"cargo test 2>&1"#, Some(r#"rtk cargo test 2>&1"#)),
     (r#"cargo test &>/dev/null"#, r#"cargo test &>/dev/null"#, Some(r#"rtk cargo test &>/dev/null"#)),
-    (r#"cargo test & git status (bash hook rewrites first segment only)"#, r#"cargo test & git status"#, Some(r#"rtk cargo test & git status"#)),
+    (r#"cargo test & git status"#, r#"cargo test & git status"#, Some(r#"rtk cargo test & rtk git status"#)),
     (r#"vitest (no args)"#, r#"vitest"#, Some(r#"rtk vitest"#)),
     (r#"vitest run (no run)"#, r#"vitest run"#, Some(r#"rtk vitest"#)),
     (r#"vitest --reporter"#, r#"vitest --reporter=verbose"#, Some(r#"rtk vitest --reporter=verbose"#)),
@@ -149,7 +152,7 @@ fn claude_hook_ignores_an_inherited_rewrite_host() {
 }
 
 #[test]
-fn copilot_cli_is_denied_with_the_rtk_command() {
+fn copilot_cli_gets_the_rewritten_command() {
     let root = common::tempdir();
     for (command, want) in [
         ("git status", "rtk git status"),
@@ -163,9 +166,8 @@ fn copilot_cli_is_denied_with_the_rtk_command() {
     ] {
         let out = hook(common::rtk_command_in(root.path()), "copilot", &copilot_cli(command))
             .unwrap_or_else(|| panic!("{command}: no output"));
-        assert_eq!(str_at(&out, "/permissionDecision"), Some("deny"), "{command}: {out}");
-        let reason = str_at(&out, "/permissionDecisionReason").unwrap_or_default();
-        assert!(reason.contains(want), "{command}: {reason:?} lacks {want:?}");
+        let modified = str_at(&out, "/modifiedArgs/command").unwrap_or_default();
+        assert!(modified.contains(want), "{command}: {out}");
     }
 }
 

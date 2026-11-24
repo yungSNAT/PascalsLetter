@@ -213,7 +213,7 @@ rewrite`, since it is inherited by every child process. See `decision.rs`'s
 
 | Tool | ask support | Behavior on Default |
 |------|------------|-------------------|
-| Claude Code (rtk-rewrite.sh) | Yes | `permissionDecision: "ask"` — user prompted |
+| Claude Code (rtk hook claude) | Yes | `permissionDecision: "ask"` — user prompted |
 | Copilot VS Code (rtk hook copilot) | Yes | `permissionDecision: "ask"` — user prompted |
 | Cursor (rtk hook cursor) | Ready | `permission: "ask",` — users will be prompted when Cursor enforces the permission; in the meantime, allow |
 | Gemini CLI (rtk hook gemini) | No (allow/deny only) | allow (limitation — no ask mode in Gemini) |
