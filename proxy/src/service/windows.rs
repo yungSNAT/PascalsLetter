@@ -192,7 +192,11 @@ fn install_with(
     run: &mut impl FnMut(&str, &[&OsStr]) -> Result<Output>,
 ) -> Result<PathBuf> {
     let name = task_name()?;
-    if task_exists_with(&name, run)? && !owns_task_with(&name, run)? {
+    // Only overwrite when `/Query /XML` confirms this account owns the task;
+    // when queries fail (absent or unreadable), create without `/F` and with
+    // stdin closed so an existing task is never silently replaced.
+    let replace = owns_task_with(&name, run)?;
+    if !replace && task_exists_with(&name, run)? {
         bail!("{}; not replacing it", unconfirmed(&name));
     }
     let xml =
@@ -200,14 +204,16 @@ fn install_with(
     let xml_path = state_dir.join("rtk-proxy-task.xml");
     std::fs::write(&xml_path, super::windows_task::encode(&xml))
         .with_context(|| format!("writing {}", xml_path.display()))?;
-    let args = [
-        OsStr::new("/Create"),
-        OsStr::new("/F"),
+    let mut args = vec![OsStr::new("/Create")];
+    if replace {
+        args.push(OsStr::new("/F"));
+    }
+    args.extend([
         OsStr::new("/TN"),
         OsStr::new(&name),
         OsStr::new("/XML"),
         xml_path.as_os_str(),
-    ];
+    ]);
     let out = run("schtasks", &args);
     let _ = std::fs::remove_file(&xml_path);
     let out = out?;
@@ -409,7 +415,46 @@ mod tests {
         });
 
         let msg = res.expect_err("visible foreign task must fail").to_string();
-        assert!(msg.contains("could not be confirmed as this account's"), "{msg}");
+        assert!(
+            msg.contains("could not be confirmed as this account's"),
+            "{msg}"
+        );
+        assert!(create_calls(&calls).is_empty(), "must not invoke /Create");
+    }
+
+    #[test]
+    fn install_refuses_when_query_xml_fails_but_task_is_visible() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut calls = Vec::new();
+        let res = run_install(dir.path(), ("AzureAD", "Patrick"), &mut |prog, args| {
+            record_call(&mut calls, prog, args);
+            let is_xml_query = prog == "schtasks"
+                && args.first() == Some(&OsStr::new("/Query"))
+                && args.contains(&OsStr::new("/XML"));
+            Ok(output(u32::from(is_xml_query), b""))
+        });
+
+        let msg = res
+            .expect_err("visible unconfirmed task must fail")
+            .to_string();
+        assert!(
+            msg.contains("could not be confirmed as this account's"),
+            "{msg}"
+        );
+        assert!(create_calls(&calls).is_empty(), "must not invoke /Create");
+    }
+
+    #[test]
+    fn install_propagates_spawn_error_from_query_without_creating() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut calls = Vec::new();
+        let res = run_install(dir.path(), ("AzureAD", "Patrick"), &mut |prog, args| {
+            record_call(&mut calls, prog, args);
+            bail!("spawn failed");
+        });
+
+        assert!(res.is_err());
+        assert!(!dir.path().join("rtk-proxy-task.xml").exists());
         assert!(create_calls(&calls).is_empty(), "must not invoke /Create");
     }
 
