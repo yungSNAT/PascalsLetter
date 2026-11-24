@@ -35,31 +35,11 @@ git status --short && git branch --show-current
 ```
 
 ```bash
-# Hook configuration check
-if [ -f ".claude/hooks/rtk-rewrite.sh" ]; then
-    echo "✅ OK: rtk-rewrite.sh hook present"
-    # Check if hook is executable
-    if [ -x ".claude/hooks/rtk-rewrite.sh" ]; then
-        echo "✅ OK: hook is executable"
-    else
-        echo "⚠️ WARNING: hook not executable (chmod +x needed)"
-    fi
+# Hook configuration check: the native hook is registered in settings.json
+if rtk init --show 2>/dev/null | grep -q "rtk hook claude"; then
+echo "✅ OK: rtk hook claude registered"
 else
-    echo "❌ MISSING: rtk-rewrite.sh hook"
-fi
-```
-
-```bash
-# Hook rtk-suggest.sh check
-if [ -f ".claude/hooks/rtk-suggest.sh" ]; then
-    echo "✅ OK: rtk-suggest.sh hook present"
-    if [ -x ".claude/hooks/rtk-suggest.sh" ]; then
-        echo "✅ OK: hook is executable"
-    else
-        echo "⚠️ WARNING: hook not executable (chmod +x needed)"
-    fi
-else
-    echo "❌ MISSING: rtk-suggest.sh hook"
+echo "❌ MISSING: run rtk init -g"
 fi
 ```
 
@@ -135,8 +115,8 @@ fi
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 📦 RTK Binary:      ✅ OK (v0.16.0) | ❌ NOT FOUND
-🔗 Hooks:           ✅ OK (rtk-rewrite.sh + rtk-suggest.sh executable)
-                    ❌ MISSING or ⚠️ WARNING (not executable)
+🔗 Hooks:           ✅ OK (rtk hook claude registered)
+                    ❌ MISSING (run rtk init -g)
 📊 Token Analytics: ✅ OK (rtk gain working)
                     ❌ FAILED (command not available)
 🎯 Claude Context:  ✅ OK (hook environment detected)
@@ -247,9 +227,9 @@ l'installation et obtenir les commandes de fix.
 
 **Cas 2 : Hook permission denied**
 ```
-L'erreur "Permission denied" sur le hook rtk-rewrite.sh indique que
-les hooks ne sont pas exécutables. Lance `/diagnose` pour identifier
-le problème et corriger les permissions avec `chmod +x`.
+L'erreur "Permission denied" sur un hook rtk-rewrite.sh indique une
+installation antérieure à 0.37.2. Lance `rtk init -g` pour passer au
+hook natif `rtk hook claude`.
 ```
 
 **Cas 3 : rtk gain unavailable**
