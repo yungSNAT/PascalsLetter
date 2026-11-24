@@ -478,7 +478,11 @@ pub(super) fn required_claude_events_scoped(
 ) -> Vec<(&'static str, String)> {
     match scope {
         HookInstallScope::UserGlobal => {
-            claude_events_of(&crate::core::pipeline_config::load_user_scope())
+            let mut events = claude_events_of(&crate::core::pipeline_config::load_user_scope());
+            if crate::core::config::Config::load().is_ok_and(|c| c.hooks.dedup_repeats) {
+                add_repeat_tools(&mut events);
+            }
+            events
         }
         HookInstallScope::ProjectExtra => {
             let user = claude_events_of(&crate::core::pipeline_config::load_user_scope());
@@ -486,6 +490,22 @@ pub(super) fn required_claude_events_scoped(
                 .into_iter()
                 .filter(|(key, _)| !user.iter().any(|(u, _)| u == key))
                 .collect()
+        }
+    }
+}
+
+#[cfg(feature = "engine")]
+/// With `[hooks] dedup_repeats`, both tool events fire for each tool a
+/// repeat pointer can replace: PreToolUse marks the call in flight and
+/// PostToolUse delivers it.
+pub(super) fn add_repeat_tools(events: &mut Vec<(&'static str, String)>) {
+    const REPEAT_TOOLS: &[&str] = &["Bash", "Read", "Grep", "Glob"];
+    for key in [PRE_TOOL_USE_KEY, POST_TOOL_USE_KEY] {
+        match events.iter_mut().find(|(k, _)| *k == key) {
+            Some((_, matcher)) => {
+                *matcher = crate::hooks::constants::claude_matcher_with(matcher, REPEAT_TOOLS);
+            }
+            None => events.push((key, REPEAT_TOOLS.join("|"))),
         }
     }
 }
@@ -1007,6 +1027,33 @@ fn binary_hook_registered(claude_dir: &Path) -> bool {
 mod tests {
     use super::*;
     use crate::core::test_isolation;
+
+    #[cfg(feature = "engine")]
+    #[test]
+    fn test_add_repeat_tools_registers_both_tool_events() {
+        let all = "Bash|Read|Grep|Glob";
+        let mut events = vec![
+            (PRE_TOOL_USE_KEY, "Bash".to_string()),
+            (POST_TOOL_USE_KEY, "Read|Grep|mcp__.*".to_string()),
+        ];
+        add_repeat_tools(&mut events);
+        assert_eq!(
+            events,
+            vec![
+                (PRE_TOOL_USE_KEY, all.to_string()),
+                (POST_TOOL_USE_KEY, format!("{all}|mcp__.*")),
+            ]
+        );
+        let mut none = Vec::new();
+        add_repeat_tools(&mut none);
+        assert_eq!(
+            none,
+            vec![
+                (PRE_TOOL_USE_KEY, all.to_string()),
+                (POST_TOOL_USE_KEY, all.to_string()),
+            ]
+        );
+    }
 
     #[test]
     fn test_hook_already_present_exact_match() {
