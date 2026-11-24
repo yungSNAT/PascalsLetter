@@ -14,6 +14,32 @@ const GEMINI_HOOK_SCRIPT: &str = r#"#!/bin/bash
 exec rtk hook gemini
 "#;
 
+/// Matches RTK's Gemini hook command, alone: the wrapper script `rtk init`
+/// writes (at any path) or `rtk hook gemini`. The script's name is read from
+/// the shell word and from the raw text, since the shell reading of an
+/// unquoted Windows path drops its separators.
+fn is_gemini_hook_command(command: &str) -> bool {
+    let is_script = |path: &str| path.rsplit(['/', '\\']).next() == Some(GEMINI_HOOK_FILE);
+    crate::hooks::is_rtk_hook_command(command, "gemini")
+        || crate::hooks::simple_command_words(command).is_some_and(|words| {
+            matches!(words.as_slice(), [word] if is_script(word) || is_script(command.trim()))
+        })
+}
+
+/// True when a BeforeTool group runs RTK's hook among its commands.
+fn group_has_rtk_hook(group: &serde_json::Value) -> bool {
+    group
+        .get("hooks")
+        .and_then(|hooks| hooks.as_array())
+        .is_some_and(|hooks| hooks.iter().any(is_rtk_hook_entry))
+}
+
+fn is_rtk_hook_entry(hook: &serde_json::Value) -> bool {
+    hook.get("command")
+        .and_then(|c| c.as_str())
+        .is_some_and(is_gemini_hook_command)
+}
+
 fn resolve_gemini_dir() -> Result<PathBuf> {
     resolve_home_subdir(GEMINI_DIR)
 }
@@ -158,11 +184,7 @@ fn patch_gemini_settings(
     let before_tool_pointer = format!("/hooks/{}", BEFORE_TOOL_KEY);
     if let Some(hooks) = settings.pointer(&before_tool_pointer)
         && let Some(arr) = hooks.as_array()
-        && arr.iter().any(|h| {
-            h.pointer("/hooks/0/command")
-                .and_then(|v| v.as_str())
-                .is_some_and(|c| c.contains("rtk"))
-        })
+        && arr.iter().any(group_has_rtk_hook)
     {
         if verbose > 0 {
             eprintln!("Gemini settings.json already has RTK hook");
@@ -323,13 +345,21 @@ fn remove_rtk_hooks(settings: &mut serde_json::Value) -> bool {
     else {
         return false;
     };
-    let before = arr.len();
-    arr.retain(|h| {
-        !h.pointer("/hooks/0/command")
-            .and_then(|v| v.as_str())
-            .is_some_and(|c| c.contains("rtk"))
+    let mut removed = false;
+    arr.retain_mut(|group| {
+        let Some(hooks) = group.get_mut("hooks").and_then(|h| h.as_array_mut()) else {
+            return true;
+        };
+        let before = hooks.len();
+        hooks.retain(|hook| !is_rtk_hook_entry(hook));
+        if hooks.len() == before {
+            return true;
+        }
+        removed = true;
+        // A group that held only RTK's hook goes with it.
+        !hooks.is_empty()
     });
-    arr.len() < before
+    removed
 }
 
 /// Returns true if Gemini CLI RTK hook is configured in settings.json.
@@ -354,10 +384,7 @@ fn configured_in(settings: &serde_json::Value) -> bool {
             arr.iter().any(|h| {
                 let matcher = h.get("matcher").and_then(|m| m.as_str());
                 let matches_shell = matcher == Some("run_shell_command") || matcher == Some("*");
-                matches_shell
-                    && h.pointer("/hooks/0/command")
-                        .and_then(|v| v.as_str())
-                        .is_some_and(|c| c.contains("rtk"))
+                matches_shell && group_has_rtk_hook(h)
             })
         })
 }
@@ -511,6 +538,12 @@ mod tests {
         assert!(configured_in(&settings_with(vec![group(&[
             "notify-send hi",
             HOOK
+        ])])));
+        assert!(configured_in(&settings_with(vec![group(&[
+            r"C:\Users\u\.gemini\hooks\rtk-hook-gemini.sh"
+        ])])));
+        assert!(!configured_in(&settings_with(vec![group(&[
+            "/opt/my-rtk-hook-gemini.sh"
         ])])));
     }
 }
