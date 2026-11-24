@@ -15,29 +15,30 @@ exec rtk hook gemini
 "#;
 
 /// Matches RTK's Gemini hook command, alone: the wrapper script `rtk init`
-/// writes (at any path) or `rtk hook gemini`. The script's name is read from
-/// the shell word and from the raw text, since the shell reading of an
-/// unquoted Windows path drops its separators.
-fn is_gemini_hook_command(command: &str) -> bool {
+/// writes (at any path) or `rtk hook gemini`. `rtk init` writes the script's
+/// path unquoted, and the shell reading of that text drops a Windows path's
+/// separators and splits a path with a space, so `installed` (the path this
+/// install writes) also matches as raw text.
+fn is_gemini_hook_command(command: &str, installed: &str) -> bool {
     let is_script = |path: &str| path.rsplit(['/', '\\']).next() == Some(GEMINI_HOOK_FILE);
-    crate::hooks::is_rtk_hook_command(command, "gemini")
-        || crate::hooks::simple_command_words(command).is_some_and(|words| {
-            matches!(words.as_slice(), [word] if is_script(word) || is_script(command.trim()))
-        })
+    command.trim() == installed
+        || crate::hooks::is_rtk_hook_command(command, "gemini")
+        || crate::hooks::simple_command_words(command)
+            .is_some_and(|words| matches!(words.as_slice(), [word] if is_script(word)))
 }
 
 /// True when a BeforeTool group runs RTK's hook among its commands.
-fn group_has_rtk_hook(group: &serde_json::Value) -> bool {
+fn group_has_rtk_hook(group: &serde_json::Value, installed: &str) -> bool {
     group
         .get("hooks")
         .and_then(|hooks| hooks.as_array())
-        .is_some_and(|hooks| hooks.iter().any(is_rtk_hook_entry))
+        .is_some_and(|hooks| hooks.iter().any(|hook| is_rtk_hook_entry(hook, installed)))
 }
 
-fn is_rtk_hook_entry(hook: &serde_json::Value) -> bool {
+fn is_rtk_hook_entry(hook: &serde_json::Value, installed: &str) -> bool {
     hook.get("command")
         .and_then(|c| c.as_str())
-        .is_some_and(is_gemini_hook_command)
+        .is_some_and(|command| is_gemini_hook_command(command, installed))
 }
 
 fn resolve_gemini_dir() -> Result<PathBuf> {
@@ -184,7 +185,7 @@ fn patch_gemini_settings(
     let before_tool_pointer = format!("/hooks/{}", BEFORE_TOOL_KEY);
     if let Some(hooks) = settings.pointer(&before_tool_pointer)
         && let Some(arr) = hooks.as_array()
-        && arr.iter().any(group_has_rtk_hook)
+        && arr.iter().any(|group| group_has_rtk_hook(group, &hook_cmd))
     {
         if verbose > 0 {
             eprintln!("Gemini settings.json already has RTK hook");
@@ -314,7 +315,7 @@ pub(super) fn uninstall_gemini(ctx: InitContext) -> Result<Vec<String>> {
     if settings_path.exists() {
         let content = fs::read_to_string(&settings_path)?;
         if let Ok(mut settings) = from_json_str::<serde_json::Value>(&content)
-            && remove_rtk_hooks(&mut settings)
+            && remove_rtk_hooks(&mut settings, &hook_path.to_string_lossy())
         {
             if dry_run {
                 println!(
@@ -337,7 +338,7 @@ pub(super) fn uninstall_gemini(ctx: InitContext) -> Result<Vec<String>> {
 }
 
 /// Takes RTK's hook out of the BeforeTool groups; true when one was removed.
-fn remove_rtk_hooks(settings: &mut serde_json::Value) -> bool {
+fn remove_rtk_hooks(settings: &mut serde_json::Value, installed: &str) -> bool {
     let bt_pointer = format!("/hooks/{}", BEFORE_TOOL_KEY);
     let Some(arr) = settings
         .pointer_mut(&bt_pointer)
@@ -351,7 +352,7 @@ fn remove_rtk_hooks(settings: &mut serde_json::Value) -> bool {
             return true;
         };
         let before = hooks.len();
-        hooks.retain(|hook| !is_rtk_hook_entry(hook));
+        hooks.retain(|hook| !is_rtk_hook_entry(hook, installed));
         if hooks.len() == before {
             return true;
         }
@@ -371,11 +372,14 @@ pub fn is_configured() -> bool {
     fs::read_to_string(&settings_path)
         .ok()
         .and_then(|content| from_json_str::<serde_json::Value>(&content).ok())
-        .is_some_and(|settings| configured_in(&settings))
+        .is_some_and(|settings| {
+            let installed = gemini_dir.join(HOOKS_SUBDIR).join(GEMINI_HOOK_FILE);
+            configured_in(&settings, &installed.to_string_lossy())
+        })
 }
 
 /// True when a shell-matching BeforeTool group in `settings` runs RTK's hook.
-fn configured_in(settings: &serde_json::Value) -> bool {
+fn configured_in(settings: &serde_json::Value, installed: &str) -> bool {
     let before_tool_pointer = format!("/hooks/{}", BEFORE_TOOL_KEY);
     settings
         .pointer(&before_tool_pointer)
@@ -384,7 +388,7 @@ fn configured_in(settings: &serde_json::Value) -> bool {
             arr.iter().any(|h| {
                 let matcher = h.get("matcher").and_then(|m| m.as_str());
                 let matches_shell = matcher == Some("run_shell_command") || matcher == Some("*");
-                matches_shell && group_has_rtk_hook(h)
+                matches_shell && group_has_rtk_hook(h, installed)
             })
         })
 }
@@ -508,7 +512,7 @@ mod tests {
         let mut mixed = group(&["rtk-audit.sh", HOOK]);
         let mut settings = settings_with(vec![user.clone(), group(&[HOOK]), mixed.clone()]);
 
-        assert!(remove_rtk_hooks(&mut settings));
+        assert!(remove_rtk_hooks(&mut settings, HOOK));
 
         mixed["hooks"] = serde_json::json!([mixed_user]);
         assert_eq!(before_tool(&settings), vec![user, mixed]);
@@ -522,28 +526,67 @@ mod tests {
         ]);
         let mut settings = original.clone();
 
-        assert!(!remove_rtk_hooks(&mut settings));
+        assert!(!remove_rtk_hooks(&mut settings, HOOK));
         assert_eq!(settings, original);
     }
 
     #[test]
     fn configured_only_by_rtks_own_hook() {
-        assert!(!configured_in(&settings_with(vec![group(&[
-            "audit; rtk hook gemini"
-        ])])));
-        assert!(configured_in(&settings_with(vec![group(&[HOOK])])));
-        assert!(configured_in(&settings_with(vec![group(&[
-            "rtk hook gemini"
-        ])])));
-        assert!(configured_in(&settings_with(vec![group(&[
-            "notify-send hi",
+        assert!(!configured_in(
+            &settings_with(vec![group(&["audit; rtk hook gemini"])]),
             HOOK
-        ])])));
-        assert!(configured_in(&settings_with(vec![group(&[
-            r"C:\Users\u\.gemini\hooks\rtk-hook-gemini.sh"
-        ])])));
-        assert!(!configured_in(&settings_with(vec![group(&[
-            "/opt/my-rtk-hook-gemini.sh"
-        ])])));
+        ));
+        assert!(configured_in(&settings_with(vec![group(&[HOOK])]), HOOK));
+        assert!(configured_in(
+            &settings_with(vec![group(&["rtk hook gemini"])]),
+            HOOK
+        ));
+        assert!(configured_in(
+            &settings_with(vec![group(&["notify-send hi", HOOK])]),
+            HOOK
+        ));
+        assert!(!configured_in(
+            &settings_with(vec![group(&["/opt/my-rtk-hook-gemini.sh"])]),
+            HOOK
+        ));
+        assert!(!configured_in(
+            &settings_with(vec![group(&[
+                "/usr/bin/env bash /opt/x/rtk-hook-gemini.sh"
+            ])]),
+            HOOK
+        ));
+        // rtk init writes its script's path unquoted; the shell reading drops
+        // a Windows path's separators and splits a path with a space.
+        for installed in [
+            r"C:\Users\u\.gemini\hooks\rtk-hook-gemini.sh",
+            r"C:\Users\Jo Bloggs\.gemini\hooks\rtk-hook-gemini.sh",
+            "/home/jo bloggs/.gemini/hooks/rtk-hook-gemini.sh",
+        ] {
+            assert!(
+                configured_in(&settings_with(vec![group(&[installed])]), installed),
+                "{installed}"
+            );
+        }
+    }
+
+    /// An install under a home path with a space: install adds no second
+    /// copy and uninstall removes it.
+    #[test]
+    fn spaced_home_path_install_and_uninstall() {
+        let tmp = TempDir::new().unwrap();
+        let gemini_dir = tmp.path().join("jo bloggs").join(".gemini");
+        fs::create_dir_all(&gemini_dir).unwrap();
+        let hook = gemini_dir.join(HOOKS_SUBDIR).join(GEMINI_HOOK_FILE);
+        let installed = hook.to_string_lossy().to_string();
+        let settings_path = gemini_dir.join(SETTINGS_JSON);
+        let original = settings_with(vec![group(&[&installed])]).to_string();
+        fs::write(&settings_path, &original).unwrap();
+
+        patch_gemini_settings(&gemini_dir, &hook, PatchMode::Auto, InitContext::default()).unwrap();
+        assert_eq!(fs::read_to_string(&settings_path).unwrap(), original);
+
+        let mut settings: serde_json::Value = serde_json::from_str(&original).unwrap();
+        assert!(remove_rtk_hooks(&mut settings, &installed));
+        assert!(before_tool(&settings).is_empty());
     }
 }
