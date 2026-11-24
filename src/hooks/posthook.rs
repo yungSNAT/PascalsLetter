@@ -940,7 +940,7 @@ impl AgentFiles {
         } else {
             mark_body("", &left)
         };
-        let _ = std::fs::write(self.mark(), body);
+        self.write_mark(&body);
     }
 
     /// The record may still be there: no call matches the mark until a
@@ -952,7 +952,15 @@ impl AgentFiles {
         if !names.contains(&self.record) {
             names.push(self.record.clone());
         }
-        let _ = std::fs::write(self.mark(), mark_body("", &names));
+        self.write_mark(&mark_body("", &names));
+    }
+
+    /// A mark that cannot be rewritten is removed, so the call it named
+    /// matches nothing.
+    fn write_mark(&self, body: &str) {
+        if std::fs::write(self.mark(), body).is_err() {
+            let _ = std::fs::remove_file(self.mark());
+        }
     }
 }
 
