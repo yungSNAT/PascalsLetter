@@ -405,28 +405,35 @@ fn read_gain_summary_at(db: &std::path::Path, since: Option<&str>) -> Option<Pro
         s.trimmed_requests = n;
     }
     if let Ok(n) = conn.query_row(
-        "SELECT COALESCE(SUM(saved_engine_methods),0) FROM usage_records",
-        [],
+        &format!("SELECT COALESCE(SUM(saved_engine_methods),0) FROM usage_records{window}"),
+        params(),
         |r| r.get::<_, i64>(0),
     ) {
         s.saved_rules = n;
     }
-    s.by_rule = savings_by_rule(&conn);
+    s.by_rule = savings_by_rule(&conn, since);
     Some(s)
 }
 
 pub const RULES_METHOD: &str = "rules";
 
-fn savings_by_rule(conn: &rusqlite::Connection) -> Vec<(String, i64)> {
-    let Ok(mut stmt) = conn.prepare(
+fn savings_by_rule(conn: &rusqlite::Connection, since: Option<&str>) -> Vec<(String, i64)> {
+    let and_window = if since.is_some() {
+        " AND usage_records.ts >= ?1"
+    } else {
+        ""
+    };
+    let Ok(mut stmt) = conn.prepare(&format!(
         "SELECT j.key, SUM(j.value) FROM usage_records, json_each(usage_records.saved_rules) AS j \
-         WHERE json_valid(usage_records.saved_rules) GROUP BY j.key ORDER BY 2 DESC, 1",
-    ) else {
+         WHERE json_valid(usage_records.saved_rules){and_window} GROUP BY j.key ORDER BY 2 DESC, 1",
+    )) else {
         return Vec::new();
     };
-    stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))
-        .map(|rows| rows.filter_map(|r| r.ok()).collect())
-        .unwrap_or_default()
+    stmt.query_map(rusqlite::params_from_iter(since), |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+    })
+    .map(|rows| rows.filter_map(|r| r.ok()).collect())
+    .unwrap_or_default()
 }
 
 /// Proxy-side savings grouped by the pipeline active when each request was
