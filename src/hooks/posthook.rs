@@ -1861,6 +1861,41 @@ mod tests {
         assert!(pointer_of(&Call::new("f", "make test", &output, None).run(&config)).is_some());
     }
 
+    /// An overlapping start that can neither delete the record nor rewrite
+    /// the mark (another process holds both, the mark still renamable) must
+    /// not leave the first call's mark valid.
+    #[cfg(windows)]
+    #[test]
+    fn test_repeat_pointer_not_given_when_the_mark_cannot_be_rewritten() {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_SHARE_READ: u32 = 1;
+        const FILE_SHARE_DELETE: u32 = 4;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let output = lines(400);
+        assert!(pointer_of(&Call::new("a", "make test", &output, None).run(&config)).is_none());
+        let b = Call::new("b", "make test", &output, None);
+        b.pre(&config);
+        let files = agent_files(&config, &b.event).expect("state files");
+        let hold = |path: std::path::PathBuf, share: u32| {
+            std::fs::OpenOptions::new()
+                .read(true)
+                .share_mode(share)
+                .open(path)
+                .expect("hold the file")
+        };
+        let record = hold(files.record(), FILE_SHARE_READ);
+        let mark = hold(files.mark(), FILE_SHARE_READ | FILE_SHARE_DELETE);
+        // c starts whilst b is in flight.
+        Call::new("c", "make test", &output, None).pre(&config);
+        drop(record);
+        drop(mark);
+        assert!(
+            pointer_of(&b.post(&config)).is_none(),
+            "b overlapped c: delivered whole"
+        );
+    }
+
     /// No other shell tool, and never a pointer longer than the output it
     /// replaces.
     #[test]
