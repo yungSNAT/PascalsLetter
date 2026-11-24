@@ -622,7 +622,8 @@ fn gemini_json(decision: &str, rewrite: Option<&str>) -> String {
 
 // ── Audit logging ─────────────────────────────────────────────
 
-/// Best-effort audit log when RTK_HOOK_AUDIT=1.
+/// Best-effort audit log when RTK_HOOK_AUDIT=1, in `$RTK_AUDIT_DIR` if set
+/// (where `rtk hook-audit` reads it), else `~/.local/share/rtk`.
 fn audit_log(action: &str, original: &str, rewritten: &str) {
     if user_env::var("RTK_HOOK_AUDIT").as_deref() != Some("1") {
         return;
@@ -639,8 +640,10 @@ fn sanitize_log_field(s: &str) -> String {
 }
 
 fn audit_log_inner(action: &str, original: &str, rewritten: &str) -> Option<()> {
-    let home = user_dirs::home()?;
-    let dir = home.join(".local").join("share").join("rtk");
+    let dir = match user_env::var("RTK_AUDIT_DIR").filter(|d| !d.is_empty()) {
+        Some(dir) => std::path::PathBuf::from(dir),
+        None => user_dirs::home()?.join(".local").join("share").join("rtk"),
+    };
     crate::core::utils::create_private_dir(&dir).ok()?;
     let path = dir.join("hook-audit.log");
     let mut file = crate::core::utils::open_private(
