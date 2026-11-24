@@ -1118,7 +1118,54 @@ const TAKEN_MARK_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(3
 /// and taken marks older than `TAKEN_MARK_MAX_AGE`. `live` (the session
 /// being started or used) is never removed. Removing state only ever makes a
 /// result delivered whole.
-fn prune_repeats(_live: &std::path::Path, _now: std::time::SystemTime) {}
+fn prune_repeats(live: &std::path::Path, now: std::time::SystemTime) {
+    let Some(entries) = live.parent().and_then(|root| std::fs::read_dir(root).ok()) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        // Not followed: a link is not a session's folder.
+        if !entry.file_type().is_ok_and(|t| t.is_dir()) {
+            continue;
+        }
+        let path = entry.path();
+        if path != live && older_than(&path, now, REPEAT_SESSION_MAX_AGE) {
+            let _ = std::fs::remove_dir_all(&path);
+        } else {
+            prune_taken_marks(&path, now);
+        }
+    }
+}
+
+fn prune_taken_marks(dir: &std::path::Path, now: std::time::SystemTime) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let taken = entry.file_name().to_str().is_some_and(|name| {
+            name.split_once(".run.").is_some_and(|(agent, pid)| {
+                agent.len() == 16
+                    && agent.bytes().all(|b| b.is_ascii_hexdigit())
+                    && !pid.is_empty()
+                    && pid.bytes().all(|b| b.is_ascii_digit())
+            })
+        });
+        if taken && older_than(&entry.path(), now, TAKEN_MARK_MAX_AGE) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
+fn older_than(
+    path: &std::path::Path,
+    now: std::time::SystemTime,
+    age: std::time::Duration,
+) -> bool {
+    std::fs::symlink_metadata(path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|modified| now.duration_since(modified).ok())
+        .is_some_and(|elapsed| elapsed >= age)
+}
 
 /// Hands back what the agent gets for this Bash call (`emitted`, or `None`
 /// for the command's own output), or a pointer when `[hooks] dedup_repeats`
