@@ -788,7 +788,7 @@ fn process_shell(
             &raw_combined,
             duration_ms,
         );
-        return None;
+        return deliver(config, event, response, command, stdout, stderr, None);
     }
 
     let slug = format!("bash_{first_word}");
@@ -808,7 +808,7 @@ fn process_shell(
             &raw_combined,
             duration_ms,
         );
-        return None;
+        return deliver(config, event, response, command, stdout, stderr, None);
     }
 
     let mut updated = response.clone();
@@ -835,6 +835,228 @@ fn process_shell(
         &emitted_combined,
         duration_ms,
     );
+    let emitted = json!({
+        "hookSpecificOutput": {
+            "hookEventName": POST_TOOL_USE_KEY,
+            "updatedToolOutput": updated,
+        }
+    })
+    .to_string();
+    deliver(
+        config,
+        event,
+        response,
+        command,
+        &composed_stdout,
+        &filtered_stderr,
+        Some(emitted),
+    )
+}
+
+/// Where the last Bash delivery of each agent in a session is remembered.
+fn repeat_dir(config: &Config, event: &Value) -> Option<std::path::PathBuf> {
+    let session = event
+        .get("session_id")?
+        .as_str()
+        .filter(|s| !s.is_empty())?;
+    Some(
+        tee::posthook_recall_dir(config)?
+            .join("repeat")
+            .join(short_hash(session)),
+    )
+}
+
+/// The agent's record of its last completed Bash call, and the mark of the
+/// call it has in flight. `agent_id` is sent only from a subagent.
+fn agent_files(config: &Config, event: &Value) -> Option<(std::path::PathBuf, std::path::PathBuf)> {
+    let agent = event
+        .get("agent_id")
+        .and_then(Value::as_str)
+        .unwrap_or("main");
+    let dir = repeat_dir(config, event)?;
+    let name = short_hash(agent);
+    Some((dir.join(&name), dir.join(format!("{name}.run"))))
+}
+
+/// Pointers need the option, recall storage that accepts writes, the Claude
+/// Code hook and a Bash call.
+fn dedup_active(config: &Config, event: &Value) -> bool {
+    config.hooks.dedup_repeats
+        && matches!(
+            config.retriever.mode,
+            crate::core::retriever::RecoveryMode::Sqlite
+        )
+        && !crate::core::retriever::recovery_disabled_by_env()
+        && super::hook_agent().as_deref().unwrap_or("claude-code") == "claude-code"
+        && event.get("tool_name").and_then(Value::as_str) == Some("Bash")
+}
+
+fn tool_use_id(event: &Value) -> &str {
+    event
+        .get("tool_use_id")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+}
+
+fn short_hash(text: &str) -> String {
+    full_hash(text)[..16].to_string()
+}
+
+/// The whole SHA-256 digest: equal digests stand for equal bytes.
+fn full_hash(text: &str) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(text.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// A session that starts, resumes, clears or compacts has lost the outputs a
+/// pointer would refer to.
+pub fn forget_repeats(event: &Value) {
+    if let Ok(config) = Config::load() {
+        forget_repeats_with(&config, event);
+    }
+}
+
+/// PreToolUse of a Bash call. A call still marked never reached PostToolUse
+/// (it failed, was denied or interrupted, or its hook died), so the record
+/// no longer holds what the agent last got. Then this call is marked.
+pub fn note_bash_start(event: &Value) {
+    if event.get("tool_name").and_then(Value::as_str) == Some("Bash") {
+        note_bash_start_with(&crate::core::config::cached_config(), event);
+    }
+}
+
+fn note_bash_start_with(config: &Config, event: &Value) {
+    if !dedup_active(config, event) {
+        return;
+    }
+    let Some((record, mark)) = agent_files(config, event) else {
+        return;
+    };
+    let id = tool_use_id(event).as_bytes();
+    // Creating the mark is the check: of 2 parallel starts, the second finds
+    // it and clears the record.
+    let created = mark.parent().is_some_and(|dir| {
+        crate::core::utils::create_private_dir(dir).is_ok()
+            && std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&mark)
+                .and_then(|mut file| std::io::Write::write_all(&mut file, id))
+                .is_ok()
+    });
+    if !created {
+        let _ = std::fs::write(&mark, if clear(&record) { id } else { b"" });
+    }
+}
+
+/// Deletes a record; false when one may still be there. Whilst it is, the
+/// agent's mark stays empty, which no call matches and every start retries.
+fn clear(record: &std::path::Path) -> bool {
+    match std::fs::remove_file(record) {
+        Ok(()) => true,
+        Err(e) => e.kind() == std::io::ErrorKind::NotFound,
+    }
+}
+
+fn poison(mark: &std::path::Path) {
+    let _ = std::fs::write(mark, b"");
+}
+
+fn forget_repeats_with(config: &Config, event: &Value) {
+    if let Some(dir) = repeat_dir(config, event) {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+/// Hands back what the agent gets for this Bash call (`emitted`, or `None`
+/// for the command's own output), or a pointer when `[hooks] dedup_repeats`
+/// is on and the agent's last completed Bash call ran the same command and
+/// got these same bytes. A call counts as completed only when its PreToolUse
+/// marked it and nothing else started since; any doubt delivers the output.
+/// Claude Code sends `agent_id` only from a subagent, so its absence is the
+/// main thread; other hosts are left alone.
+fn deliver(
+    config: &Config,
+    event: &Value,
+    response: &Value,
+    command: &str,
+    stdout: &str,
+    stderr: &str,
+    emitted: Option<String>,
+) -> Option<String> {
+    if !dedup_active(config, event) {
+        return emitted;
+    }
+    let Some((record, mark)) = agent_files(config, event) else {
+        return emitted;
+    };
+    let id = tool_use_id(event);
+    if id.is_empty() || std::fs::read_to_string(&mark).ok().as_deref() != Some(id) {
+        if !clear(&record) {
+            poison(&mark);
+        }
+        return emitted;
+    }
+    let delivered = combine_streams(stdout, stderr);
+    let seen = format!("{} {}", full_hash(command), full_hash(&delivered));
+    let mut sound = true;
+    let repeat = if std::fs::read_to_string(&record).ok().as_deref() == Some(seen.as_str()) {
+        pointer(config, response, &delivered)
+    } else {
+        if std::fs::write(&record, seen).is_err() {
+            sound = clear(&record);
+        }
+        None
+    };
+    // Take the mark atomically: a call that started meanwhile overwrote it,
+    // and its record must not survive this call.
+    let mut taken = mark.clone().into_os_string();
+    taken.push(format!(".{}", std::process::id()));
+    let taken = std::path::PathBuf::from(taken);
+    let ours = std::fs::rename(&mark, &taken).is_ok()
+        && std::fs::read_to_string(&taken).ok().as_deref() == Some(id);
+    if ours && sound {
+        let _ = std::fs::remove_file(&taken);
+        return repeat.or(emitted);
+    }
+    if !clear(&record) {
+        poison(&mark);
+    } else if !ours && let Ok(other) = std::fs::read(&taken) {
+        let _ = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&mark)
+            .and_then(|mut file| std::io::Write::write_all(&mut file, &other));
+    }
+    let _ = std::fs::remove_file(&taken);
+    emitted
+}
+
+fn pointer(config: &Config, response: &Value, delivered: &str) -> Option<String> {
+    let crate::core::retriever::Stored::Saved(stored) = crate::core::retriever::store(
+        &config.retriever,
+        delivered.as_bytes(),
+        "posthook:repeat",
+        None,
+        1,
+    ) else {
+        return None;
+    };
+    let text = format!(
+        "[rtk: same output as the previous run of this command ({} lines): rtk recall {}]",
+        delivered.lines().count(),
+        stored.hash
+    );
+    if text.len() >= delivered.len() {
+        return None;
+    }
+    let mut updated = response.clone();
+    let obj = updated.as_object_mut()?;
+    obj.insert("stdout".into(), json!(text));
+    obj.insert("stderr".into(), json!(""));
     Some(
         json!({
             "hookSpecificOutput": {
@@ -1109,6 +1331,295 @@ mod tests {
 
     fn run_with(event: &Value, config: &Config, pipeline: &Resolved) -> Option<String> {
         process_with_config(event, config, pipeline)
+    }
+
+    fn repeat_config(dir: &std::path::Path, on: bool) -> Config {
+        let mut config = test_config();
+        config.retriever.mode = crate::core::retriever::RecoveryMode::Sqlite;
+        config.retriever.database_path = Some(dir.join("recall.db"));
+        config.retriever.tee_directory = Some(dir.join("tee"));
+        config.hooks.dedup_repeats = on;
+        config
+    }
+
+    fn bash_event(command: &str, stdout: &str, agent: Option<&str>) -> Value {
+        let mut event = serde_json::json!({
+            "session_id": "s1",
+            "tool_name": "Bash",
+            "tool_input": {"command": command},
+            "tool_response": {"stdout": stdout, "stderr": ""},
+            "duration_ms": 10
+        });
+        if let Some(agent) = agent {
+            event["agent_id"] = serde_json::json!(agent);
+        }
+        event
+    }
+
+    /// One Bash call's events: `pre` is its PreToolUse, `post` its PostToolUse.
+    struct Call {
+        event: Value,
+    }
+
+    impl Call {
+        fn new(id: &str, command: &str, stdout: &str, agent: Option<&str>) -> Self {
+            let mut event = bash_event(command, stdout, agent);
+            event["tool_use_id"] = serde_json::json!(id);
+            Self { event }
+        }
+
+        fn in_session(mut self, session: &str) -> Self {
+            self.event["session_id"] = serde_json::json!(session);
+            self
+        }
+
+        fn pre(&self, config: &Config) {
+            note_bash_start_with(config, &self.event);
+        }
+
+        fn post(&self, config: &Config) -> Option<String> {
+            run_with(&self.event, config, &default_pipeline())
+        }
+
+        /// PreToolUse then PostToolUse: a call that completed.
+        fn run(&self, config: &Config) -> Option<String> {
+            self.pre(config);
+            self.post(config)
+        }
+    }
+
+    fn lines(n: usize) -> String {
+        (0..n).map(|i| format!("line {i}\n")).collect()
+    }
+
+    fn pointer_of(out: &Option<String>) -> Option<String> {
+        let parsed: Value = serde_json::from_str(out.as_deref()?).ok()?;
+        let stdout = parsed
+            .pointer("/hookSpecificOutput/updatedToolOutput/stdout")?
+            .as_str()?;
+        stdout
+            .starts_with("[rtk: same output as the previous run")
+            .then(|| stdout.to_string())
+    }
+
+    /// Off by default: a repeated output reaches the agent exactly as before.
+    #[test]
+    fn test_repeat_pointer_is_off_by_default() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), false);
+        let output: String = (0..400).map(|i| format!("line {i}\n")).collect();
+        let event = bash_event("make test", &output, None);
+        let first = run_with(&event, &config, &default_pipeline());
+        let second = run_with(&event, &config, &default_pipeline());
+        assert_eq!(first, second);
+        assert!(pointer_of(&second).is_none());
+    }
+
+    #[test]
+    fn test_repeat_pointer_replaces_only_a_consecutive_identical_output() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let output = lines(400);
+        let mut n = 0;
+        let mut run = |command: &str, stdout: &str, agent: Option<&str>| {
+            n += 1;
+            Call::new(&format!("t{n}"), command, stdout, agent).run(&config)
+        };
+
+        let first = run("make test", &output, None);
+        assert!(
+            pointer_of(&first).is_none(),
+            "a first run is delivered whole"
+        );
+        let pointer = pointer_of(&run("make test", &output, None)).expect("a pointer");
+        assert_eq!(
+            pointer
+                .split_once(" lines): rtk recall ")
+                .map(|(head, _)| head),
+            Some("[rtk: same output as the previous run of this command (400"),
+        );
+        let hash = pointer
+            .rsplit_once("rtk recall ")
+            .and_then(|(_, rest)| rest.strip_suffix(']'))
+            .expect("a recall handle");
+        let conn = crate::core::retriever::open_existing(&config.retriever)
+            .unwrap()
+            .unwrap();
+        let row = crate::core::retriever::load_by_hash(&conn, hash)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            crate::core::retriever::decode(&row).unwrap(),
+            output.as_bytes(),
+            "the handle reads back the output the pointer stands for"
+        );
+
+        // A call the hook passes over (below its size floor) in between ends the run.
+        assert!(pointer_of(&run("true", "", None)).is_none());
+        assert!(pointer_of(&run("make test", &output, None)).is_none());
+        // Another command in between, other bytes, or another agent: delivered whole.
+        assert!(pointer_of(&run("git status", &output, None)).is_none());
+        assert!(pointer_of(&run("make test", &output, None)).is_none());
+        let changed = format!("{output}one more\n");
+        assert!(pointer_of(&run("make test", &changed, None)).is_none());
+        assert!(pointer_of(&run("make test", &changed, Some("sub-1"))).is_none());
+        assert!(pointer_of(&run("make test", &changed, None)).is_some());
+
+        // A SessionStart, where it is registered, forgets.
+        forget_repeats_with(&config, &bash_event("make test", "", None));
+        assert!(pointer_of(&run("make test", &changed, None)).is_none());
+    }
+
+    /// Pass, fail, pass: a failed call fires PostToolUseFailure, which this
+    /// hook never sees, so only its PreToolUse arrives.
+    #[test]
+    fn test_repeat_pointer_not_given_after_a_failed_call() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let pass = lines(400);
+        assert!(pointer_of(&Call::new("a", "cargo test", &pass, None).run(&config)).is_none());
+        Call::new("b", "cargo test", &lines(300), None).pre(&config);
+        assert!(
+            pointer_of(&Call::new("c", "cargo test", &pass, None).run(&config)).is_none(),
+            "the previous run the agent saw is the failed one"
+        );
+        assert!(pointer_of(&Call::new("d", "cargo test", &pass, None).run(&config)).is_some());
+    }
+
+    /// Without PreToolUse (not registered, or an older host without
+    /// `tool_use_id`), nothing shows a call completed: always whole.
+    #[test]
+    fn test_repeat_pointer_needs_the_pre_tool_use_registration() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let output = lines(400);
+        for id in ["a", "b", "c"] {
+            let call = Call::new(id, "make test", &output, None);
+            assert!(pointer_of(&call.post(&config)).is_none());
+        }
+        let mut no_id = bash_event("make test", &output, None);
+        for _ in 0..3 {
+            note_bash_start_with(&config, &no_id);
+            assert!(pointer_of(&run_with(&no_id, &config, &default_pipeline())).is_none());
+        }
+        no_id["tool_use_id"] = serde_json::json!("");
+        note_bash_start_with(&config, &no_id);
+        assert!(pointer_of(&run_with(&no_id, &config, &default_pipeline())).is_none());
+    }
+
+    /// A new session has no previous call.
+    #[test]
+    fn test_repeat_pointer_not_given_across_sessions() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let output = lines(400);
+        let call = |id: &str, session: &str| {
+            Call::new(id, "make test", &output, None)
+                .in_session(session)
+                .run(&config)
+        };
+        assert!(pointer_of(&call("a", "s1")).is_none());
+        assert!(pointer_of(&call("b", "s2")).is_none());
+        assert!(pointer_of(&call("c", "s2")).is_some());
+    }
+
+    /// A hook process that died between a call's events leaves the state
+    /// doubtful, so the next identical output is delivered whole.
+    #[test]
+    fn test_repeat_pointer_not_given_after_a_crashed_hook() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let output = lines(400);
+        Call::new("a", "make test", &output, None).run(&config);
+        // PreToolUse died before marking its call.
+        let b = Call::new("b", "make test", &output, None);
+        assert!(pointer_of(&b.post(&config)).is_none());
+        // PostToolUse died after the agent got the output and before it
+        // finished: its call is still marked.
+        Call::new("c", "make test", &output, None).run(&config);
+        let d = Call::new("d", "make test", &lines(300), None);
+        d.pre(&config);
+        assert!(pointer_of(&Call::new("e", "make test", &lines(300), None).run(&config)).is_none());
+    }
+
+    /// Parallel calls: A and B start together, B finishes, C starts, then A
+    /// finishes. C matching B must not point at B: A came back last.
+    #[test]
+    fn test_repeat_pointer_not_given_after_parallel_calls() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let a = Call::new("a", "make test", &lines(300), None);
+        let b = Call::new("b", "make test", &lines(400), None);
+        let c = Call::new("c", "make test", &lines(400), None);
+        a.pre(&config);
+        b.pre(&config);
+        assert!(pointer_of(&b.post(&config)).is_none());
+        c.pre(&config);
+        assert!(pointer_of(&a.post(&config)).is_none());
+        assert!(pointer_of(&c.post(&config)).is_none());
+    }
+
+    /// Recall storage switched off: nothing is stored and no pointer given.
+    #[test]
+    fn test_repeat_pointer_respects_disabled_recall_storage() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut config = repeat_config(dir.path(), true);
+        config.retriever.mode = crate::core::retriever::RecoveryMode::Disabled;
+        let output = lines(400);
+        for id in ["a", "b"] {
+            let out = Call::new(id, "make test", &output, None).run(&config);
+            assert!(pointer_of(&out).is_none());
+        }
+        assert!(!dir.path().join("recall.db").exists());
+    }
+
+    /// A record that cannot be deleted (another process holds it open without
+    /// delete sharing) must not let a later call point at it.
+    #[cfg(windows)]
+    #[test]
+    fn test_repeat_pointer_not_given_while_the_record_cannot_be_deleted() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let output = lines(400);
+        let a = Call::new("a", "make test", &output, None);
+        assert!(pointer_of(&a.run(&config)).is_none());
+        let (record, _) = agent_files(&config, &a.event).expect("state files");
+        const FILE_SHARE_READ: u32 = 1;
+        let held = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ)
+            .open(&record)
+            .expect("hold the record");
+        Call::new("b", "make test", &lines(300), None).pre(&config);
+        for id in ["c", "d"] {
+            let call = Call::new(id, "make test", &output, None);
+            assert!(pointer_of(&call.run(&config)).is_none(), "call {id}");
+        }
+        drop(held);
+        assert!(pointer_of(&Call::new("e", "make test", &output, None).run(&config)).is_none());
+        assert!(pointer_of(&Call::new("f", "make test", &output, None).run(&config)).is_some());
+    }
+
+    /// Only Bash, and never a pointer longer than the output it replaces.
+    #[test]
+    fn test_repeat_pointer_only_for_bash_and_only_when_shorter() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let output = lines(400);
+        for id in ["a", "b"] {
+            let mut call = Call::new(id, "Get-ChildItem", &output, None);
+            call.event["tool_name"] = serde_json::json!("PowerShell");
+            assert!(pointer_of(&call.run(&config)).is_none());
+        }
+        let short = "ok\n".repeat(20);
+        let pipeline =
+            pipeline_from("[pipeline]\nextends = \"rtk:default\"\n[guards]\nmin_size = 1\n");
+        for id in ["c", "d"] {
+            let call = Call::new(id, "make check", &short, None);
+            call.pre(&config);
+            assert!(pointer_of(&run_with(&call.event, &config, &pipeline)).is_none());
+        }
     }
 
     fn run_posthook(event: &Value) -> Option<String> {
