@@ -35,8 +35,10 @@ jobs:
           fetch-depth: 50
       - name: Check filter modules have tests
         run: |
-          git fetch origin "${{ github.base_ref }}" --depth=1 || true
-          bash scripts/check-test-presence.sh "origin/${{ github.base_ref }}"
+          git fetch origin "$BASE_REF" --depth=1 || true
+          cargo run --quiet --locked --manifest-path tools/dev/Cargo.toml -- check-test-presence "origin/$BASE_REF"
+        env:
+          BASE_REF: ${{ github.base_ref }}
 
   fmt:
     timeout-minutes: 30
