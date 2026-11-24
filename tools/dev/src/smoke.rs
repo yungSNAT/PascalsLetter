@@ -740,6 +740,8 @@ mod tests {
     fn grep_anchors_and_wildcards_like_basic_regex() {
         assert!(grep(b"xgit\n", ".git"));
         assert!(!grep(b"git\n", ".git"));
+        // `.` takes the last byte of a multibyte character where grep takes the character.
+        assert!(grep("égit\n".as_bytes(), ".git"));
         assert!(grep(b"a\n< b\n", "^< "));
         assert!(!grep(b"a < b\n", "^< "));
         assert!(grep(b"x | head\n", "| head"));
