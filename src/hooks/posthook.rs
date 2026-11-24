@@ -1068,6 +1068,10 @@ fn note_tool_start_with(config: &Config, event: &Value) {
     };
     let id = tool_use_id(event);
     let mark = files.mark();
+    // A session's first call prunes, for installs without SessionStart.
+    if !files.dir.exists() && crate::core::utils::create_private_dir(&files.dir).is_ok() {
+        prune_repeats(&files.dir, std::time::SystemTime::now());
+    }
     // Creating the mark is the check: of 2 parallel starts, the second finds
     // it and clears both calls' records.
     let created = crate::core::utils::create_private_dir(&files.dir).is_ok()
@@ -1099,9 +1103,22 @@ fn clear(record: &std::path::Path) -> bool {
 
 fn forget_repeats_with(config: &Config, event: &Value) {
     if let Some(dir) = repeat_dir(config, event) {
-        let _ = std::fs::remove_dir_all(dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        prune_repeats(&dir, std::time::SystemTime::now());
     }
 }
+
+/// A session folder untouched this long belongs to a finished session.
+const REPEAT_SESSION_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(7 * 24 * 3600);
+/// A taken mark (`<agent>.run.<pid>`) lives for one PostToolUse; one this old
+/// was left by a hook that died.
+const TAKEN_MARK_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(3600);
+
+/// Removes other sessions' folders untouched for `REPEAT_SESSION_MAX_AGE`
+/// and taken marks older than `TAKEN_MARK_MAX_AGE`. `live` (the session
+/// being started or used) is never removed. Removing state only ever makes a
+/// result delivered whole.
+fn prune_repeats(_live: &std::path::Path, _now: std::time::SystemTime) {}
 
 /// Hands back what the agent gets for this Bash call (`emitted`, or `None`
 /// for the command's own output), or a pointer when `[hooks] dedup_repeats`
@@ -2090,6 +2107,100 @@ mod tests {
         Call::new("a", "make test", &output, None).run(&config);
         Call::read("b", "/repo/src/lib.rs", &lines(300)).run(&config);
         assert!(pointer_of(&Call::new("c", "make test", &output, None).run(&config)).is_some());
+    }
+
+    fn session_dir(config: &Config, session: &str) -> std::path::PathBuf {
+        repeat_dir(config, &serde_json::json!({"session_id": session})).expect("a folder")
+    }
+
+    const DAY: std::time::Duration = std::time::Duration::from_secs(24 * 3600);
+
+    /// Old sessions' folders go; the live session's stays however old, and a
+    /// recent session's stays.
+    #[test]
+    fn test_prune_repeats_keeps_the_live_session() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        for session in ["live", "old"] {
+            Call::new("a", "make test", &lines(400), None)
+                .in_session(session)
+                .run(&config);
+        }
+        let (live, old) = (session_dir(&config, "live"), session_dir(&config, "old"));
+        let now = std::time::SystemTime::now();
+
+        prune_repeats(&live, now + DAY);
+        assert!(live.exists() && old.exists(), "a day idle is kept");
+
+        prune_repeats(&live, now + 8 * DAY);
+        assert!(live.exists(), "the live session survives");
+        assert!(!old.exists(), "a week idle is pruned");
+        assert!(
+            pointer_of(
+                &Call::new("b", "make test", &lines(400), None)
+                    .in_session("live")
+                    .run(&config)
+            )
+            .is_some(),
+            "the live session's records are intact"
+        );
+    }
+
+    /// A taken mark a dead hook left goes after an hour, in every session;
+    /// marks and records stay.
+    #[test]
+    fn test_prune_repeats_removes_stale_taken_marks() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let call = Call::new("a", "make test", &lines(400), None);
+        call.run(&config);
+        Call::new("b", "make test", &lines(400), None).pre(&config);
+        let files = agent_files(&config, &call.event).expect("state files");
+        let mut taken = files.mark().into_os_string();
+        taken.push(".4242");
+        let taken = std::path::PathBuf::from(taken);
+        std::fs::write(&taken, "a").unwrap();
+        let other = files.dir.join("notes.run.txt");
+        std::fs::write(&other, "x").unwrap();
+        let now = std::time::SystemTime::now();
+
+        prune_repeats(&files.dir, now);
+        assert!(taken.exists(), "a recent taken mark may be in use");
+
+        prune_repeats(&files.dir, now + std::time::Duration::from_secs(2 * 3600));
+        assert!(!taken.exists());
+        assert!(files.mark().exists() && files.record().exists());
+        assert!(other.exists(), "only taken marks are removed");
+    }
+
+    /// SessionStart and a session's first call both prune.
+    #[cfg(unix)]
+    #[test]
+    fn test_prune_repeats_runs_at_session_start_and_first_call() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let age = |session: &str| {
+            let path = session_dir(&config, session);
+            std::fs::File::open(&path)
+                .and_then(|f| f.set_modified(std::time::SystemTime::now() - 8 * DAY))
+                .expect("age the folder");
+            path
+        };
+        Call::new("a", "make test", &lines(400), None)
+            .in_session("old")
+            .run(&config);
+        let old = age("old");
+        forget_repeats_with(&config, &serde_json::json!({"session_id": "new"}));
+        assert!(!old.exists(), "SessionStart prunes");
+
+        Call::new("b", "make test", &lines(400), None)
+            .in_session("old2")
+            .run(&config);
+        let old2 = age("old2");
+        Call::new("c", "make test", &lines(400), None)
+            .in_session("new2")
+            .run(&config);
+        assert!(!old2.exists(), "a session's first call prunes");
     }
 
     fn run_posthook(event: &Value) -> Option<String> {
