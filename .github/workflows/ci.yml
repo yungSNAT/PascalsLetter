@@ -293,8 +293,6 @@ jobs:
         shell: pwsh
         run: ./scripts/test-install-proxy.ps1
 
-  # The agent plugins' own tests. Windows matters: there a program started by
-  # bare name runs from the working folder first, which the plugins must avoid.
   # install.sh's archive path traversal check (issue #1250, CWE-22).
   install-sh:
     timeout-minutes: 5
@@ -311,6 +309,8 @@ jobs:
       - name: Path traversal check
         run: sh scripts/test-install.sh
 
+  # The agent plugins' own tests. Windows matters: there a program started by
+  # bare name runs from the working folder first, which the plugins must avoid.
   hook-plugins:
     timeout-minutes: 10
     name: hook plugins (${{ matrix.os }})
