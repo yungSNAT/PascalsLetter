@@ -143,6 +143,12 @@ pub struct HooksConfig {
     /// not anything else.
     #[serde(default)]
     pub transparent_prefixes: Vec<String>,
+
+    /// Replace a Bash output identical to the one the same agent got from the
+    /// same command on its last completed Bash call with a one-line pointer
+    /// (Claude Code PreToolUse and PostToolUse hooks). Off by default.
+    #[serde(default)]
+    pub dedup_repeats: bool,
     /// Suppress the "No hook installed" warning only.
     /// Useful when running rtk via CLAUDE.md instructions instead of hooks,
     /// or with tools like OpenCode that don't use Claude Code hooks.
