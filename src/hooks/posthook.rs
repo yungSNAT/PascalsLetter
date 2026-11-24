@@ -1180,6 +1180,9 @@ fn deliver(
     stderr: &str,
     emitted: Option<String>,
 ) -> Option<String> {
+    if !dedup_active(config, event) {
+        return emitted;
+    }
     let delivered = combine_streams(stdout, stderr);
     deliver_seen(
         config,
@@ -1198,9 +1201,12 @@ fn deliver_native(config: &Config, event: &Value, emitted: Option<String>) -> Op
     if !dedup_active(config, event) {
         return emitted;
     }
+    let envelope = emitted
+        .as_deref()
+        .and_then(|out| serde_json::from_str::<Value>(out).ok());
     let response = match &emitted {
-        Some(out) => serde_json::from_str::<Value>(out)
-            .ok()
+        Some(_) => envelope
+            .as_ref()
             .and_then(|v| v.pointer("/hookSpecificOutput/updatedToolOutput").cloned()),
         None => event.get("tool_response").cloned(),
     };
@@ -1216,7 +1222,7 @@ fn deliver_native(config: &Config, event: &Value, emitted: Option<String>) -> Op
     let key = input_key(event);
     let seen = shown.as_deref().map(|shown| (key.as_str(), shown));
     deliver_seen(config, event, seen, emitted, || {
-        native_pointer(config, event, response?, &text?)
+        native_pointer(config, event, envelope, response?, &text?)
     })
 }
 
@@ -1349,10 +1355,12 @@ fn native_text(response: &Value) -> Option<String> {
         .map(|names| names.join("\n"))
 }
 
-/// `response` with its text replaced by a pointer to `text`.
+/// `response` with its text replaced by a pointer to `text`, inside the
+/// hook's own output (`envelope`) when it emitted one.
 fn native_pointer(
     config: &Config,
     event: &Value,
+    envelope: Option<Value>,
     mut response: Value,
     text: &str,
 ) -> Option<String> {
@@ -1372,7 +1380,14 @@ fn native_pointer(
     } else {
         response["filenames"] = json!([line]);
     }
-    Some(hook_output(response))
+    // The rest of the hook's own output (a format conversion note) stays.
+    match envelope {
+        Some(mut envelope) => {
+            *envelope.pointer_mut("/hookSpecificOutput/updatedToolOutput")? = response;
+            Some(envelope.to_string())
+        }
+        None => Some(hook_output(response)),
+    }
 }
 
 /// Path or URL the tracking rows and `when` facts key on.
@@ -2248,6 +2263,30 @@ mod tests {
             .in_session("new2")
             .run(&config);
         assert!(!old2.exists(), "a session's first call prunes");
+    }
+
+    /// A pointer to a converted Read keeps the note that the text is not the
+    /// file's bytes.
+    #[test]
+    fn test_repeat_pointer_keeps_the_read_conversion_note() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let read = |id: &str| {
+            let mut event = fixture("read_flat");
+            event["session_id"] = json!("s1");
+            event["tool_use_id"] = json!(id);
+            note_tool_start_with(&config, &event);
+            run_with(&event, &config, &json_reads_pipeline())
+        };
+        let note = |out: &Option<String>| {
+            let parsed: Value = serde_json::from_str(out.as_deref().expect("output")).unwrap();
+            parsed["hookSpecificOutput"]["additionalContext"].clone()
+        };
+        let first = read("a");
+        assert_eq!(note(&first), json!(READ_CONVERSION_NOTE));
+        let second = read("b");
+        assert!(native_pointer_of(&second).is_some(), "{second:?}");
+        assert_eq!(note(&second), json!(READ_CONVERSION_NOTE));
     }
 
     fn run_posthook(event: &Value) -> Option<String> {
