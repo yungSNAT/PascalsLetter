@@ -102,7 +102,8 @@ fn a_release_recall_store_migrates_and_still_recalls() {
 }
 
 /// A step that cannot run (a table holds the name of an index the step creates)
-/// leaves the release's file as it was: stamp, tag, rows and integrity.
+/// leaves the release's stamp, tag, rows and integrity as they were. The open
+/// still switches the file to WAL, as the release itself does.
 #[test]
 fn a_failed_migration_leaves_the_release_tracking_database_usable() {
     let dir = common::tempdir();
@@ -132,9 +133,87 @@ fn a_failed_migration_leaves_the_release_tracking_database_usable() {
     );
     assert_eq!(pragma(&tracking, "application_id"), 0, "no tag either");
     assert_eq!(count(&tracking, "commands"), 6);
-    let check: String = Connection::open(&tracking)
+    assert_eq!(integrity(&tracking), "ok");
+}
+
+/// A step that fails at its last statement takes back what its earlier
+/// statements created: `idx_timestamp`, dropped here, stays absent.
+#[test]
+fn a_step_failing_at_its_end_rolls_back_its_earlier_statements() {
+    let dir = common::tempdir();
+    let (tracking, recall) = copy_release_dbs(dir.path());
+    Connection::open(&tracking)
+        .expect("open should succeed")
+        .execute_batch(
+            "DROP INDEX idx_timestamp;
+             DROP INDEX idx_hook_decisions_timestamp;
+             CREATE TABLE idx_hook_decisions_timestamp (x);",
+        )
+        .expect("the database should be set up");
+
+    let output = rtk(&tracking, &recall, &["gain", "--format", "json"]);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{stderr}");
+    assert!(
+        stderr.contains("tracking database was not upgraded"),
+        "{stderr}"
+    );
+
+    assert_eq!(pragma(&tracking, "user_version"), 2);
+    assert_eq!(pragma(&tracking, "application_id"), 0);
+    assert!(!has_index(&tracking, "idx_timestamp"), "rolled back");
+    assert_eq!(count(&tracking, "commands"), 6);
+    assert_eq!(integrity(&tracking), "ok");
+}
+
+/// A recall step that cannot run still lets `rtk recall` serve the release's
+/// rows; `rtk gain --recalls` reports the store was not upgraded.
+#[test]
+fn a_failed_migration_leaves_the_release_recall_store_usable() {
+    let dir = common::tempdir();
+    let (tracking, recall) = copy_release_dbs(dir.path());
+    Connection::open(&recall)
+        .expect("open should succeed")
+        .execute_batch(
+            "DROP INDEX idx_recall_created;
+             CREATE TABLE idx_recall_created (x);",
+        )
+        .expect("the store should be set up");
+
+    let output = rtk(&tracking, &recall, &["recall", ERR_HASH]);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{stderr}");
+    assert!(stdout.contains("failure line 400"), "{stdout}");
+
+    let output = rtk(&tracking, &recall, &["gain", "--recalls"]);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("recall database was not upgraded"),
+        "{stderr}"
+    );
+
+    assert_eq!(pragma(&recall, "user_version"), 0);
+    assert_eq!(pragma(&recall, "application_id"), 0);
+    assert_eq!(count(&recall, "recall"), 2);
+    assert_eq!(integrity(&recall), "ok");
+}
+
+fn integrity(path: &Path) -> String {
+    Connection::open(path)
         .expect("open should succeed")
         .query_row("PRAGMA integrity_check", [], |row| row.get(0))
-        .expect("integrity_check should run");
-    assert_eq!(check, "ok");
+        .expect("integrity_check should run")
+}
+
+fn has_index(path: &Path, name: &str) -> bool {
+    Connection::open(path)
+        .expect("open should succeed")
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = ?1",
+            [name],
+            |row| row.get::<_, i64>(0),
+        )
+        .expect("sqlite_master should be readable")
+        > 0
 }
