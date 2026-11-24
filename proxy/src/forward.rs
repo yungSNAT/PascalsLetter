@@ -930,6 +930,9 @@ mod tests {
         AnswersAfter(u64),
         ErrorThenTrickle,
         ErrorAfter(u64),
+        /// The first connection gets a 503 with `retry-after` after this many
+        /// milliseconds; later ones get silence.
+        BusyThenSilent(u64),
     }
 
     async fn upstream(mode: Upstream) -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
@@ -942,12 +945,20 @@ mod tests {
         let seen = hits.clone();
         tokio::spawn(async move {
             while let Ok((mut conn, _)) = listener.accept().await {
-                seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let hit = seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 tokio::spawn(async move {
                     let mut buf = [0u8; 4096];
                     let _ = conn.read(&mut buf).await;
                     match mode {
-                        Upstream::Silent => {
+                        Upstream::BusyThenSilent(ms) if hit == 0 => {
+                            tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
+                            let _ = conn
+                                .write_all(
+                                    b"HTTP/1.1 503 Service Unavailable\r\nretry-after: 7\r\ncontent-length: 4\r\n\r\nbusy",
+                                )
+                                .await;
+                        }
+                        Upstream::BusyThenSilent(_) | Upstream::Silent => {
                             tokio::time::sleep(std::time::Duration::from_secs(60)).await
                         }
                         Upstream::AnswersAfter(ms) => {
@@ -1065,6 +1076,29 @@ mod tests {
         let st = bounded(1, 0);
         let (status, _) = relay_status(&st, &base, true).await;
         assert_eq!(status, 400);
+    }
+
+    #[tokio::test]
+    async fn a_retry_gets_only_what_is_left_of_the_timeout() {
+        let (base, hits) = upstream(Upstream::BusyThenSilent(500)).await;
+        let st = bounded(2, 2);
+        let (status, took) = relay_status(&st, &base, false).await;
+        assert_eq!(status, 502);
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 2);
+        assert!(
+            took < std::time::Duration::from_millis(2400),
+            "the retry must end at the 2s deadline, not 2s after it started: {took:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_busy_answer_is_kept_when_a_retry_could_not_finish() {
+        let (base, hits) = upstream(Upstream::BusyThenSilent(600)).await;
+        let st = bounded(1, 2);
+        let (status, took) = relay_status(&st, &base, false).await;
+        assert_eq!(status, 503, "the provider's answer, not a 502");
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert!(took < std::time::Duration::from_millis(1500), "{took:?}");
     }
 
     #[tokio::test]
