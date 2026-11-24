@@ -1444,6 +1444,9 @@ mod tests {
         ));
         assert!(names_a_recovery("+11 hidden: rtk recall 995969b07316e2e1]"));
         assert!(names_a_recovery(
+            "[+11 hidden (lines 4-14): rtk recall 995969b07316e2e1]"
+        ));
+        assert!(names_a_recovery(
             "[full output: /home/u/.local/share/snip/tee/1-cargo.log]"
         ));
         assert!(names_a_recovery(

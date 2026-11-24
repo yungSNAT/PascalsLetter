@@ -10,7 +10,8 @@ use super::lexer::{
     ParsedToken, PipeKind, QuoteScan, TokenKind, advance_quote_state, ansi_c_quote_defeats_lexer,
     blank_comments, coalesce_words, comment_readings_disagree, expansion_quote_defeats_lexer,
     is_crlf_at, is_heredoc_redirect, is_word_boundary_whitespace, redirect_has_file_target,
-    shell_split, split_on_operators, tokenize, tokenize_with_newlines, unattestable_either_reading,
+    resolve_word_text, shell_split, split_on_operators, tokenize, tokenize_with_newlines,
+    unattestable_either_reading,
 };
 use super::rules::{IGNORED_EXACT, IGNORED_PREFIXES, RULES, RtkRule};
 use super::shell_wrapper::parse_shell_wrapper;
@@ -237,6 +238,8 @@ pub fn classify_command(cmd: &str) -> Classification {
         } else {
             cmd_normalized
         };
+    // Match on the canonical Cargo command, but emit the original shell text when rewriting.
+    let cmd_normalized = normalize_cargo_command(&cmd_normalized);
     let cmd_clean = cmd_normalized.as_str();
 
     // Exclude cat/head/tail with redirect operators — these are writes, not reads (#315)
@@ -470,6 +473,29 @@ fn strip_git_global_opts(cmd: &str) -> String {
     let after_git = &cmd[4..]; // skip "git "
     let stripped = GIT_GLOBAL_OPT.replace(after_git, "");
     format!("git {}", stripped.trim())
+}
+
+fn normalize_cargo_command(cmd: &str) -> String {
+    // Bash blanks separate the command name; other whitespace can belong to it.
+    // https://www.gnu.org/software/bash/manual/html_node/Definitions.html
+    if cmd
+        .strip_prefix("cargo")
+        .is_some_and(|tail| tail.starts_with([' ', '\t']))
+    {
+        let tokens = tokenize(cmd);
+        let raw_words = coalesce_words(cmd, &tokens);
+        let words: Vec<_> = raw_words[1..]
+            .iter()
+            .map(|(word, _)| resolve_word_text(word, false))
+            .collect();
+        if let Some((command, index)) = crate::cmds::rust::cargo_cmd::CargoCommand::parse(&words) {
+            // Preserve the raw suffix so argument-specific exclusions still see its
+            // original quoting and spacing after the canonical command name.
+            let (word, offset) = raw_words[index + 1];
+            return format!("cargo {}{}", command.as_str(), &cmd[offset + word.len()..]);
+        }
+    }
+    cmd.to_owned()
 }
 
 /// Strip pnpm global options before the subcommand (mirror of `strip_git_global_opts`).
@@ -2109,7 +2135,18 @@ fn rewrite_segment_inner(
             // The inner command may have been dropped because it is excluded.
             // Re-testing the wrapped form would route it through the wrapper's
             // own filter, defeating the exclusion.
-            if is_excluded(ENV_PREFIX.replace(rest, "").trim(), excluded)
+            let inner = ENV_PREFIX.replace(rest, "");
+            let inner = inner.trim();
+            // As the Supported arm below does, test the tool form too, so a
+            // prefixed form of an excluded command (`cargo +stable test`) stays excluded.
+            let excluded_tool_form = match classify_command(inner) {
+                Classification::Supported { rtk_equivalent, .. } => {
+                    is_excluded(&tool_form(inner, rtk_equivalent), excluded)
+                }
+                _ => false,
+            };
+            if is_excluded(inner, excluded)
+                || excluded_tool_form
                 || shell_wrapper_script_opts_out(rest, excluded, 0)
             {
                 return None;
@@ -2257,6 +2294,13 @@ fn rewrite_segment_inner(
 /// Rewrite the command part of a segment (trailing redirects already split
 /// off) with `rule`, or `None` when this rule does not rewrite it.
 fn rewrite_command_part(rule: &RtkRule, cmd_part: &str) -> Option<String> {
+    if rule.rtk_cmd == "rtk cargo"
+        && cmd_part
+            .strip_prefix("cargo")
+            .is_some_and(|tail| tail.starts_with([' ', '\t']))
+    {
+        return Some(format!("rtk {cmd_part}"));
+    }
     if rule.rtk_cmd == "rtk golangci-lint run"
         && let Some(parts) = parse_golangci_run_parts(cmd_part)
     {
@@ -2356,6 +2400,9 @@ fn tool_form(cmd_clean: &str, rtk_equivalent: &str) -> String {
     let normalized = strip_absolute_path(
         &php_tool_form(cmd_clean, rtk_equivalent).unwrap_or_else(|| cmd_clean.to_string()),
     );
+    if rtk_equivalent == "rtk cargo" {
+        return normalize_cargo_command(&normalized);
+    }
     RULES
         .iter()
         .find(|r| r.rtk_cmd == rtk_equivalent)
@@ -7569,6 +7616,82 @@ mod tests {
             rewrite_command_no_prefixes("git push origin main", &excluded),
             None
         );
+    }
+
+    #[test]
+    fn test_exclude_cargo_command_covers_toolchain_and_global_prefixes() {
+        for command in [
+            "cargo test",
+            "cargo +stable test",
+            "cargo --locked test",
+            "cargo --config 'build.rustflags=[\"--cfg\", \"demo\"]' test --lib",
+            "cargo +nightly -Zunstable-options -C 'some path' test",
+            "cargo\t+stable\ttest --lib",
+            "cargo +stable 'te'\"st\" --lib",
+            "RUSTUP_TOOLCHAIN=nightly cargo +stable test",
+            "uv run cargo +stable test",
+        ] {
+            assert_eq!(
+                rewrite_command_no_prefixes(command, &["cargo test".to_string()]),
+                None,
+                "{command}"
+            );
+            // Rewritten without the exclusion, so the None above is the exclusion's.
+            assert!(
+                rewrite_command_no_prefixes(command, &[]).is_some(),
+                "{command}"
+            );
+        }
+        // The literal reading declines a form bash would pass as `test`;
+        // declining is the safe direction.
+        assert_eq!(
+            rewrite_command_no_prefixes("cargo +stable $'test' --lib", &[]),
+            None
+        );
+        for command in ["cargo +stable check", "cargo --config test check"] {
+            assert_eq!(
+                rewrite_command_no_prefixes(command, &["cargo test".to_string()]),
+                Some(format!("rtk {command}")),
+                "{command}"
+            );
+        }
+        assert_eq!(
+            rewrite_command_no_prefixes("cargo +stable test", &["cargo +stable test".to_string()]),
+            None
+        );
+    }
+
+    #[test]
+    fn test_exclude_cargo_arguments_keep_their_raw_spelling() {
+        for (pattern, command, excluded) in [
+            ("^cargo test$", "cargo +stable test", true),
+            ("^cargo test$", "cargo +stable test --lib", false),
+            ("cargo test --lib", "cargo --locked test --lib", true),
+            ("cargo test --lib", "cargo --locked test --bins", false),
+            ("^cargo test  --lib$", "cargo +stable test  --lib", true),
+            (
+                "^cargo test --package 'some package'$",
+                "cargo --locked test --package 'some package'",
+                true,
+            ),
+            (
+                "^cargo test --package 'some package'$",
+                "cargo --locked test --package \"some package\"",
+                false,
+            ),
+            (
+                "^cargo test$",
+                "cargo +nightly -Zunstable-options -C 'some path' test",
+                true,
+            ),
+        ] {
+            let expected = (!excluded).then(|| format!("rtk {command}"));
+            assert_eq!(
+                rewrite_command_no_prefixes(command, &[pattern.to_string()]),
+                expected,
+                "{pattern}: {command}"
+            );
+        }
     }
 
     #[test]
