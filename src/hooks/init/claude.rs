@@ -1213,7 +1213,7 @@ mod tests {
             " \t/usr/local/bin/rtk hook claude\r\t ",
         ] {
             assert!(
-                !is_claude_hook_command(command),
+                !crate::hooks::is_claude_hook_command(command),
                 "user command was claimed as RTK-owned: {command:?}"
             );
         }
@@ -1226,7 +1226,7 @@ mod tests {
             "${HOME}/.local/bin/rtk hook claude",
         ] {
             assert!(
-                is_claude_hook_command(command),
+                crate::hooks::is_claude_hook_command(command),
                 "RTK hook command was not recognised: {command:?}"
             );
         }
@@ -1237,7 +1237,7 @@ mod tests {
             "\"/usr/local/my&&bin/rtk\" hook claude",
         ] {
             assert!(
-                is_claude_hook_command(command),
+                crate::hooks::is_claude_hook_command(command),
                 "literal operator character changed RTK path: {command:?}"
             );
         }
