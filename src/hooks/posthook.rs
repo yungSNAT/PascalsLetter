@@ -1124,8 +1124,16 @@ const TAKEN_MARK_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(3
 
 /// Removes other sessions' folders untouched for `REPEAT_SESSION_MAX_AGE`
 /// and taken marks older than `TAKEN_MARK_MAX_AGE`. `live` (the session
-/// being started or used) is never removed. Removing state only ever makes a
-/// result delivered whole.
+/// being started or used) is never removed. Old folders are renamed to a
+/// tombstone before deletion so a resuming session starts clean instead of
+/// reading a half-deleted folder, and a failed rename leaves the folder alone.
+fn is_pruning_tombstone(name: &std::ffi::OsStr) -> bool {
+    name.to_str().is_some_and(|s| {
+        s.rsplit_once(".pruning.")
+            .is_some_and(|(_, pid)| !pid.is_empty() && pid.bytes().all(|b| b.is_ascii_digit()))
+    })
+}
+
 fn prune_repeats(live: &std::path::Path, now: std::time::SystemTime) {
     prune_repeats_with(live, now, &mut |dir| {
         let _ = std::fs::remove_dir_all(dir);
@@ -1148,8 +1156,17 @@ fn prune_repeats_with(
         let path = entry.path();
         if path == live {
             prune_taken_marks(&path, now);
+        } else if is_pruning_tombstone(&entry.file_name()) {
+            if older_than(&path, now, REPEAT_SESSION_MAX_AGE) {
+                remove_dir(&path);
+            }
         } else if older_than(&path, now, REPEAT_SESSION_MAX_AGE) {
-            remove_dir(&path);
+            let mut tombstone = path.as_os_str().to_os_string();
+            tombstone.push(format!(".pruning.{}", std::process::id()));
+            let tombstone = std::path::PathBuf::from(tombstone);
+            if std::fs::rename(&path, &tombstone).is_ok() {
+                remove_dir(&tombstone);
+            }
         } else if older_than(&path, now, TAKEN_MARK_MAX_AGE) {
             // A folder touched within the hour can hold no stale taken mark
             // worth a full listing yet.
