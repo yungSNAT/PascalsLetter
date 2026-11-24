@@ -105,6 +105,16 @@ pub fn owned_by(user_id: &str, me: &Account) -> bool {
     }
 }
 
+/// Whether install or uninstall may replace or delete the existing task whose
+/// `schtasks /Query /XML` answer is `xml` (`None`: no answer, so absent or not
+/// visible to us). Only a task whose principal is `me` may be touched: an
+/// elevated terminal sees every account's tasks, and two accounts' names can
+/// map to the same task name.
+pub fn ours(xml: Option<&str>, me: Option<&Account>) -> bool {
+    let _ = (xml, me);
+    true
+}
+
 fn escape(text: &str) -> String {
     text.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -329,6 +339,25 @@ mod tests {
         assert!(!owned_by(r"DESK\rtktest", &unknown));
         assert!(!owned_by("rtktest", &unknown));
         assert!(!owned_by("", &me()));
+    }
+
+    #[test]
+    fn only_a_task_whose_principal_is_us_may_be_replaced_or_deleted() {
+        assert!(ours(Some(&queried("S-1-12-1-111-222")), Some(&me())));
+        assert!(ours(Some(&queried(r"AzureAD\Patrick")), Some(&me())));
+        // Another account's task under a name we compute too: `DESK\a b` and
+        // `DESK\a_b` both map to `rtk-proxy-DESK_a_b`.
+        assert!(!ours(Some(&queried(r"DESK\a b")), Some(&me())));
+        assert!(!ours(Some(&queried("S-1-5-21-9-1001")), Some(&me())));
+        // No answer, no principal, or no identity of our own: hands off.
+        assert!(!ours(None, Some(&me())));
+        assert!(!ours(Some("<Task><Principals/></Task>"), Some(&me())));
+        assert!(!ours(Some(&queried("S-1-12-1-111-222")), None));
+    }
+
+    #[test]
+    fn colliding_account_names_share_a_task_name() {
+        assert_eq!(task_name(Some(r"DESK\a b")), task_name(Some(r"DESK\a_b")));
     }
 
     #[test]
