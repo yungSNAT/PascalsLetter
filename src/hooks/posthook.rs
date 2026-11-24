@@ -922,13 +922,13 @@ pub fn forget_repeats(event: &Value) {
 /// PreToolUse of a Bash call. A call still marked never reached PostToolUse
 /// (it failed, was denied or interrupted, or its hook died), so the record
 /// no longer holds what the agent last got. Then this call is marked.
-pub fn note_bash_start(event: &Value) {
+pub fn note_tool_start(event: &Value) {
     if event.get("tool_name").and_then(Value::as_str) == Some("Bash") {
-        note_bash_start_with(&crate::core::config::cached_config(), event);
+        note_tool_start_with(&crate::core::config::cached_config(), event);
     }
 }
 
-fn note_bash_start_with(config: &Config, event: &Value) {
+fn note_tool_start_with(config: &Config, event: &Value) {
     if !dedup_active(config, event) {
         return;
     }
@@ -1374,7 +1374,7 @@ mod tests {
         }
 
         fn pre(&self, config: &Config) {
-            note_bash_start_with(config, &self.event);
+            note_tool_start_with(config, &self.event);
         }
 
         fn post(&self, config: &Config) -> Option<String> {
@@ -1499,11 +1499,11 @@ mod tests {
         }
         let mut no_id = bash_event("make test", &output, None);
         for _ in 0..3 {
-            note_bash_start_with(&config, &no_id);
+            note_tool_start_with(&config, &no_id);
             assert!(pointer_of(&run_with(&no_id, &config, &default_pipeline())).is_none());
         }
         no_id["tool_use_id"] = serde_json::json!("");
-        note_bash_start_with(&config, &no_id);
+        note_tool_start_with(&config, &no_id);
         assert!(pointer_of(&run_with(&no_id, &config, &default_pipeline())).is_none());
     }
 
@@ -1601,9 +1601,10 @@ mod tests {
         assert!(pointer_of(&Call::new("f", "make test", &output, None).run(&config)).is_some());
     }
 
-    /// Only Bash, and never a pointer longer than the output it replaces.
+    /// No other shell tool, and never a pointer longer than the output it
+    /// replaces.
     #[test]
-    fn test_repeat_pointer_only_for_bash_and_only_when_shorter() {
+    fn test_repeat_pointer_not_for_other_shells_and_only_when_shorter() {
         let dir = tempfile::tempdir().expect("tempdir");
         let config = repeat_config(dir.path(), true);
         let output = lines(400);
@@ -1620,6 +1621,230 @@ mod tests {
             call.pre(&config);
             assert!(pointer_of(&run_with(&call.event, &config, &pipeline)).is_none());
         }
+    }
+
+    impl Call {
+        /// A Read, Grep or Glob call.
+        fn tool(id: &str, tool: &str, input: Value, response: Value) -> Self {
+            Self {
+                event: serde_json::json!({
+                    "session_id": "s1",
+                    "tool_use_id": id,
+                    "tool_name": tool,
+                    "tool_input": input,
+                    "tool_response": response,
+                    "duration_ms": 10
+                }),
+            }
+        }
+
+        fn read(id: &str, path: &str, content: &str) -> Self {
+            let n = content.lines().count();
+            Self::tool(
+                id,
+                "Read",
+                serde_json::json!({"file_path": path}),
+                serde_json::json!({"type": "text", "file": {
+                    "filePath": path, "content": content,
+                    "numLines": n, "startLine": 1, "totalLines": n
+                }}),
+            )
+        }
+
+        fn glob(id: &str, pattern: &str, files: &[String], duration: u64) -> Self {
+            Self::tool(
+                id,
+                "Glob",
+                serde_json::json!({"pattern": pattern}),
+                serde_json::json!({
+                    "filenames": files, "durationMs": duration,
+                    "numFiles": files.len(), "truncated": false
+                }),
+            )
+        }
+
+        fn by(mut self, agent: &str) -> Self {
+            self.event["agent_id"] = serde_json::json!(agent);
+            self
+        }
+    }
+
+    /// The pointer a native tool's result was replaced with, wherever its
+    /// text lives in that tool's output.
+    fn native_pointer_of(out: &Option<String>) -> Option<String> {
+        let parsed: Value = serde_json::from_str(out.as_deref()?).ok()?;
+        let updated = parsed.pointer("/hookSpecificOutput/updatedToolOutput")?;
+        let text = updated
+            .pointer("/file/content")
+            .or_else(|| updated.get("content"))
+            .or_else(|| updated.pointer("/filenames/0"))?
+            .as_str()?;
+        text.starts_with("[rtk: same result as an earlier identical ")
+            .then(|| text.to_string())
+    }
+
+    fn recalled(config: &Config, pointer: &str) -> Vec<u8> {
+        let hash = pointer
+            .rsplit_once("rtk recall ")
+            .and_then(|(_, rest)| rest.strip_suffix(']'))
+            .expect("a recall handle");
+        let conn = crate::core::retriever::open_existing(&config.retriever)
+            .unwrap()
+            .unwrap();
+        let row = crate::core::retriever::load_by_hash(&conn, hash)
+            .unwrap()
+            .unwrap();
+        crate::core::retriever::decode(&row).unwrap()
+    }
+
+    fn files(n: usize) -> Vec<String> {
+        (0..n).map(|i| format!("/repo/src/file_{i}.rs")).collect()
+    }
+
+    #[test]
+    fn test_repeat_pointer_for_a_read_is_off_by_default() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), false);
+        for id in ["a", "b"] {
+            let out = Call::read(id, "/repo/src/lib.rs", &lines(400)).run(&config);
+            assert!(native_pointer_of(&out).is_none());
+        }
+    }
+
+    /// A re-read of the same bytes points at them; the handle reads them back.
+    /// Other reads in between do not matter: each input has its own record.
+    #[test]
+    fn test_repeat_pointer_for_an_unchanged_read() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let content = lines(400);
+        let first = Call::read("a", "/repo/src/lib.rs", &content).run(&config);
+        assert!(native_pointer_of(&first).is_none(), "a first read is whole");
+        Call::read("b", "/repo/src/main.rs", &lines(300)).run(&config);
+        let pointer =
+            native_pointer_of(&Call::read("c", "/repo/src/lib.rs", &content).run(&config))
+                .expect("a pointer");
+        assert!(
+            pointer.starts_with("[rtk: same result as an earlier identical Read in this session (400 lines): rtk recall "),
+            "{pointer}"
+        );
+        assert_eq!(recalled(&config, &pointer), content.as_bytes());
+    }
+
+    /// A file that changed between reads is compared by content, not path.
+    #[test]
+    fn test_repeat_pointer_not_given_for_a_changed_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let path = "/repo/src/lib.rs";
+        Call::read("a", path, &lines(400)).run(&config);
+        let changed = format!("{}changed\n", lines(400));
+        let out = Call::read("b", path, &changed).run(&config);
+        assert!(
+            native_pointer_of(&out).is_none(),
+            "changed content is whole"
+        );
+        assert!(native_pointer_of(&Call::read("c", path, &changed).run(&config)).is_some());
+        // Back to the first content: that is no longer the last read.
+        assert!(native_pointer_of(&Call::read("d", path, &lines(400)).run(&config)).is_none());
+    }
+
+    /// Another range of the same file is another input.
+    #[test]
+    fn test_repeat_pointer_keys_on_the_whole_input() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let content = lines(400);
+        Call::read("a", "/repo/src/lib.rs", &content).run(&config);
+        let mut ranged = Call::read("b", "/repo/src/lib.rs", &content);
+        ranged.event["tool_input"]["offset"] = serde_json::json!(1);
+        assert!(native_pointer_of(&ranged.run(&config)).is_none());
+    }
+
+    /// Failed, unmarked and overlapping calls are delivered whole, and the
+    /// call after a failed one too.
+    #[test]
+    fn test_repeat_pointer_for_a_read_not_given_when_completion_is_in_doubt() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let path = "/repo/src/lib.rs";
+        let content = lines(400);
+        Call::read("a", path, &content).run(&config);
+        // b failed: only its PreToolUse arrived.
+        Call::read("b", path, &content).pre(&config);
+        assert!(native_pointer_of(&Call::read("c", path, &content).run(&config)).is_none());
+        // d has no PreToolUse.
+        assert!(native_pointer_of(&Call::read("d", path, &content).post(&config)).is_none());
+        // No tool_use_id.
+        let mut no_id = Call::read("", path, &content);
+        no_id.event.as_object_mut().unwrap().remove("tool_use_id");
+        assert!(native_pointer_of(&no_id.run(&config)).is_none());
+        assert!(native_pointer_of(&Call::read("e", path, &content).run(&config)).is_none());
+        assert!(native_pointer_of(&Call::read("e2", path, &content).run(&config)).is_some());
+        // f and g overlap, across tools: both whole.
+        let f = Call::read("f", path, &content);
+        let g = Call::glob("g", "**/*.rs", &files(200), 3);
+        f.pre(&config);
+        g.pre(&config);
+        assert!(native_pointer_of(&g.post(&config)).is_none());
+        assert!(native_pointer_of(&f.post(&config)).is_none());
+        assert!(native_pointer_of(&Call::read("h", path, &content).run(&config)).is_none());
+        assert!(native_pointer_of(&Call::read("i", path, &content).run(&config)).is_some());
+    }
+
+    /// A subagent never gets a pointer to what only another agent read.
+    #[test]
+    fn test_repeat_pointer_for_a_read_is_per_agent() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let path = "/repo/src/lib.rs";
+        let content = lines(400);
+        Call::read("a", path, &content).run(&config);
+        let sub = Call::read("b", path, &content).by("sub-1").run(&config);
+        assert!(native_pointer_of(&sub).is_none());
+        assert!(
+            native_pointer_of(&Call::read("c", path, &content).by("sub-1").run(&config)).is_some()
+        );
+    }
+
+    /// Glob: the volatile duration is not part of the result compared.
+    #[test]
+    fn test_repeat_pointer_for_glob_and_grep() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let found = files(200);
+        Call::glob("a", "**/*.rs", &found, 3).run(&config);
+        let pointer = native_pointer_of(&Call::glob("b", "**/*.rs", &found, 9).run(&config))
+            .expect("a Glob pointer");
+        assert_eq!(recalled(&config, &pointer), found.join("\n").as_bytes());
+        let more = files(201);
+        assert!(native_pointer_of(&Call::glob("c", "**/*.rs", &more, 3).run(&config)).is_none());
+
+        let grep = |id: &str| {
+            Call::tool(
+                id,
+                "Grep",
+                serde_json::json!({"pattern": "fn ", "output_mode": "files_with_matches"}),
+                serde_json::json!({
+                    "mode": "files_with_matches", "filenames": found,
+                    "numFiles": found.len()
+                }),
+            )
+            .run(&config)
+        };
+        assert!(native_pointer_of(&grep("d")).is_none());
+        assert!(native_pointer_of(&grep("e")).is_some());
+    }
+
+    /// A Read between 2 identical Bash runs leaves the Bash pointer alone.
+    #[test]
+    fn test_repeat_pointer_for_bash_unaffected_by_a_read_between() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let output = lines(400);
+        Call::new("a", "make test", &output, None).run(&config);
+        Call::read("b", "/repo/src/lib.rs", &lines(300)).run(&config);
+        assert!(pointer_of(&Call::new("c", "make test", &output, None).run(&config)).is_some());
     }
 
     fn run_posthook(event: &Value) -> Option<String> {
