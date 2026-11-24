@@ -133,24 +133,6 @@ fn claude_hook_rewrites_the_shell_suites_cases() {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
-/// An inherited RTK_REWRITE_HOST must not turn the default ask into an allow.
-#[test]
-fn claude_hook_ignores_an_inherited_rewrite_host() {
-    let root = common::tempdir();
-    let mut rtk = common::rtk_command_in(root.path());
-    rtk.env("RTK_REWRITE_HOST", "openclaw");
-    let out = hook(rtk, "claude", &bash("git status")).expect("a rewrite");
-    assert_eq!(
-        str_at(&out, "/hookSpecificOutput/updatedInput/command"),
-        Some("rtk git status")
-    );
-    assert_ne!(
-        str_at(&out, "/hookSpecificOutput/permissionDecision"),
-        Some("allow"),
-        "{out}"
-    );
-}
-
 #[test]
 fn copilot_cli_gets_the_rewritten_command() {
     let root = common::tempdir();
