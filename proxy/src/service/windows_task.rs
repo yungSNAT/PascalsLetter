@@ -111,8 +111,8 @@ pub fn owned_by(user_id: &str, me: &Account) -> bool {
 /// elevated terminal sees every account's tasks, and two accounts' names can
 /// map to the same task name.
 pub fn ours(xml: Option<&str>, me: Option<&Account>) -> bool {
-    let _ = (xml, me);
-    true
+    let id = xml.and_then(principal_user_id);
+    matches!((id, me), (Some(id), Some(me)) if owned_by(&id, me))
 }
 
 fn escape(text: &str) -> String {

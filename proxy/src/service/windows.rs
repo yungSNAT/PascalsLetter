@@ -12,9 +12,7 @@ use std::process::Command;
 
 pub const MECHANISM: &str = "Task Scheduler (log-on trigger, relaunched when it exits)";
 
-use super::windows_task::{
-    Account, LEGACY_TASK_NAME, decode_output, owned_by, principal_user_id, sid_from_whoami,
-};
+use super::windows_task::{Account, LEGACY_TASK_NAME, decode_output, ours, sid_from_whoami};
 
 fn current_user() -> Option<String> {
     let name = std::env::var("USERNAME").ok().filter(|n| !n.is_empty())?;
@@ -24,8 +22,13 @@ fn current_user() -> Option<String> {
     })
 }
 
-fn task_name() -> String {
-    super::windows_task::task_name(current_user().as_deref())
+/// This account's task name. Without `USERNAME` it would be the shared legacy
+/// name, which may be another account's task, so nothing is installed or
+/// removed.
+fn task_name() -> Result<String> {
+    let user = current_user()
+        .context("USERNAME is not set, so the task cannot be named for this account")?;
+    Ok(super::windows_task::task_name(Some(&user)))
 }
 
 /// Whether this user can see a task called `name`. Another account's task
@@ -68,29 +71,29 @@ fn current_account() -> Option<Account> {
     })
 }
 
-/// Our own task under the pre-per-user name would launch a second proxy every
-/// minute next to the new one, so it goes when we install or uninstall. Being
-/// able to see it is not enough: an elevated terminal sees every account's
-/// tasks, so the task's principal must be us.
-fn has_own_legacy_task(name: &str) -> Result<bool> {
-    if name == LEGACY_TASK_NAME {
-        return Ok(false);
-    }
+/// Whether the task called `name` runs as us. Being able to see it is not
+/// enough: an elevated terminal sees every account's tasks, and two accounts'
+/// names can map to one task name, so the task's principal must be us.
+fn owns_task(name: &str) -> Result<bool> {
     let out = Command::new("schtasks")
-        .args(["/Query", "/TN", LEGACY_TASK_NAME, "/XML"])
+        .args(["/Query", "/TN", name, "/XML"])
         .output()
         .context("running schtasks /Query /XML")?;
-    if !out.status.success() {
-        return Ok(false);
-    }
-    let Some(me) = current_account() else {
-        return Ok(false);
-    };
-    Ok(principal_user_id(&decode_output(&out.stdout)).is_some_and(|id| owned_by(&id, &me)))
+    let xml = out.status.success().then(|| decode_output(&out.stdout));
+    Ok(ours(xml.as_deref(), current_account().as_ref()))
+}
+
+/// Our own task under the pre-per-user name would launch a second proxy every
+/// minute next to the new one, so it goes when we install or uninstall.
+fn has_own_legacy_task(name: &str) -> Result<bool> {
+    Ok(name != LEGACY_TASK_NAME && owns_task(LEGACY_TASK_NAME)?)
 }
 
 pub fn install(bin: &Path, config_path: &Path, log_path: &Path) -> Result<PathBuf> {
-    let name = task_name();
+    let name = task_name()?;
+    if task_exists(&name)? && !owns_task(&name)? {
+        bail!("a task named {name} belongs to another account; not replacing it");
+    }
     let xml =
         super::windows_task::definition(bin, config_path, log_path, current_user().as_deref());
     let xml_path = super::state_dir()?.join("rtk-proxy-task.xml");
@@ -115,9 +118,9 @@ pub fn install(bin: &Path, config_path: &Path, log_path: &Path) -> Result<PathBu
 }
 
 pub fn uninstall() -> Result<bool> {
-    let name = task_name();
+    let name = task_name()?;
     let mut removed = false;
-    if task_exists(&name)? {
+    if owns_task(&name)? {
         delete_task(&name)?;
         removed = true;
     }
@@ -129,8 +132,8 @@ pub fn uninstall() -> Result<bool> {
 }
 
 pub fn is_installed() -> Result<bool> {
-    let name = task_name();
-    Ok(task_exists(&name)? || has_own_legacy_task(&name)?)
+    let name = task_name()?;
+    Ok(owns_task(&name)? || has_own_legacy_task(&name)?)
 }
 
 pub fn logs() -> Result<()> {
