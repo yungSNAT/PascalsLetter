@@ -1103,7 +1103,7 @@ enum Commands {
     ///
     /// Exit 3 is still a rewrite, so `REWRITTEN=$(rtk rewrite "$CMD") || exit 0` drops it.
     ///
-    /// See hooks/claude/rtk-rewrite.sh in the RTK repository for reference handling.
+    /// See `rtk hook claude` (src/hooks/hook_cmd.rs) for reference handling.
     Rewrite {
         /// Raw command to rewrite (e.g. "git status", "cargo test && git push")
         /// Accepts multiple args: `rtk rewrite ls -al` is equivalent to `rtk rewrite "ls -al"`
