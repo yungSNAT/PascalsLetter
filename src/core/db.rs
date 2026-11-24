@@ -533,7 +533,7 @@ fn claim<V: Version>(
     // `-wal`/`-shm` the read-only connection created copy the file's mode, so
     // they are made writable too.
     let readonly = conn
-        .is_readonly(rusqlite::DatabaseName::Main)
+        .is_readonly(rusqlite::MAIN_DB)
         .unwrap_or(false);
     if should_reopen(readonly, || writable(path)) {
         drop(conn);
@@ -911,7 +911,7 @@ pub(crate) mod testing {
                     .lock()
                     .expect("waiters should not be poisoned")
                     .insert(id, waited);
-                let conn = Connection::open(&path).expect("open should succeed");
+                let mut conn = Connection::open(&path).expect("open should succeed");
                 conn.busy_handler(Some(signal_and_retry))
                     .expect("busy handler should be set");
                 let outcome = work(&conn);
@@ -1579,7 +1579,7 @@ mod tests {
             .expect("the row should be readable");
         assert_eq!(row, 7);
         assert!(
-            conn.is_readonly(rusqlite::DatabaseName::Main)
+            conn.is_readonly(rusqlite::MAIN_DB)
                 .expect("is_readonly")
         );
         assert!(
@@ -2278,7 +2278,7 @@ mod tests {
                 .expect("query_only should be settable");
             assert!(
                 !conn
-                    .is_readonly(rusqlite::DatabaseName::Main)
+                    .is_readonly(rusqlite::MAIN_DB)
                     .expect("is_readonly")
             );
             let identity = read_identity(&conn, "test").expect("identity should be readable");
