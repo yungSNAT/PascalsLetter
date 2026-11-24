@@ -59,9 +59,8 @@ fn check(base: &str) -> ExitCode {
     println!();
 
     let mut failed = false;
-    for path in &changed {
-        // `read -r` with the default IFS trims surrounding blanks.
-        let file = path.trim_matches([' ', '\t']);
+    // The script read each name with `IFS= read -r`, so names are used as they are.
+    for file in &changed {
         if !std::path::Path::new(file).is_file() {
             continue;
         }

@@ -66,6 +66,14 @@ const CASES: &[Case] = &[
         stderr_differs: false,
     },
     Case {
+        // `IFS= read -r` keeps a name's leading blank.
+        name: "leading-blank",
+        args: &["base"],
+        base: BASE_FILES,
+        head: &[(" lead/src/cmds/a_cmd.rs", Some(WITHOUT_TESTS))],
+        stderr_differs: false,
+    },
+    Case {
         name: "unknown-base",
         args: &["no-such-ref"],
         base: BASE_FILES,
