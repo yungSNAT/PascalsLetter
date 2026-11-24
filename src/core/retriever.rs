@@ -218,7 +218,7 @@ fn with_open<T>(cfg: &RetrieverConfig, f: impl FnOnce(&Connection) -> Result<T>)
     })
 }
 
-fn open_existing(cfg: &RetrieverConfig) -> Result<Option<Connection>> {
+pub(crate) fn open_existing(cfg: &RetrieverConfig) -> Result<Option<Connection>> {
     let path = db_path(cfg)?;
     if !path.exists() {
         return Ok(None);
@@ -585,8 +585,8 @@ fn store_inner(
 }
 
 #[derive(Debug)]
-struct Row {
-    shown_upto: usize,
+pub(crate) struct Row {
+    pub(crate) shown_upto: usize,
     truncated: bool,
     codec: String,
     blob: Vec<u8>,
@@ -607,7 +607,7 @@ fn map_row(r: &rusqlite::Row) -> rusqlite::Result<Row> {
 
 const SELECT_COLS: &str = "shown_upto, truncated, codec, blob, command, hash";
 
-fn load_by_hash(conn: &Connection, hash: &str) -> Result<Option<Row>> {
+pub(crate) fn load_by_hash(conn: &Connection, hash: &str) -> Result<Option<Row>> {
     let exact = format!("SELECT {SELECT_COLS} FROM recall WHERE hash = ?1");
     if let Some(row) = conn.query_row(&exact, params![hash], map_row).optional()? {
         return Ok(Some(row));
@@ -632,7 +632,7 @@ fn load_by_hash(conn: &Connection, hash: &str) -> Result<Option<Row>> {
     }
 }
 
-fn decode(row: &Row) -> Result<Vec<u8>> {
+pub(crate) fn decode(row: &Row) -> Result<Vec<u8>> {
     match row.codec.as_str() {
         "gzip" => gunzip(&row.blob),
         _ => Ok(row.blob.clone()),
@@ -649,6 +649,30 @@ pub(crate) fn recalled_content(hash: &str) -> Option<String> {
     let row = load_by_hash(&conn, hash).ok().flatten()?;
     let full = decode(&row).ok()?;
     String::from_utf8(slice_from_line(&full, row.shown_upto).to_vec()).ok()
+}
+
+/// The lines `rtk recall` prints: everything with `full`; from line `from`;
+/// the first `lines`, or `lines` starting at `from`; else the part the hint
+/// said was hidden.
+pub(crate) fn select_lines(
+    full: &[u8],
+    shown_upto: usize,
+    all: bool,
+    from: Option<usize>,
+    lines: Option<usize>,
+) -> &[u8] {
+    if all {
+        return full;
+    }
+    let start = match (from, lines) {
+        (Some(n), _) => slice_from_line(full, n),
+        (None, Some(_)) => full,
+        (None, None) => slice_from_line(full, shown_upto),
+    };
+    match lines {
+        Some(n) => slice_first_lines(start, n),
+        None => start,
+    }
 }
 
 pub struct RecallArgs<'a> {
@@ -705,15 +729,7 @@ pub fn run_recall(args: RecallArgs) -> Result<i32> {
     };
 
     let full = decode(&row)?;
-    let sliced: Vec<u8> = if args.full {
-        full.clone()
-    } else if let Some(n) = args.from {
-        slice_from_line(&full, n).to_vec()
-    } else if let Some(n) = args.lines {
-        slice_first_lines(&full, n).to_vec()
-    } else {
-        slice_from_line(&full, row.shown_upto).to_vec()
-    };
+    let sliced = select_lines(&full, row.shown_upto, args.full, args.from, args.lines).to_vec();
     let out = match args.grep {
         Some(pat) => {
             if regex::bytes::Regex::new(pat).is_err() {
@@ -869,6 +885,21 @@ mod tests {
         assert_eq!(slice_from_line(b, 3), b"l3\n");
         assert_eq!(slice_from_line(b, 4), b"");
         assert_eq!(slice_from_line(b, 99), b"");
+    }
+
+    #[test]
+    fn test_select_lines() {
+        let b = b"l1\nl2\nl3\nl4\n";
+        // Unchanged forms: the hidden part, --full, --from, --lines.
+        assert_eq!(select_lines(b, 3, false, None, None), b"l3\nl4\n");
+        assert_eq!(select_lines(b, 3, true, Some(2), Some(1)), b);
+        assert_eq!(select_lines(b, 3, false, Some(2), None), b"l2\nl3\nl4\n");
+        assert_eq!(select_lines(b, 3, false, None, Some(2)), b"l1\nl2\n");
+        // --from with --lines: an exact range, clipped at the end.
+        assert_eq!(select_lines(b, 3, false, Some(2), Some(2)), b"l2\nl3\n");
+        assert_eq!(select_lines(b, 3, false, Some(4), Some(5)), b"l4\n");
+        assert_eq!(select_lines(b, 3, false, Some(9), Some(1)), b"");
+        assert_eq!(select_lines(b, 3, false, Some(2), Some(0)), b"");
     }
 
     #[test]
