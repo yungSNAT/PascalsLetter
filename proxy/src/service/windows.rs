@@ -83,6 +83,16 @@ fn owns_task(name: &str) -> Result<bool> {
     Ok(ours(xml.as_deref(), current_account().as_ref()))
 }
 
+/// Why a visible task with our name is left alone: its principal could not be
+/// tied to this account (another account's, or `whoami` or the principal could
+/// not be read), with the command that removes it if it is ours after all.
+fn unconfirmed(name: &str) -> String {
+    format!(
+        "the task {name} could not be confirmed as this account's \
+         (if it is yours, remove it with: schtasks /Delete /TN \"{name}\" /F)"
+    )
+}
+
 /// Our own task under the pre-per-user name would launch a second proxy every
 /// minute next to the new one, so it goes when we install or uninstall.
 fn has_own_legacy_task(name: &str) -> Result<bool> {
@@ -92,7 +102,7 @@ fn has_own_legacy_task(name: &str) -> Result<bool> {
 pub fn install(bin: &Path, config_path: &Path, log_path: &Path) -> Result<PathBuf> {
     let name = task_name()?;
     if task_exists(&name)? && !owns_task(&name)? {
-        bail!("a task named {name} belongs to another account; not replacing it");
+        bail!("{}; not replacing it", unconfirmed(&name));
     }
     let xml =
         super::windows_task::definition(bin, config_path, log_path, current_user().as_deref());
@@ -123,6 +133,8 @@ pub fn uninstall() -> Result<bool> {
     if owns_task(&name)? {
         delete_task(&name)?;
         removed = true;
+    } else if task_exists(&name)? {
+        bail!("{}; not removing it", unconfirmed(&name));
     }
     if has_own_legacy_task(&name)? {
         delete_task(LEGACY_TASK_NAME)?;

@@ -347,7 +347,14 @@ mod tests {
         assert!(ours(Some(&queried(r"AzureAD\Patrick")), Some(&me())));
         // Another account's task under a name we compute too: `DESK\a b` and
         // `DESK\a_b` both map to `rtk-proxy-DESK_a_b`.
-        assert!(!ours(Some(&queried(r"DESK\a b")), Some(&me())));
+        let a_b = Account {
+            sid: Some("S-1-5-21-9-1002".into()),
+            domain: Some("DESK".into()),
+            name: "a_b".into(),
+            computer: Some("DESK".into()),
+        };
+        assert!(ours(Some(&queried(r"DESK\a_b")), Some(&a_b)));
+        assert!(!ours(Some(&queried(r"DESK\a b")), Some(&a_b)));
         assert!(!ours(Some(&queried("S-1-5-21-9-1001")), Some(&me())));
         // No answer, no principal, or no identity of our own: hands off.
         assert!(!ours(None, Some(&me())));
