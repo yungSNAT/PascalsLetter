@@ -918,10 +918,8 @@ pub fn forget_repeats(event: &Value) {
 /// (it failed, was denied or interrupted, or its hook died), so the record
 /// no longer holds what the agent last got. Then this call is marked.
 pub fn note_bash_start(event: &Value) {
-    if event.get("tool_name").and_then(Value::as_str) == Some("Bash")
-        && let Ok(config) = Config::load()
-    {
-        note_bash_start_with(&config, event);
+    if event.get("tool_name").and_then(Value::as_str) == Some("Bash") {
+        note_bash_start_with(&crate::core::config::cached_config(), event);
     }
 }
 
@@ -932,15 +930,21 @@ fn note_bash_start_with(config: &Config, event: &Value) {
     let Some((record, mark)) = agent_files(config, event) else {
         return;
     };
-    if mark.exists() {
-        let _ = std::fs::remove_file(&record);
-    }
-    let written = mark.parent().is_some_and(|dir| {
+    let id = tool_use_id(event).as_bytes();
+    // Creating the mark is the check: of 2 parallel starts, the second finds
+    // it and clears the record.
+    let created = mark.parent().is_some_and(|dir| {
         crate::core::utils::create_private_dir(dir).is_ok()
-            && std::fs::write(&mark, tool_use_id(event)).is_ok()
+            && std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&mark)
+                .and_then(|mut file| std::io::Write::write_all(&mut file, id))
+                .is_ok()
     });
-    if !written {
+    if !created {
         let _ = std::fs::remove_file(&record);
+        let _ = std::fs::write(&mark, id);
     }
 }
 
