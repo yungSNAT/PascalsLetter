@@ -293,6 +293,22 @@ jobs:
         shell: pwsh
         run: ./scripts/test-install-proxy.ps1
 
+  # install.sh's archive path traversal check (issue #1250, CWE-22).
+  install-sh:
+    timeout-minutes: 5
+    name: install.sh (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Path traversal check
+        run: sh scripts/test-install.sh
+
   # The agent plugins' own tests. Windows matters: there a program started by
   # bare name runs from the working folder first, which the plugins must avoid.
   hook-plugins:
