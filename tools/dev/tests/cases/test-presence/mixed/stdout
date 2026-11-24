@@ -1,0 +1,16 @@
+check-test-presence: checking 3 filter module(s)...
+
+  FAIL  crates/x/src/cmds/deep_cmd.rs
+        Missing #[cfg(test)] module.
+        Every *_cmd.rs filter must include inline unit tests.
+        Reference: src/cmds/cloud/aws_cmd.rs
+
+  PASS  src/cmds/git/new_cmd.rs
+  FAIL  src/cmds/git/old_cmd.rs
+        Missing #[cfg(test)] module.
+        Every *_cmd.rs filter must include inline unit tests.
+        Reference: src/cmds/cloud/aws_cmd.rs
+
+
+check-test-presence: FAILED — add tests before merging.
+See .claude/rules/cli-testing.md for the testing guide.
