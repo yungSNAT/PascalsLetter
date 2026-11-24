@@ -325,6 +325,7 @@ pub async fn relay(
 
     let mut attempt: u32 = 0;
     loop {
+        let sent = Instant::now();
         let mut req = client.post(&url).body(body.clone());
         if let Some(deadline) = buffered_deadline {
             req = req.timeout(deadline.saturating_duration_since(Instant::now()));
@@ -347,7 +348,10 @@ pub async fn relay(
                 let status = resp.status();
                 // Retry a transient status only before we've handed off the body
                 // (headers are in; the body — buffered or streamed — is untouched).
-                if is_transient(status.as_u16()) && attempt < retries {
+                if is_transient(status.as_u16())
+                    && attempt < retries
+                    && retry_fits(buffered_deadline, attempt + 1, sent.elapsed())
+                {
                     attempt += 1;
                     tracing::warn!(
                         url,
@@ -367,7 +371,10 @@ pub async fn relay(
                 };
             }
             Err(e) => {
-                if e.is_connect() && attempt < retries {
+                if e.is_connect()
+                    && attempt < retries
+                    && retry_fits(buffered_deadline, attempt + 1, sent.elapsed())
+                {
                     attempt += 1;
                     tracing::warn!(error = %e, url, attempt, "transient upstream error; retrying");
                     backoff(attempt).await;
@@ -400,9 +407,23 @@ fn is_transient(code: u16) -> bool {
 }
 
 /// Exponential backoff between retry attempts (200ms, 400, 800, … capped at 2s).
-async fn backoff(attempt: u32) {
+fn backoff_delay(attempt: u32) -> std::time::Duration {
     let ms = 100u64.saturating_mul(1u64 << attempt.min(4));
-    tokio::time::sleep(std::time::Duration::from_millis(ms.min(2000))).await;
+    std::time::Duration::from_millis(ms.min(2000))
+}
+
+async fn backoff(attempt: u32) {
+    tokio::time::sleep(backoff_delay(attempt)).await;
+}
+
+/// Whether retry `attempt`, after its backoff, still has as long before the
+/// deadline as the last attempt took. One with less would most likely time out
+/// and replace the provider's answer (a 429 or 503 and its `retry-after`) with
+/// a bare 502.
+fn retry_fits(deadline: Option<Instant>, attempt: u32, last_took: std::time::Duration) -> bool {
+    deadline.is_none_or(|deadline| {
+        deadline.saturating_duration_since(Instant::now()) > backoff_delay(attempt) + last_took
+    })
 }
 
 /// Copy the upstream's non-hop-by-hop headers onto the client-facing response,
