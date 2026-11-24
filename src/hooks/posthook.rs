@@ -1136,9 +1136,13 @@ fn prune_repeats(live: &std::path::Path, now: std::time::SystemTime) {
             continue;
         }
         let path = entry.path();
-        if path != live && older_than(&path, now, REPEAT_SESSION_MAX_AGE) {
+        if path == live {
+            prune_taken_marks(&path, now);
+        } else if older_than(&path, now, REPEAT_SESSION_MAX_AGE) {
             let _ = std::fs::remove_dir_all(&path);
-        } else {
+        } else if older_than(&path, now, TAKEN_MARK_MAX_AGE) {
+            // A folder touched within the hour can hold no stale taken mark
+            // worth a full listing yet.
             prune_taken_marks(&path, now);
         }
     }
@@ -2278,15 +2282,31 @@ mod tests {
         assert!(other.exists(), "only taken marks are removed");
     }
 
+    /// A handle on a folder that can set its times.
+    fn folder_handle(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+            std::fs::OpenOptions::new()
+                .write(true)
+                .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+                .open(path)
+        }
+        #[cfg(not(windows))]
+        {
+            std::fs::File::open(path)
+        }
+    }
+
     /// SessionStart and a session's first call both prune.
-    #[cfg(unix)]
     #[test]
     fn test_prune_repeats_runs_at_session_start_and_first_call() {
         let dir = tempfile::tempdir().expect("tempdir");
         let config = repeat_config(dir.path(), true);
         let age = |session: &str| {
             let path = session_dir(&config, session);
-            std::fs::File::open(&path)
+            folder_handle(&path)
                 .and_then(|f| f.set_modified(std::time::SystemTime::now() - 8 * DAY))
                 .expect("age the folder");
             path
