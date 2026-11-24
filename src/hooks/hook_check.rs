@@ -3,6 +3,9 @@
 use crate::core::user_dirs;
 use std::path::PathBuf;
 
+/// The version line of the last `rtk-rewrite.sh` this repository shipped. It
+/// grades legacy copies users still have: raising it reports older copies as
+/// outdated, which sends their owners to `rtk init -g` and the native hook.
 pub const CURRENT_HOOK_VERSION: u8 = 4;
 const WARN_INTERVAL_SECS: u64 = 24 * 3600;
 
@@ -129,23 +132,6 @@ mod tests {
     fn test_parse_hook_version_missing() {
         let content = "#!/usr/bin/env bash\n# old hook without version\n";
         assert_eq!(parse_hook_version(content), 0);
-    }
-
-    /// The shipped Claude hook script must carry the current version. `rtk init`
-    /// no longer installs it, so the version grades copies already deployed:
-    /// raising it reports older copies as outdated, which sends their owners to
-    /// `rtk init -g` and from there to the in-process hook. The constant and the
-    /// script move together.
-    #[test]
-    fn test_shipped_claude_hook_carries_the_current_version() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let content = std::fs::read_to_string(root.join("hooks/claude/rtk-rewrite.sh"))
-            .expect("read hooks/claude/rtk-rewrite.sh");
-        assert_eq!(
-            parse_hook_version(&content),
-            CURRENT_HOOK_VERSION,
-            "hooks/claude/rtk-rewrite.sh and CURRENT_HOOK_VERSION disagree"
-        );
     }
 
     #[test]
