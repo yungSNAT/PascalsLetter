@@ -291,31 +291,19 @@ pub(super) fn uninstall_gemini(ctx: InitContext) -> Result<Vec<String>> {
     let settings_path = gemini_dir.join(SETTINGS_JSON);
     if settings_path.exists() {
         let content = fs::read_to_string(&settings_path)?;
-        if let Ok(mut settings) = from_json_str::<serde_json::Value>(&content) {
-            let bt_pointer = format!("/hooks/{}", BEFORE_TOOL_KEY);
-            if let Some(arr) = settings
-                .pointer_mut(&bt_pointer)
-                .and_then(|v| v.as_array_mut())
-            {
-                let before = arr.len();
-                arr.retain(|h| {
-                    !h.pointer("/hooks/0/command")
-                        .and_then(|v| v.as_str())
-                        .is_some_and(|c| c.contains("rtk"))
-                });
-                if arr.len() < before {
-                    if dry_run {
-                        println!(
-                            "[dry-run] would remove RTK hook from Gemini settings.json: {}",
-                            settings_path.display()
-                        );
-                    } else {
-                        let new_content = serde_json::to_string_pretty(&settings)?;
-                        fs::write(&settings_path, new_content)?;
-                    }
-                    removed.push("Gemini settings.json: removed RTK hook entry".to_string());
-                }
+        if let Ok(mut settings) = from_json_str::<serde_json::Value>(&content)
+            && remove_rtk_hooks(&mut settings)
+        {
+            if dry_run {
+                println!(
+                    "[dry-run] would remove RTK hook from Gemini settings.json: {}",
+                    settings_path.display()
+                );
+            } else {
+                let new_content = serde_json::to_string_pretty(&settings)?;
+                fs::write(&settings_path, new_content)?;
             }
+            removed.push("Gemini settings.json: removed RTK hook entry".to_string());
         }
     }
 
@@ -326,30 +314,52 @@ pub(super) fn uninstall_gemini(ctx: InitContext) -> Result<Vec<String>> {
     Ok(removed)
 }
 
+/// Takes RTK's hook out of the BeforeTool groups; true when one was removed.
+fn remove_rtk_hooks(settings: &mut serde_json::Value) -> bool {
+    let bt_pointer = format!("/hooks/{}", BEFORE_TOOL_KEY);
+    let Some(arr) = settings
+        .pointer_mut(&bt_pointer)
+        .and_then(|v| v.as_array_mut())
+    else {
+        return false;
+    };
+    let before = arr.len();
+    arr.retain(|h| {
+        !h.pointer("/hooks/0/command")
+            .and_then(|v| v.as_str())
+            .is_some_and(|c| c.contains("rtk"))
+    });
+    arr.len() < before
+}
+
 /// Returns true if Gemini CLI RTK hook is configured in settings.json.
 pub fn is_configured() -> bool {
     let Ok(gemini_dir) = resolve_gemini_dir() else {
         return false;
     };
     let settings_path = gemini_dir.join(SETTINGS_JSON);
-    if let Ok(content) = fs::read_to_string(&settings_path)
-        && let Ok(settings) = from_json_str::<serde_json::Value>(&content)
-    {
-        let before_tool_pointer = format!("/hooks/{}", BEFORE_TOOL_KEY);
-        if let Some(hooks) = settings.pointer(&before_tool_pointer)
-            && let Some(arr) = hooks.as_array()
-        {
-            return arr.iter().any(|h| {
+    fs::read_to_string(&settings_path)
+        .ok()
+        .and_then(|content| from_json_str::<serde_json::Value>(&content).ok())
+        .is_some_and(|settings| configured_in(&settings))
+}
+
+/// True when a shell-matching BeforeTool group in `settings` runs RTK's hook.
+fn configured_in(settings: &serde_json::Value) -> bool {
+    let before_tool_pointer = format!("/hooks/{}", BEFORE_TOOL_KEY);
+    settings
+        .pointer(&before_tool_pointer)
+        .and_then(|hooks| hooks.as_array())
+        .is_some_and(|arr| {
+            arr.iter().any(|h| {
                 let matcher = h.get("matcher").and_then(|m| m.as_str());
                 let matches_shell = matcher == Some("run_shell_command") || matcher == Some("*");
                 matches_shell
                     && h.pointer("/hooks/0/command")
                         .and_then(|v| v.as_str())
                         .is_some_and(|c| c.contains("rtk"))
-            });
-        }
-    }
-    false
+            })
+        })
 }
 
 #[cfg(all(test, feature = "engine"))]
@@ -392,5 +402,115 @@ mod tests {
             content, original,
             "settings.json must not be overwritten when parsing fails"
         );
+    }
+
+    const HOOK: &str = "/home/u/.gemini/hooks/rtk-hook-gemini.sh";
+
+    fn group(commands: &[&str]) -> serde_json::Value {
+        serde_json::json!({
+            "matcher": "run_shell_command",
+            "hooks": commands
+                .iter()
+                .map(|c| serde_json::json!({"type": "command", "command": c}))
+                .collect::<Vec<_>>(),
+        })
+    }
+
+    fn settings_with(groups: Vec<serde_json::Value>) -> serde_json::Value {
+        serde_json::json!({ "hooks": { (BEFORE_TOOL_KEY): groups } })
+    }
+
+    fn before_tool(settings: &serde_json::Value) -> Vec<serde_json::Value> {
+        settings
+            .pointer(&format!("/hooks/{BEFORE_TOOL_KEY}"))
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn install_adds_its_hook_beside_a_user_command_that_mentions_rtk() {
+        let tmp = TempDir::new().unwrap();
+        let gemini_dir = tmp.path().join(".gemini");
+        fs::create_dir_all(&gemini_dir).unwrap();
+        let settings_path = gemini_dir.join(SETTINGS_JSON);
+        let user = group(&["audit; rtk hook gemini"]);
+        fs::write(
+            &settings_path,
+            settings_with(vec![user.clone()]).to_string(),
+        )
+        .unwrap();
+
+        patch_gemini_settings(
+            &gemini_dir,
+            Path::new(HOOK),
+            PatchMode::Auto,
+            InitContext::default(),
+        )
+        .unwrap();
+
+        let written: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&settings_path).unwrap()).unwrap();
+        assert_eq!(before_tool(&written), vec![user, group(&[HOOK])]);
+    }
+
+    #[test]
+    fn install_leaves_settings_alone_when_its_hook_is_there() {
+        let tmp = TempDir::new().unwrap();
+        let gemini_dir = tmp.path().join(".gemini");
+        fs::create_dir_all(&gemini_dir).unwrap();
+        let settings_path = gemini_dir.join(SETTINGS_JSON);
+        let original = settings_with(vec![group(&[HOOK])]).to_string();
+        fs::write(&settings_path, &original).unwrap();
+
+        patch_gemini_settings(
+            &gemini_dir,
+            Path::new(HOOK),
+            PatchMode::Auto,
+            InitContext::default(),
+        )
+        .unwrap();
+
+        assert_eq!(fs::read_to_string(&settings_path).unwrap(), original);
+    }
+
+    #[test]
+    fn uninstall_removes_only_rtks_hook() {
+        let user = group(&["audit; rtk hook gemini"]);
+        let mixed_user = serde_json::json!({"type": "command", "command": "rtk-audit.sh"});
+        let mut mixed = group(&["rtk-audit.sh", HOOK]);
+        let mut settings = settings_with(vec![user.clone(), group(&[HOOK]), mixed.clone()]);
+
+        assert!(remove_rtk_hooks(&mut settings));
+
+        mixed["hooks"] = serde_json::json!([mixed_user]);
+        assert_eq!(before_tool(&settings), vec![user, mixed]);
+    }
+
+    #[test]
+    fn uninstall_reports_nothing_removed_for_user_commands_only() {
+        let original = settings_with(vec![
+            group(&["audit; rtk hook gemini"]),
+            group(&["/opt/rtk/bin/lint"]),
+        ]);
+        let mut settings = original.clone();
+
+        assert!(!remove_rtk_hooks(&mut settings));
+        assert_eq!(settings, original);
+    }
+
+    #[test]
+    fn configured_only_by_rtks_own_hook() {
+        assert!(!configured_in(&settings_with(vec![group(&[
+            "audit; rtk hook gemini"
+        ])])));
+        assert!(configured_in(&settings_with(vec![group(&[HOOK])])));
+        assert!(configured_in(&settings_with(vec![group(&[
+            "rtk hook gemini"
+        ])])));
+        assert!(configured_in(&settings_with(vec![group(&[
+            "notify-send hi",
+            HOOK
+        ])])));
     }
 }
