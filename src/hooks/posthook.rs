@@ -2092,6 +2092,30 @@ mod tests {
         assert!(pointer_of(&Call::new("c", "make test", &output, None).run(&config)).is_some());
     }
 
+    /// A pointer to a converted Read keeps the note that the text is not the
+    /// file's bytes.
+    #[test]
+    fn test_repeat_pointer_keeps_the_read_conversion_note() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let read = |id: &str| {
+            let mut event = fixture("read_flat");
+            event["session_id"] = json!("s1");
+            event["tool_use_id"] = json!(id);
+            note_tool_start_with(&config, &event);
+            run_with(&event, &config, &json_reads_pipeline())
+        };
+        let note = |out: &Option<String>| {
+            let parsed: Value = serde_json::from_str(out.as_deref().expect("output")).unwrap();
+            parsed["hookSpecificOutput"]["additionalContext"].clone()
+        };
+        let first = read("a");
+        assert_eq!(note(&first), json!(READ_CONVERSION_NOTE));
+        let second = read("b");
+        assert!(native_pointer_of(&second).is_some(), "{second:?}");
+        assert_eq!(note(&second), json!(READ_CONVERSION_NOTE));
+    }
+
     fn run_posthook(event: &Value) -> Option<String> {
         run_with(event, &test_config(), &posthook_pipeline())
     }
