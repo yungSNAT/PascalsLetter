@@ -1076,6 +1076,10 @@ fn note_tool_start_with(config: &Config, event: &Value) {
     };
     let id = tool_use_id(event);
     let mark = files.mark();
+    // A session's first call prunes, for installs without SessionStart.
+    if !files.dir.exists() && crate::core::utils::create_private_dir(&files.dir).is_ok() {
+        prune_repeats(&files.dir, std::time::SystemTime::now());
+    }
     // Creating the mark is the check: of 2 parallel starts, the second finds
     // it and clears both calls' records.
     let created = crate::core::utils::create_private_dir(&files.dir).is_ok()
@@ -1107,8 +1111,99 @@ fn clear(record: &std::path::Path) -> bool {
 
 fn forget_repeats_with(config: &Config, event: &Value) {
     if let Some(dir) = repeat_dir(config, event) {
-        let _ = std::fs::remove_dir_all(dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        prune_repeats(&dir, std::time::SystemTime::now());
     }
+}
+
+/// A session folder untouched this long belongs to a finished session.
+const REPEAT_SESSION_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(7 * 24 * 3600);
+/// A taken mark (`<agent>.run.<pid>`) lives for one PostToolUse; one this old
+/// was left by a hook that died.
+const TAKEN_MARK_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(3600);
+
+/// Removes other sessions' folders untouched for `REPEAT_SESSION_MAX_AGE`
+/// and taken marks older than `TAKEN_MARK_MAX_AGE`. `live` (the session
+/// being started or used) is never removed. Old folders are renamed to a
+/// tombstone before deletion so a resuming session starts clean instead of
+/// reading a half-deleted folder, and a failed rename leaves the folder alone.
+fn is_pruning_tombstone(name: &std::ffi::OsStr) -> bool {
+    name.to_str().is_some_and(|s| {
+        s.rsplit_once(".pruning.")
+            .is_some_and(|(_, pid)| !pid.is_empty() && pid.bytes().all(|b| b.is_ascii_digit()))
+    })
+}
+
+fn prune_repeats(live: &std::path::Path, now: std::time::SystemTime) {
+    prune_repeats_with(live, now, &mut |dir| {
+        let _ = std::fs::remove_dir_all(dir);
+    });
+}
+
+fn prune_repeats_with(
+    live: &std::path::Path,
+    now: std::time::SystemTime,
+    remove_dir: &mut impl FnMut(&std::path::Path),
+) {
+    let Some(entries) = live.parent().and_then(|root| std::fs::read_dir(root).ok()) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        // Not followed: a link is not a session's folder.
+        if !entry.file_type().is_ok_and(|t| t.is_dir()) {
+            continue;
+        }
+        let path = entry.path();
+        if path == live {
+            prune_taken_marks(&path, now);
+        } else if is_pruning_tombstone(&entry.file_name()) {
+            if older_than(&path, now, REPEAT_SESSION_MAX_AGE) {
+                remove_dir(&path);
+            }
+        } else if older_than(&path, now, REPEAT_SESSION_MAX_AGE) {
+            let mut tombstone = path.as_os_str().to_os_string();
+            tombstone.push(format!(".pruning.{}", std::process::id()));
+            let tombstone = std::path::PathBuf::from(tombstone);
+            if std::fs::rename(&path, &tombstone).is_ok() {
+                remove_dir(&tombstone);
+            }
+        } else if older_than(&path, now, TAKEN_MARK_MAX_AGE) {
+            // A folder touched within the hour can hold no stale taken mark
+            // worth a full listing yet.
+            prune_taken_marks(&path, now);
+        }
+    }
+}
+
+fn prune_taken_marks(dir: &std::path::Path, now: std::time::SystemTime) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let taken = entry.file_name().to_str().is_some_and(|name| {
+            name.split_once(".run.").is_some_and(|(agent, pid)| {
+                agent.len() == 16
+                    && agent.bytes().all(|b| b.is_ascii_hexdigit())
+                    && !pid.is_empty()
+                    && pid.bytes().all(|b| b.is_ascii_digit())
+            })
+        });
+        if taken && older_than(&entry.path(), now, TAKEN_MARK_MAX_AGE) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
+fn older_than(
+    path: &std::path::Path,
+    now: std::time::SystemTime,
+    age: std::time::Duration,
+) -> bool {
+    std::fs::symlink_metadata(path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|modified| now.duration_since(modified).ok())
+        .is_some_and(|elapsed| elapsed >= age)
 }
 
 /// Hands back what the agent gets for this Bash call (`emitted`, or `None`
@@ -2148,6 +2243,245 @@ mod tests {
         Call::new("a", "make test", &output, None).run(&config);
         Call::read("b", "/repo/src/lib.rs", &lines(300)).run(&config);
         assert!(pointer_of(&Call::new("c", "make test", &output, None).run(&config)).is_some());
+    }
+
+    fn session_dir(config: &Config, session: &str) -> std::path::PathBuf {
+        repeat_dir(config, &serde_json::json!({"session_id": session})).expect("a folder")
+    }
+
+    const DAY: std::time::Duration = std::time::Duration::from_secs(24 * 3600);
+
+    /// Old sessions' folders go; the live session's stays however old, and a
+    /// recent session's stays.
+    #[test]
+    fn test_prune_repeats_keeps_the_live_session() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        for session in ["live", "old"] {
+            Call::new("a", "make test", &lines(400), None)
+                .in_session(session)
+                .run(&config);
+        }
+        let (live, old) = (session_dir(&config, "live"), session_dir(&config, "old"));
+        let now = std::time::SystemTime::now();
+
+        prune_repeats(&live, now + DAY);
+        assert!(live.exists() && old.exists(), "a day idle is kept");
+
+        prune_repeats(&live, now + 8 * DAY);
+        assert!(live.exists(), "the live session survives");
+        assert!(!old.exists(), "a week idle is pruned");
+        assert!(
+            pointer_of(
+                &Call::new("b", "make test", &lines(400), None)
+                    .in_session("live")
+                    .run(&config)
+            )
+            .is_some(),
+            "the live session's records are intact"
+        );
+    }
+
+    /// A taken mark a dead hook left goes after an hour, in every session;
+    /// marks and records stay.
+    #[test]
+    fn test_prune_repeats_removes_stale_taken_marks() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let call = Call::new("a", "make test", &lines(400), None);
+        call.run(&config);
+        Call::new("b", "make test", &lines(400), None).pre(&config);
+        let files = agent_files(&config, &call.event).expect("state files");
+        let mut taken = files.mark().into_os_string();
+        taken.push(".4242");
+        let taken = std::path::PathBuf::from(taken);
+        std::fs::write(&taken, "a").unwrap();
+        let other = files.dir.join("notes.run.txt");
+        std::fs::write(&other, "x").unwrap();
+        let now = std::time::SystemTime::now();
+
+        prune_repeats(&files.dir, now);
+        assert!(taken.exists(), "a recent taken mark may be in use");
+
+        prune_repeats(&files.dir, now + std::time::Duration::from_secs(2 * 3600));
+        assert!(!taken.exists());
+        assert!(files.mark().exists() && files.record().exists());
+        assert!(other.exists(), "only taken marks are removed");
+    }
+
+    /// A handle on a folder that can set its times.
+    fn folder_handle(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+            std::fs::OpenOptions::new()
+                .write(true)
+                .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+                .open(path)
+        }
+        #[cfg(not(windows))]
+        {
+            std::fs::File::open(path)
+        }
+    }
+
+    /// SessionStart and a session's first call both prune.
+    #[test]
+    fn test_prune_repeats_runs_at_session_start_and_first_call() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let age = |session: &str| {
+            let path = session_dir(&config, session);
+            folder_handle(&path)
+                .and_then(|f| f.set_modified(std::time::SystemTime::now() - 8 * DAY))
+                .expect("age the folder");
+            path
+        };
+        Call::new("a", "make test", &lines(400), None)
+            .in_session("old")
+            .run(&config);
+        let old = age("old");
+        forget_repeats_with(&config, &serde_json::json!({"session_id": "new"}));
+        assert!(!old.exists(), "SessionStart prunes");
+
+        Call::new("b", "make test", &lines(400), None)
+            .in_session("old2")
+            .run(&config);
+        let old2 = age("old2");
+        Call::new("c", "make test", &lines(400), None)
+            .in_session("new2")
+            .run(&config);
+        assert!(!old2.exists(), "a session's first call prunes");
+    }
+
+    /// Renaming an aged folder to a tombstone before deletion keeps a resuming
+    /// session from picking up a surviving record after a failed call's mark.
+    #[test]
+    fn test_prune_repeats_tombstones_old_folder_before_deleting() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let output = lines(400);
+        Call::new("a", "make test", &output, None)
+            .in_session("old")
+            .run(&config);
+        let failed = Call::new("b", "make test", &output, None).in_session("old");
+        failed.pre(&config);
+        let old_files = agent_files(&config, &failed.event).expect("state files");
+        let mark_name = old_files
+            .mark()
+            .file_name()
+            .expect("mark file name")
+            .to_os_string();
+        let live = session_dir(&config, "live");
+        std::fs::create_dir_all(&live).unwrap();
+        let now = std::time::SystemTime::now();
+
+        let mut victim_seen = None;
+        prune_repeats_with(&live, now + 8 * DAY, &mut |victim| {
+            victim_seen = Some(victim.to_path_buf());
+            // Simulate partial deletion: remove `.run` before the record,
+            // then resume the old session before deletion finishes.
+            let _ = std::fs::remove_file(victim.join(&mark_name));
+            let resumed = Call::new("c", "make test", &output, None)
+                .in_session("old")
+                .run(&config);
+            assert!(
+                pointer_of(&resumed).is_none(),
+                "resuming mid-prune must not print a pointer across a failed call"
+            );
+            let _ = std::fs::remove_dir_all(victim);
+        });
+
+        let victim = victim_seen.expect("old folder reached pruning");
+        assert_ne!(victim, old_files.dir, "old folder must be tombstoned first");
+        assert!(!victim.exists(), "tombstone directory is deleted");
+        assert!(
+            pointer_of(
+                &Call::new("d", "make test", &output, None)
+                    .in_session("old")
+                    .run(&config)
+            )
+            .is_some(),
+            "a fresh repeat after the clean restart works normally"
+        );
+    }
+
+    /// A non-live session folder aged between 1 hour and 7 days is kept, and
+    /// its stale taken marks are swept.
+    #[test]
+    fn test_prune_repeats_sweeps_stale_taken_marks_in_non_live_folder_between_1h_and_7d() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let call = Call::new("a", "make test", &lines(400), None).in_session("idle");
+        call.run(&config);
+        Call::new("b", "make test", &lines(400), None)
+            .in_session("idle")
+            .pre(&config);
+        let idle_files = agent_files(&config, &call.event).expect("state files");
+        let mut taken = idle_files.mark().into_os_string();
+        taken.push(".4242");
+        let taken = std::path::PathBuf::from(taken);
+        std::fs::write(&taken, "a").unwrap();
+        let other = idle_files.dir.join("notes.run.txt");
+        std::fs::write(&other, "x").unwrap();
+
+        let live = session_dir(&config, "live");
+        std::fs::create_dir_all(&live).unwrap();
+        let now = std::time::SystemTime::now();
+
+        prune_repeats(&live, now + std::time::Duration::from_secs(1800));
+        assert!(taken.exists(), "taken mark younger than 1 hour stays");
+
+        prune_repeats(&live, now + std::time::Duration::from_secs(2 * 3600));
+        assert!(
+            idle_files.dir.exists(),
+            "non-live folder under 7 days stays"
+        );
+        assert!(!taken.exists(), "stale taken mark in non-live folder goes");
+        assert!(idle_files.mark().exists() && idle_files.record().exists());
+        assert!(other.exists(), "only taken marks are removed");
+    }
+
+    /// When another process holds a file open on Windows without delete share,
+    /// renaming the folder fails and the folder (mark and records) is left alone.
+    #[cfg(windows)]
+    #[test]
+    fn test_prune_repeats_skips_folder_when_rename_fails() {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_SHARE_READ: u32 = 1;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let output = lines(400);
+        Call::new("a", "make test", &output, None)
+            .in_session("old")
+            .run(&config);
+        let failed = Call::new("b", "make test", &output, None).in_session("old");
+        failed.pre(&config);
+        let old_files = agent_files(&config, &failed.event).expect("state files");
+        let live = session_dir(&config, "live");
+        std::fs::create_dir_all(&live).unwrap();
+        let now = std::time::SystemTime::now();
+
+        let hold = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ)
+            .open(old_files.mark())
+            .expect("hold mark without delete share");
+        prune_repeats(&live, now + 8 * DAY);
+        drop(hold);
+
+        assert!(old_files.dir.exists());
+        assert!(old_files.mark().exists() && old_files.record().exists());
+        assert!(
+            pointer_of(
+                &Call::new("c", "make test", &output, None)
+                    .in_session("old")
+                    .run(&config)
+            )
+            .is_none(),
+            "skipped folder still keeps its stale mark and blocks a pointer"
+        );
     }
 
     /// A pointer to a converted Read keeps the note that the text is not the
