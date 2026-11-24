@@ -73,7 +73,7 @@ This is the full lifecycle of a command through RTK, from LLM agent to filtered 
 The user runs `rtk init` to set up hooks for their LLM agent. This:
 
 1. Registers a native hook command (e.g., `rtk hook claude`); a legacy `~/.claude/hooks/rtk-rewrite.sh` script is removed
-2. Stores its SHA-256 hash for integrity verification
+2. For a hook that is a script file (e.g., Gemini's), stores its SHA-256 hash for integrity verification
 3. Patches the agent's settings file (e.g., `settings.json`) to register the hook
 4. Writes RTK awareness instructions (e.g., `RTK.md`) for prompt-level guidance
 

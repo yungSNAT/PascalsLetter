@@ -2,11 +2,13 @@
 //! (hooks/claude/test-rtk-rewrite.sh and hooks/copilot/test-rtk-rewrite.sh),
 //! run against the native hooks `rtk init` installs: `rtk hook claude` and
 //! `rtk hook copilot`. Each run gets a sandboxed HOME with no permission rules.
-//! Cases about the shell script itself (its audit log and jq checks) went with
-//! it. Where the native hooks answer differently, the case follows them: `rg`
-//! keeps its own command, a command already using rtk gets no rewrite, both
-//! sides of `&` are rewritten, and Copilot CLI gets `modifiedArgs` in place of
-//! a deny.
+//! The scripts' own checks (`jq`, `RTK_AUDIT_DIR`) went with them; the audit
+//! log the native hook writes is checked here end to end. Where the native
+//! hooks answer differently, the case follows them: `rg` keeps its own
+//! command, a command already using rtk gets no rewrite, both sides of `&` are
+//! rewritten, Copilot CLI gets `modifiedArgs` in place of a deny, and with no
+//! permission rule neither Copilot form carries a permission decision (the
+//! host prompts) where the script expected `allow` for VS Code.
 
 use std::io::Write;
 use std::process::{Command, Stdio};
@@ -306,7 +308,8 @@ fn claude_hook_rewrites_the_shell_suites_cases() {
         let got = out
             .as_ref()
             .and_then(|v| str_at(v, "/hookSpecificOutput/updatedInput/command"));
-        if got != *want {
+        // No rewrite means no output at all, not JSON without a command.
+        if got != *want || (want.is_none() && out.is_some()) {
             failures.push(format!("{name}: {command:?} gave {got:?}, want {want:?}"));
         }
     }
@@ -334,6 +337,7 @@ fn copilot_cli_gets_the_rewritten_command() {
         .unwrap_or_else(|| panic!("{command}: no output"));
         let modified = str_at(&out, "/modifiedArgs/command").unwrap_or_default();
         assert!(modified.contains(want), "{command}: {out}");
+        assert_eq!(out.pointer("/permissionDecision"), None, "{command}: {out}");
     }
 }
 
@@ -353,6 +357,11 @@ fn copilot_vscode_gets_the_rewritten_command() {
         .unwrap_or_else(|| panic!("{command}: no output"));
         let updated = str_at(&out, "/hookSpecificOutput/updatedInput/command").unwrap_or_default();
         assert!(updated.contains(want), "{command}: {out}");
+        assert_eq!(
+            out.pointer("/hookSpecificOutput/permissionDecision"),
+            None,
+            "{command}: {out}"
+        );
     }
 }
 
@@ -373,4 +382,44 @@ fn copilot_passes_other_calls_through_silently() {
         let out = hook(common::rtk_command_in(root.path()), "copilot", &payload);
         assert!(out.is_none(), "{payload}: {out:?}");
     }
+}
+
+/// Every `hook-audit.log` under `dir`.
+fn audit_logs(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut found = Vec::new();
+    for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            found.extend(audit_logs(&path));
+        } else if path.file_name().is_some_and(|n| n == "hook-audit.log") {
+            found.push(path);
+        }
+    }
+    found
+}
+
+/// With RTK_HOOK_AUDIT=1 a rewrite is logged as 4 fields, the second
+/// `rewrite`; without it nothing is written.
+#[test]
+fn claude_hook_audit_log_records_a_rewrite_only_when_asked() {
+    let quiet = common::tempdir();
+    hook(
+        common::rtk_command_in(quiet.path()),
+        "claude",
+        &bash("git status"),
+    );
+    assert!(audit_logs(quiet.path()).is_empty());
+
+    let root = common::tempdir();
+    let mut rtk = common::rtk_command_in(root.path());
+    rtk.env("RTK_HOOK_AUDIT", "1");
+    hook(rtk, "claude", &bash("git status")).expect("a rewrite");
+    let logs = audit_logs(root.path());
+    assert_eq!(logs.len(), 1, "{logs:?}");
+    let log = std::fs::read_to_string(&logs[0]).expect("read the audit log");
+    let fields: Vec<&str> = log.trim_end().split(" | ").collect();
+    assert_eq!(fields.len(), 4, "{log}");
+    assert_eq!(fields[1], "rewrite", "{log}");
+    assert_eq!(fields[2], "git status", "{log}");
+    assert_eq!(fields[3], "rtk git status", "{log}");
 }
