@@ -15,21 +15,44 @@ pub const MECHANISM: &str = "Task Scheduler (log-on trigger, relaunched when it 
 
 use super::windows_task::{Account, LEGACY_TASK_NAME, decode_output, ours, sid_from_whoami};
 
-fn run_command(program: &str, args: &[&OsStr]) -> Result<Output> {
-    Command::new(program)
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Tool {
+    Schtasks,
+    Whoami,
+}
+
+impl Tool {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Schtasks => "schtasks",
+            Self::Whoami => "whoami",
+        }
+    }
+
+    fn command(self) -> Command {
+        match self {
+            Self::Schtasks => Command::new("schtasks"),
+            Self::Whoami => Command::new("whoami"),
+        }
+    }
+}
+
+fn run_command(tool: Tool, args: &[&OsStr]) -> Result<Output> {
+    tool.command()
         .args(args)
         .stdin(Stdio::null())
         .output()
-        .with_context(|| format!("running {program}"))
+        .with_context(|| format!("running {}", tool.label()))
 }
 
 fn command_detail(out: &Output) -> String {
-    let msg = decode_output(if out.stderr.is_empty() {
-        &out.stdout
+    let err = decode_output(&out.stderr);
+    let text = if err.trim().is_empty() {
+        decode_output(&out.stdout)
     } else {
-        &out.stderr
-    });
-    let msg = msg.trim();
+        err
+    };
+    let msg = text.trim();
     if msg.is_empty() {
         String::new()
     } else {
@@ -62,10 +85,10 @@ fn task_exists(name: &str) -> Result<bool> {
 
 fn task_exists_with(
     name: &str,
-    run: &mut impl FnMut(&str, &[&OsStr]) -> Result<Output>,
+    run: &mut impl FnMut(Tool, &[&OsStr]) -> Result<Output>,
 ) -> Result<bool> {
     let out = run(
-        "schtasks",
+        Tool::Schtasks,
         &[OsStr::new("/Query"), OsStr::new("/TN"), OsStr::new(name)],
     )?;
     Ok(out.status.success())
@@ -77,10 +100,10 @@ fn delete_task(name: &str) -> Result<()> {
 
 fn delete_task_with(
     name: &str,
-    run: &mut impl FnMut(&str, &[&OsStr]) -> Result<Output>,
+    run: &mut impl FnMut(Tool, &[&OsStr]) -> Result<Output>,
 ) -> Result<()> {
     let out = run(
-        "schtasks",
+        Tool::Schtasks,
         &[
             OsStr::new("/Delete"),
             OsStr::new("/TN"),
@@ -103,10 +126,10 @@ fn env_nonempty(key: &str) -> Option<String> {
 }
 
 fn current_account_with(
-    run: &mut impl FnMut(&str, &[&OsStr]) -> Result<Output>,
+    run: &mut impl FnMut(Tool, &[&OsStr]) -> Result<Output>,
 ) -> Option<Account> {
     let sid = run(
-        "whoami",
+        Tool::Whoami,
         &[
             OsStr::new("/user"),
             OsStr::new("/fo"),
@@ -134,10 +157,10 @@ fn owns_task(name: &str) -> Result<bool> {
 
 fn owns_task_with(
     name: &str,
-    run: &mut impl FnMut(&str, &[&OsStr]) -> Result<Output>,
+    run: &mut impl FnMut(Tool, &[&OsStr]) -> Result<Output>,
 ) -> Result<bool> {
     let out = run(
-        "schtasks",
+        Tool::Schtasks,
         &[
             OsStr::new("/Query"),
             OsStr::new("/TN"),
@@ -169,7 +192,7 @@ fn has_own_legacy_task(name: &str) -> Result<bool> {
 
 fn has_own_legacy_task_with(
     name: &str,
-    run: &mut impl FnMut(&str, &[&OsStr]) -> Result<Output>,
+    run: &mut impl FnMut(Tool, &[&OsStr]) -> Result<Output>,
 ) -> Result<bool> {
     Ok(name != LEGACY_TASK_NAME && owns_task_with(LEGACY_TASK_NAME, run)?)
 }
@@ -189,7 +212,7 @@ fn install_with(
     config_path: &Path,
     log_path: &Path,
     state_dir: &Path,
-    run: &mut impl FnMut(&str, &[&OsStr]) -> Result<Output>,
+    run: &mut impl FnMut(Tool, &[&OsStr]) -> Result<Output>,
 ) -> Result<PathBuf> {
     let name = task_name()?;
     // Only overwrite when `/Query /XML` confirms this account owns the task;
@@ -214,7 +237,7 @@ fn install_with(
         OsStr::new("/XML"),
         xml_path.as_os_str(),
     ]);
-    let out = run("schtasks", &args);
+    let out = run(Tool::Schtasks, &args);
     let _ = std::fs::remove_file(&xml_path);
     let out = out?;
     if !out.status.success() {
@@ -312,7 +335,7 @@ mod tests {
     fn run_install(
         state_dir: &Path,
         user: (&str, &str),
-        run: &mut impl FnMut(&str, &[&OsStr]) -> Result<Output>,
+        run: &mut impl FnMut(Tool, &[&OsStr]) -> Result<Output>,
     ) -> Result<PathBuf> {
         temp_env::with_vars(
             [
@@ -340,8 +363,8 @@ mod tests {
             .collect()
     }
 
-    fn record_call(calls: &mut Vec<Vec<String>>, program: &str, args: &[&OsStr]) {
-        let mut entry = vec![program.to_string()];
+    fn record_call(calls: &mut Vec<Vec<String>>, tool: Tool, args: &[&OsStr]) {
+        let mut entry = vec![tool.label().to_string()];
         entry.extend(args.iter().map(|arg| arg.to_string_lossy().into_owned()));
         calls.push(entry);
     }
@@ -350,9 +373,9 @@ mod tests {
     fn install_omits_force_when_task_queries_fail() {
         let dir = tempfile::tempdir().expect("tempdir");
         let mut calls = Vec::new();
-        let res = run_install(dir.path(), ("AzureAD", "Patrick"), &mut |prog, args| {
-            record_call(&mut calls, prog, args);
-            let is_create = prog == "schtasks" && args.first() == Some(&OsStr::new("/Create"));
+        let res = run_install(dir.path(), ("AzureAD", "Patrick"), &mut |tool, args| {
+            record_call(&mut calls, tool, args);
+            let is_create = tool == Tool::Schtasks && args.first() == Some(&OsStr::new("/Create"));
             Ok(output(u32::from(!is_create), b""))
         });
 
@@ -372,12 +395,12 @@ mod tests {
     fn install_uses_force_only_when_task_ownership_is_confirmed() {
         let dir = tempfile::tempdir().expect("tempdir");
         let mut calls = Vec::new();
-        let res = run_install(dir.path(), ("AzureAD", "Patrick"), &mut |prog, args| {
-            record_call(&mut calls, prog, args);
-            if prog == "whoami" {
+        let res = run_install(dir.path(), ("AzureAD", "Patrick"), &mut |tool, args| {
+            record_call(&mut calls, tool, args);
+            if tool == Tool::Whoami {
                 return Ok(output(0, b"\"AzureAD\\Patrick\",\"S-1-12-1-111-222\"\r\n"));
             }
-            if prog == "schtasks"
+            if tool == Tool::Schtasks
                 && args.first() == Some(&OsStr::new("/Query"))
                 && args.get(2) == Some(&OsStr::new("rtk-proxy-AzureAD_Patrick"))
             {
@@ -386,7 +409,7 @@ mod tests {
                     b"<Task><Principals><Principal><UserId>S-1-12-1-111-222</UserId></Principal></Principals></Task>",
                 ));
             }
-            let is_create = prog == "schtasks" && args.first() == Some(&OsStr::new("/Create"));
+            let is_create = tool == Tool::Schtasks && args.first() == Some(&OsStr::new("/Create"));
             Ok(output(u32::from(!is_create), b""))
         });
 
@@ -403,9 +426,9 @@ mod tests {
     fn install_refuses_visible_task_not_confirmed_as_ours() {
         let dir = tempfile::tempdir().expect("tempdir");
         let mut calls = Vec::new();
-        let res = run_install(dir.path(), ("DESK", "a_b"), &mut |prog, args| {
-            record_call(&mut calls, prog, args);
-            if prog == "schtasks" && args.first() == Some(&OsStr::new("/Query")) {
+        let res = run_install(dir.path(), ("DESK", "a_b"), &mut |tool, args| {
+            record_call(&mut calls, tool, args);
+            if tool == Tool::Schtasks && args.first() == Some(&OsStr::new("/Query")) {
                 return Ok(output(
                     0,
                     b"<Task><Principals><Principal><UserId>DESK\\a b</UserId></Principal></Principals></Task>",
@@ -426,9 +449,9 @@ mod tests {
     fn install_refuses_when_query_xml_fails_but_task_is_visible() {
         let dir = tempfile::tempdir().expect("tempdir");
         let mut calls = Vec::new();
-        let res = run_install(dir.path(), ("AzureAD", "Patrick"), &mut |prog, args| {
-            record_call(&mut calls, prog, args);
-            let is_xml_query = prog == "schtasks"
+        let res = run_install(dir.path(), ("AzureAD", "Patrick"), &mut |tool, args| {
+            record_call(&mut calls, tool, args);
+            let is_xml_query = tool == Tool::Schtasks
                 && args.first() == Some(&OsStr::new("/Query"))
                 && args.contains(&OsStr::new("/XML"));
             Ok(output(u32::from(is_xml_query), b""))
@@ -448,8 +471,8 @@ mod tests {
     fn install_propagates_spawn_error_from_query_without_creating() {
         let dir = tempfile::tempdir().expect("tempdir");
         let mut calls = Vec::new();
-        let res = run_install(dir.path(), ("AzureAD", "Patrick"), &mut |prog, args| {
-            record_call(&mut calls, prog, args);
+        let res = run_install(dir.path(), ("AzureAD", "Patrick"), &mut |tool, args| {
+            record_call(&mut calls, tool, args);
             bail!("spawn failed");
         });
 
@@ -462,8 +485,8 @@ mod tests {
     fn install_cleans_up_xml_and_errors_when_unforced_create_fails() {
         let dir = tempfile::tempdir().expect("tempdir");
         let mut calls = Vec::new();
-        let res = run_install(dir.path(), ("AzureAD", "Patrick"), &mut |prog, args| {
-            record_call(&mut calls, prog, args);
+        let res = run_install(dir.path(), ("AzureAD", "Patrick"), &mut |tool, args| {
+            record_call(&mut calls, tool, args);
             Ok(output(1, b""))
         });
 
@@ -472,5 +495,15 @@ mod tests {
         let creates = create_calls(&calls);
         assert_eq!(creates.len(), 1);
         assert!(!creates[0].iter().any(|arg| arg == "/F"));
+    }
+
+    #[test]
+    fn command_detail_falls_back_when_stderr_is_whitespace() {
+        let out = Output {
+            status: ExitStatus::from_raw(1),
+            stdout: b"ERROR: Access is denied.\r\n".to_vec(),
+            stderr: b" \r\n".to_vec(),
+        };
+        assert_eq!(command_detail(&out), ": ERROR: Access is denied.");
     }
 }
