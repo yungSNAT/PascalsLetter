@@ -664,11 +664,7 @@ mod rewrite_host_scoping {
                 "/hookSpecificOutput/updatedInput/command",
                 "/hookSpecificOutput/permissionDecision",
             ),
-            (
-                "cursor",
-                "/updated_input/command",
-                "/permission",
-            ),
+            ("cursor", "/updated_input/command", "/permission"),
         ] {
             let (code, stdout, stderr) =
                 bare.run_hook(hook, "git status", &[("RTK_REWRITE_HOST", "openclaw")]);
