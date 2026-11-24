@@ -218,7 +218,13 @@ fn tool_names(body: &serde_json::Value) -> HashMap<String, String> {
     map
 }
 
+/// Per-rule credits for one request. A rule that grew its results offsets
+/// others' savings in the stage total but cannot be credited a negative
+/// saving, so then no rule is credited rather than more than was saved.
 fn rule_credits(by_rule: Vec<(String, i64)>) -> Vec<(String, i64)> {
+    if by_rule.iter().any(|(_, delta)| *delta < 0) {
+        return Vec::new();
+    }
     by_rule
 }
 
