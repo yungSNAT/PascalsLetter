@@ -899,8 +899,13 @@ fn tool_use_id(event: &Value) -> &str {
 }
 
 fn short_hash(text: &str) -> String {
+    full_hash(text)[..16].to_string()
+}
+
+/// The whole SHA-256 digest: equal digests stand for equal bytes.
+fn full_hash(text: &str) -> String {
     use sha2::{Digest, Sha256};
-    Sha256::digest(text.as_bytes())[..8]
+    Sha256::digest(text.as_bytes())
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect()
@@ -943,9 +948,21 @@ fn note_bash_start_with(config: &Config, event: &Value) {
                 .is_ok()
     });
     if !created {
-        let _ = std::fs::remove_file(&record);
-        let _ = std::fs::write(&mark, id);
+        let _ = std::fs::write(&mark, if clear(&record) { id } else { b"" });
     }
+}
+
+/// Deletes a record; false when one may still be there. Whilst it is, the
+/// agent's mark stays empty, which no call matches and every start retries.
+fn clear(record: &std::path::Path) -> bool {
+    match std::fs::remove_file(record) {
+        Ok(()) => true,
+        Err(e) => e.kind() == std::io::ErrorKind::NotFound,
+    }
+}
+
+fn poison(mark: &std::path::Path) {
+    let _ = std::fs::write(mark, b"");
 }
 
 fn forget_repeats_with(config: &Config, event: &Value) {
@@ -978,16 +995,19 @@ fn deliver(
     };
     let id = tool_use_id(event);
     if id.is_empty() || std::fs::read_to_string(&mark).ok().as_deref() != Some(id) {
-        let _ = std::fs::remove_file(&record);
+        if !clear(&record) {
+            poison(&mark);
+        }
         return emitted;
     }
     let delivered = combine_streams(stdout, stderr);
-    let seen = format!("{} {}", short_hash(command), short_hash(&delivered));
+    let seen = format!("{} {}", full_hash(command), full_hash(&delivered));
+    let mut sound = true;
     let repeat = if std::fs::read_to_string(&record).ok().as_deref() == Some(seen.as_str()) {
         pointer(config, response, &delivered)
     } else {
         if std::fs::write(&record, seen).is_err() {
-            let _ = std::fs::remove_file(&record);
+            sound = clear(&record);
         }
         None
     };
@@ -998,19 +1018,20 @@ fn deliver(
     let taken = std::path::PathBuf::from(taken);
     let ours = std::fs::rename(&mark, &taken).is_ok()
         && std::fs::read_to_string(&taken).ok().as_deref() == Some(id);
-    if ours {
+    if ours && sound {
         let _ = std::fs::remove_file(&taken);
         return repeat.or(emitted);
     }
-    let _ = std::fs::remove_file(&record);
-    if let Ok(other) = std::fs::read(&taken) {
+    if !clear(&record) {
+        poison(&mark);
+    } else if !ours && let Ok(other) = std::fs::read(&taken) {
         let _ = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(&mark)
             .and_then(|mut file| std::io::Write::write_all(&mut file, &other));
-        let _ = std::fs::remove_file(&taken);
     }
+    let _ = std::fs::remove_file(&taken);
     emitted
 }
 
@@ -1550,6 +1571,34 @@ mod tests {
             assert!(pointer_of(&out).is_none());
         }
         assert!(!dir.path().join("recall.db").exists());
+    }
+
+    /// A record that cannot be deleted (another process holds it open without
+    /// delete sharing) must not let a later call point at it.
+    #[cfg(windows)]
+    #[test]
+    fn test_repeat_pointer_not_given_while_the_record_cannot_be_deleted() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let output = lines(400);
+        let a = Call::new("a", "make test", &output, None);
+        assert!(pointer_of(&a.run(&config)).is_none());
+        let (record, _) = agent_files(&config, &a.event).expect("state files");
+        const FILE_SHARE_READ: u32 = 1;
+        let held = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ)
+            .open(&record)
+            .expect("hold the record");
+        Call::new("b", "make test", &lines(300), None).pre(&config);
+        for id in ["c", "d"] {
+            let call = Call::new(id, "make test", &output, None);
+            assert!(pointer_of(&call.run(&config)).is_none(), "call {id}");
+        }
+        drop(held);
+        assert!(pointer_of(&Call::new("e", "make test", &output, None).run(&config)).is_none());
+        assert!(pointer_of(&Call::new("f", "make test", &output, None).run(&config)).is_some());
     }
 
     /// Only Bash, and never a pointer longer than the output it replaces.
