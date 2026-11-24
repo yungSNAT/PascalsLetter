@@ -1483,7 +1483,7 @@ mod tests {
         .expect("seed db");
         drop(conn);
 
-        let s = read_gain_summary_at(&db_path).expect("summary");
+        let s = read_gain_summary_at(&db_path, None).expect("summary");
         assert_eq!(s.saved_rules, 2620);
         assert_eq!(
             s.by_rule,
@@ -1493,6 +1493,16 @@ mod tests {
             ]
         );
         assert_eq!(s.savings_by_method(), vec![(RULES_METHOD, 2620)]);
+        let windowed =
+            read_gain_summary_at(&db_path, Some("2026-01-01T00:00:10Z")).expect("windowed");
+        assert_eq!(windowed.saved_rules, 900, "rule totals keep the window");
+        assert_eq!(
+            windowed.by_rule,
+            vec![
+                ("lockfiles".to_string(), 500),
+                ("web-pages".to_string(), 400)
+            ]
+        );
         let rows = savings_by_pipeline_at(&db_path).expect("rows");
         assert_eq!(rows[0].saved_rules, 2620);
         assert_eq!(rows[0].savings_by_method(), vec![(RULES_METHOD, 2620)]);
@@ -1526,7 +1536,7 @@ mod tests {
         .expect("seed db");
         drop(conn);
 
-        let s = read_gain_summary_at(&db_path).expect("summary");
+        let s = read_gain_summary_at(&db_path, None).expect("summary");
         assert_eq!(s.saved_rules, 0);
         assert!(s.by_rule.is_empty());
         assert_eq!(s.savings_by_method(), vec![("ccr", 90)]);
