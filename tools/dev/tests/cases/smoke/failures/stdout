@@ -1,0 +1,608 @@
+[1mRTK Smoke Test Suite[0m
+Binary: /tmp/rtk-dev-parity/smoke/failures/rtkbin/rtk
+Version: rtk 1.2.0-stub
+Date: -
+
+[1m[0;36m── Version & Help ──[0m
+  [0;32mPASS[0m  rtk --version
+  [0;31mFAIL[0m  rtk --help
+        expected: 'Usage:'
+        got: no usage here
+
+[1m[0;36m── Ls ──[0m
+  [0;31mFAIL[0m  rtk ls .
+        cmd: rtk ls .
+        out: out 1
+err 1
+out 2
+  [0;31mFAIL[0m  rtk ls -la .
+        cmd: rtk ls -la .
+        out: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk ls -lh .
+        cmd: rtk ls -lh .
+        out: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk ls -l src/
+        cmd: rtk ls -l src/
+        out: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk ls src/ -l (flag after)
+        cmd: rtk ls src/ -l
+        out: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk ls multi paths
+        cmd: rtk ls src/ scripts/
+        out: line 1
+
+line 3
+  [0;32mPASS[0m  rtk ls -a shows hidden
+  [0;31mFAIL[0m  rtk ls shows sizes
+        expected: 'K'
+        got: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk ls shows dirs with /
+        expected: '/'
+        got: out 1
+err 1
+out 2
+
+[1m[0;36m── Tree ──[0m
+  [0;33mSKIP[0m  rtk tree (tree not installed)
+
+[1m[0;36m── Read ──[0m
+  [0;31mFAIL[0m  rtk read Cargo.toml
+        cmd: rtk read Cargo.toml
+        out: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk read --level none Cargo.toml
+        cmd: rtk read --level none Cargo.toml
+        out: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk read --level aggressive Cargo.toml
+        cmd: rtk read --level aggressive Cargo.toml
+        out: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk read -n Cargo.toml
+        cmd: rtk read -n Cargo.toml
+        out: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk read --max-lines 5 Cargo.toml
+        cmd: rtk read --max-lines 5 Cargo.toml
+        out: line 1
+
+line 3
+
+[1m[0;36m── Read (stdin support) ──[0m
+  [0;31mFAIL[0m  rtk read stdin pipe
+        cmd: bash -c echo "fn main() {}" | rtk read -
+        out: fn main() {}
+
+[1m[0;36m── Git (existing) ──[0m
+  [0;31mFAIL[0m  rtk git status
+        cmd: rtk git status
+        out: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk git status --short
+        cmd: rtk git status --short
+        out: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk git status -s
+        cmd: rtk git status -s
+        out: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk git status --porcelain
+        cmd: rtk git status --porcelain
+        out: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk git log
+        cmd: rtk git log
+        out: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk git log -5
+        cmd: rtk git log -- -5
+        out: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk git diff
+        cmd: rtk git diff
+        out: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk git diff --stat
+        cmd: rtk git diff --stat
+        out: line 1
+
+line 3
+
+[1m[0;36m── Git (new: branch, fetch, stash, worktree) ──[0m
+  [0;31mFAIL[0m  rtk git branch
+        cmd: rtk git branch
+        out: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk git fetch
+        cmd: rtk git fetch
+        out: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk git stash list
+        cmd: rtk git stash list
+        out: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk git worktree
+        cmd: rtk git worktree
+        out: line 1
+
+line 3
+
+[1m[0;36m── Git (passthrough: unsupported subcommands) ──[0m
+  [0;31mFAIL[0m  rtk git tag --list
+        cmd: rtk git tag --list
+        out: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk git remote -v
+        cmd: rtk git remote -v
+        out: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk git rev-parse HEAD
+        cmd: rtk git rev-parse HEAD
+        out: line 1
+
+line 3
+
+[1m[0;36m── GitHub CLI ──[0m
+  [0;33mSKIP[0m  gh commands (gh not authenticated)
+
+[1m[0;36m── Cargo (new) ──[0m
+  [0;31mFAIL[0m  rtk cargo build
+        cmd: rtk cargo build
+        out: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk cargo clippy
+        cmd: rtk cargo clippy
+        out: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk cargo test
+        got: nothing ran
+  [0;31mFAIL[0m  rtk cargo --help
+        expected: 'Usage:'
+        got: no usage here
+
+[1m[0;36m── Curl (new) ──[0m
+  [0;31mFAIL[0m  rtk curl JSON detect
+        expected: 'string'
+        got: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk curl plain text
+        cmd: rtk curl https://mockhttp.org/robots.txt
+        out: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk curl --help
+        expected: 'Usage:'
+        got: no usage here
+
+[1m[0;36m── Npm / Npx (new) ──[0m
+  [0;31mFAIL[0m  rtk npm --help
+        expected: 'Usage:'
+        got: no usage here
+  [0;31mFAIL[0m  rtk npx --help
+        expected: 'Usage:'
+        got: no usage here
+
+[1m[0;36m── Pnpm ──[0m
+  [0;31mFAIL[0m  rtk pnpm --help
+        expected: 'Usage:'
+        got: no usage here
+  [0;31mFAIL[0m  rtk pnpm build --help
+        expected: 'Usage:'
+        got: no usage here
+  [0;31mFAIL[0m  rtk pnpm typecheck --help
+        expected: 'Usage:'
+        got: no usage here
+
+[1m[0;36m── Grep ──[0m
+  [0;31mFAIL[0m  rtk grep pattern
+        cmd: rtk grep -r pub fn src/
+        out: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk grep finds results
+        expected: 'pub fn'
+        got: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk grep -t rejected by grep (expected failure)
+  [0;31mFAIL[0m  rtk rg with file type
+        cmd: rtk rg pub fn src/ -t rust
+        out: line 1
+
+line 3
+
+[1m[0;36m── Grep (extra args passthrough) ──[0m
+  [0;31mFAIL[0m  rtk grep -i case insensitive
+        cmd: rtk grep fn src/ -i
+        out: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk grep -A context lines
+        cmd: rtk grep fn run src/ -A 2
+        out: line 1
+
+line 3
+
+[1m[0;36m── Find ──[0m
+  [0;31mFAIL[0m  rtk find *.rs
+        cmd: rtk find *.rs src/
+        out: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk find shows files
+        expected: '.rs'
+        got: line 1
+
+line 3
+
+[1m[0;36m── Json ──[0m
+  [0;32mPASS[0m  rtk json file
+  [0;32mPASS[0m  rtk json shows schema
+
+[1m[0;36m── Deps ──[0m
+  [0;31mFAIL[0m  rtk deps .
+        cmd: rtk deps .
+        out: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk deps shows Cargo
+        expected: 'Cargo'
+        got: line 1
+
+line 3
+
+[1m[0;36m── Env ──[0m
+  [0;32mPASS[0m  rtk env
+  [0;31mFAIL[0m  rtk env --filter PATH
+        cmd: rtk env --filter PATH
+        out: line 1
+
+line 3
+
+[1m[0;36m── Log ──[0m
+  [0;32mPASS[0m  rtk log file
+
+[1m[0;36m── Summary ──[0m
+  [0;31mFAIL[0m  rtk summary echo hello
+        cmd: rtk summary echo hello
+        out: line 1
+
+line 3
+
+[1m[0;36m── Err ──[0m
+  [0;31mFAIL[0m  rtk err echo ok
+        cmd: rtk err echo ok
+        out: line 1
+
+line 3
+
+[1m[0;36m── Test runner ──[0m
+  [0;31mFAIL[0m  rtk test echo ok
+        cmd: rtk test echo ok
+        out: line 1
+
+line 3
+
+[1m[0;36m── Gain ──[0m
+  [0;31mFAIL[0m  rtk gain
+        cmd: rtk gain
+        out: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk gain --history
+        cmd: rtk gain --history
+        out: line 1
+
+line 3
+
+[1m[0;36m── Config & Init ──[0m
+  [0;31mFAIL[0m  rtk config
+        cmd: rtk config
+        out: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk init --show
+        cmd: rtk init --show
+        out: line 1
+
+line 3
+
+[1m[0;36m── Wget ──[0m
+  [0;33mSKIP[0m  rtk wget (wget not installed)
+
+[1m[0;36m── JS Tooling (help only, no project context) ──[0m
+  [0;31mFAIL[0m  rtk tsc --help
+        expected: 'Usage:'
+        got: no usage here
+  [0;31mFAIL[0m  rtk lint --help
+        expected: 'Usage:'
+        got: no usage here
+  [0;31mFAIL[0m  rtk prettier --help
+        expected: 'Usage:'
+        got: no usage here
+  [0;31mFAIL[0m  rtk next --help
+        expected: 'Usage:'
+        got: no usage here
+  [0;31mFAIL[0m  rtk playwright --help
+        expected: 'Usage:'
+        got: no usage here
+
+[1m[0;36m── Prisma (help only) ──[0m
+  [0;31mFAIL[0m  rtk prisma --help
+        expected: 'Usage:'
+        got: no usage here
+
+[1m[0;36m── Vitest (help only) ──[0m
+  [0;31mFAIL[0m  rtk vitest --help
+        expected: 'Usage:'
+        got: no usage here
+
+[1m[0;36m── Docker / Kubectl (help only) ──[0m
+  [0;31mFAIL[0m  rtk docker --help
+        expected: 'Usage:'
+        got: no usage here
+  [0;31mFAIL[0m  rtk kubectl --help
+        expected: 'Usage:'
+        got: no usage here
+
+[1m[0;36m── Python (conditional) ──[0m
+  [0;33mSKIP[0m  rtk pytest (pytest not installed)
+  [0;33mSKIP[0m  rtk ruff (ruff not installed)
+  [0;33mSKIP[0m  rtk pip (pip not installed)
+
+[1m[0;36m── Go (conditional) ──[0m
+  [0;33mSKIP[0m  rtk go (go not installed)
+  [0;33mSKIP[0m  rtk golangci-lint (golangci-lint not installed)
+
+[1m[0;36m── Graphite (conditional) ──[0m
+  [0;33mSKIP[0m  rtk gt (gt not installed)
+
+[1m[0;36m── Ruby (conditional) ──[0m
+  [0;33mSKIP[0m  rtk rspec (rspec not installed)
+  [0;33mSKIP[0m  rtk rubocop (rubocop not installed)
+  [0;33mSKIP[0m  rtk rake (rake not installed)
+
+[1m[0;36m── Global flags ──[0m
+  [0;31mFAIL[0m  rtk -u ls .
+        cmd: rtk -u ls .
+        out: line 1
+
+line 3
+  [0;32mPASS[0m  rtk --skip-env npm --help
+
+[1m[0;36m── CcEconomics ──[0m
+  [0;31mFAIL[0m  rtk cc-economics
+        cmd: rtk cc-economics
+        out: line 1
+
+line 3
+
+[1m[0;36m── Learn ──[0m
+  [0;32mPASS[0m  rtk learn --help
+  [0;31mFAIL[0m  rtk learn (no sessions)
+        cmd: rtk learn --since 0
+        out: line 1
+
+line 3
+
+[1m[0;36m── Rewrite ──[0m
+  [0;31mFAIL[0m  rewrite git status
+        expected: 'rtk git status'
+        got: git status
+  [0;31mFAIL[0m  rewrite cargo test
+        expected: 'rtk cargo test'
+        got: 
+  [0;31mFAIL[0m  rewrite compound &&
+        expected: 'rtk git status'
+        got: 
+  [0;31mFAIL[0m  rewrite pipe preserves
+        expected: '| head'
+        got: 
+
+[1m[0;36m── Rewrite (#345: RTK_DISABLED skip) ──[0m
+  [0;31mFAIL[0m  rewrite RTK_DISABLED=1 skip (expected failure)
+  [0;31mFAIL[0m  rewrite env RTK_DISABLED skip (expected failure)
+
+[1m[0;36m── Rewrite (#346: 2>&1 preserved) ──[0m
+  [0;31mFAIL[0m  rewrite 2>&1 preserved
+        expected: '2>&1'
+        got: 
+
+[1m[0;36m── Rewrite (#196: gh --json skip) ──[0m
+  [0;31mFAIL[0m  rewrite gh --json skip (expected failure)
+  [0;31mFAIL[0m  rewrite gh --jq skip (expected failure)
+  [0;31mFAIL[0m  rewrite gh --template skip (expected failure)
+  [0;31mFAIL[0m  rewrite gh normal works
+        expected: 'rtk gh pr list'
+        got: 
+
+[1m[0;36m── Verify ──[0m
+  [0;31mFAIL[0m  rtk verify
+        cmd: rtk verify
+        out: line 1
+
+line 3
+
+[1m[0;36m── Proxy ──[0m
+  [0;31mFAIL[0m  rtk bypass echo hello
+        cmd: rtk bypass echo hello
+        out: line 1
+
+line 3
+  [0;31mFAIL[0m  rtk bypass passthrough
+        expected: 'hello'
+        got: line 1
+
+line 3
+
+[1m[0;36m── Discover ──[0m
+  [0;31mFAIL[0m  rtk discover
+        cmd: rtk discover
+        out: line 1
+
+line 3
+
+[1m[0;36m── Diff ──[0m
+  [0;31mFAIL[0m  rtk diff identical files
+        cmd: rtk diff Cargo.toml Cargo.toml
+        out: line 1
+
+line 3
+  [0;32mPASS[0m  rtk diff differing files
+  [0;31mFAIL[0m  rtk diff shows classic changes
+        expected: '^< '
+        got: x < y
+
+[1m[0;36m── Wc ──[0m
+  [0;31mFAIL[0m  rtk wc Cargo.toml
+        cmd: rtk wc Cargo.toml
+        out: line 1
+
+line 3
+
+[1m[0;36m── Smart ──[0m
+  [0;31mFAIL[0m  rtk smart src/main.rs
+        cmd: rtk smart src/main.rs
+        out: line 1
+
+line 3
+
+[1m[0;36m── Json (edge cases) ──[0m
+  [0;32mPASS[0m  rtk json on TOML (#347)
+
+[1m[0;36m── Docker (conditional) ──[0m
+  [0;33mSKIP[0m  rtk docker (docker not running)
+
+[1m[0;36m── Hook check (#344) ──[0m
+  [0;31mFAIL[0m  rtk init --show hook version
+        expected: 'version'
+        got: line 1
+
+line 3
+
+[1m══════════════════════════════════════[0m
+[1mResults: [0;32m10 passed[0m, [0;31m92 failed[0m, [0;33m13 skipped[0m
+
+[0;31mFailures:[0m
+  - rtk --help
+  - rtk ls .
+  - rtk ls -la .
+  - rtk ls -lh .
+  - rtk ls -l src/
+  - rtk ls src/ -l (flag after)
+  - rtk ls multi paths
+  - rtk ls shows sizes
+  - rtk ls shows dirs with /
+  - rtk read Cargo.toml
+  - rtk read --level none Cargo.toml
+  - rtk read --level aggressive Cargo.toml
+  - rtk read -n Cargo.toml
+  - rtk read --max-lines 5 Cargo.toml
+  - rtk read stdin pipe
+  - rtk git status
+  - rtk git status --short
+  - rtk git status -s
+  - rtk git status --porcelain
+  - rtk git log
+  - rtk git log -5
+  - rtk git diff
+  - rtk git diff --stat
+  - rtk git branch
+  - rtk git fetch
+  - rtk git stash list
+  - rtk git worktree
+  - rtk git tag --list
+  - rtk git remote -v
+  - rtk git rev-parse HEAD
+  - rtk cargo build
+  - rtk cargo clippy
+  - rtk cargo test
+  - rtk cargo --help
+  - rtk curl JSON detect
+  - rtk curl plain text
+  - rtk curl --help
+  - rtk npm --help
+  - rtk npx --help
+  - rtk pnpm --help
+  - rtk pnpm build --help
+  - rtk pnpm typecheck --help
+  - rtk grep pattern
+  - rtk grep finds results
+  - rtk grep -t rejected by grep (expected failure, got success)
+  - rtk rg with file type
+  - rtk grep -i case insensitive
+  - rtk grep -A context lines
+  - rtk find *.rs
+  - rtk find shows files
+  - rtk deps .
+  - rtk deps shows Cargo
+  - rtk env --filter PATH
+  - rtk summary echo hello
+  - rtk err echo ok
+  - rtk test echo ok
+  - rtk gain
+  - rtk gain --history
+  - rtk config
+  - rtk init --show
+  - rtk tsc --help
+  - rtk lint --help
+  - rtk prettier --help
+  - rtk next --help
+  - rtk playwright --help
+  - rtk prisma --help
+  - rtk vitest --help
+  - rtk docker --help
+  - rtk kubectl --help
+  - rtk -u ls .
+  - rtk cc-economics
+  - rtk learn (no sessions)
+  - rewrite git status
+  - rewrite cargo test
+  - rewrite compound &&
+  - rewrite pipe preserves
+  - rewrite RTK_DISABLED=1 skip (expected failure, got success)
+  - rewrite env RTK_DISABLED skip (expected failure, got success)
+  - rewrite 2>&1 preserved
+  - rewrite gh --json skip (expected failure, got success)
+  - rewrite gh --jq skip (expected failure, got success)
+  - rewrite gh --template skip (expected failure, got success)
+  - rewrite gh normal works
+  - rtk verify
+  - rtk bypass echo hello
+  - rtk bypass passthrough
+  - rtk discover
+  - rtk diff identical files
+  - rtk diff shows classic changes
+  - rtk wc Cargo.toml
+  - rtk smart src/main.rs
+  - rtk init --show hook version
+[1m══════════════════════════════════════[0m
