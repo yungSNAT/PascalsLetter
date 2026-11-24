@@ -983,16 +983,35 @@ fn deliver(
     }
     let delivered = combine_streams(stdout, stderr);
     let seen = format!("{} {}", short_hash(command), short_hash(&delivered));
-    let out = if std::fs::read_to_string(&record).ok().as_deref() == Some(seen.as_str()) {
-        pointer(config, response, &delivered).or(emitted)
+    let repeat = if std::fs::read_to_string(&record).ok().as_deref() == Some(seen.as_str()) {
+        pointer(config, response, &delivered)
     } else {
         if std::fs::write(&record, seen).is_err() {
             let _ = std::fs::remove_file(&record);
         }
-        emitted
+        None
     };
-    let _ = std::fs::remove_file(&mark);
-    out
+    // Take the mark atomically: a call that started meanwhile overwrote it,
+    // and its record must not survive this call.
+    let mut taken = mark.clone().into_os_string();
+    taken.push(format!(".{}", std::process::id()));
+    let taken = std::path::PathBuf::from(taken);
+    let ours = std::fs::rename(&mark, &taken).is_ok()
+        && std::fs::read_to_string(&taken).ok().as_deref() == Some(id);
+    if ours {
+        let _ = std::fs::remove_file(&taken);
+        return repeat.or(emitted);
+    }
+    let _ = std::fs::remove_file(&record);
+    if let Ok(other) = std::fs::read(&taken) {
+        let _ = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&mark)
+            .and_then(|mut file| std::io::Write::write_all(&mut file, &other));
+        let _ = std::fs::remove_file(&taken);
+    }
+    emitted
 }
 
 fn pointer(config: &Config, response: &Value, delivered: &str) -> Option<String> {
