@@ -145,8 +145,8 @@ pub struct HooksConfig {
     pub transparent_prefixes: Vec<String>,
 
     /// Replace a Bash output identical to the one the same agent got from the
-    /// same command on its previous Bash call with a one-line pointer
-    /// (Claude Code PostToolUse only). Off by default.
+    /// same command on its last completed Bash call with a one-line pointer
+    /// (Claude Code PreToolUse and PostToolUse hooks). Off by default.
     #[serde(default)]
     pub dedup_repeats: bool,
     /// Suppress the "No hook installed" warning only.

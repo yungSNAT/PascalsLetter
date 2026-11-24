@@ -702,7 +702,6 @@ fn process_shell(
             .and_then(Value::as_bool)
             .unwrap_or(false)
     {
-        forget_last_call(config, event);
         return None;
     }
 
@@ -719,7 +718,6 @@ fn process_shell(
             .is_some_and(|d| command.contains(&d.display().to_string()))
     {
         record_recovery(command);
-        forget_last_call(config, event);
         return None;
     }
 
@@ -732,7 +730,6 @@ fn process_shell(
         .and_then(|s| s.as_str())
         .unwrap_or("");
     if stdout.len() + stderr.len() < pipeline.guards.min_size {
-        forget_last_call(config, event);
         return None;
     }
 
@@ -869,22 +866,36 @@ fn repeat_dir(config: &Config, event: &Value) -> Option<std::path::PathBuf> {
     )
 }
 
-/// The agent's own record: `agent_id` is sent only from a subagent.
-fn last_call_file(config: &Config, event: &Value) -> Option<std::path::PathBuf> {
+/// The agent's record of its last completed Bash call, and the mark of the
+/// call it has in flight. `agent_id` is sent only from a subagent.
+fn agent_files(config: &Config, event: &Value) -> Option<(std::path::PathBuf, std::path::PathBuf)> {
     let agent = event
         .get("agent_id")
         .and_then(Value::as_str)
         .unwrap_or("main");
-    Some(repeat_dir(config, event)?.join(short_hash(agent)))
+    let dir = repeat_dir(config, event)?;
+    let name = short_hash(agent);
+    Some((dir.join(&name), dir.join(format!("{name}.run"))))
 }
 
-/// A Bash call the hook leaves alone still ends the run of identical calls.
-fn forget_last_call(config: &Config, event: &Value) {
-    if config.hooks.dedup_repeats
-        && let Some(file) = last_call_file(config, event)
-    {
-        let _ = std::fs::remove_file(file);
-    }
+/// Pointers need the option, recall storage that accepts writes, the Claude
+/// Code hook and a Bash call.
+fn dedup_active(config: &Config, event: &Value) -> bool {
+    config.hooks.dedup_repeats
+        && matches!(
+            config.retriever.mode,
+            crate::core::retriever::RecoveryMode::Sqlite
+        )
+        && !crate::core::retriever::recovery_disabled_by_env()
+        && super::hook_agent().as_deref().unwrap_or("claude-code") == "claude-code"
+        && event.get("tool_name").and_then(Value::as_str) == Some("Bash")
+}
+
+fn tool_use_id(event: &Value) -> &str {
+    event
+        .get("tool_use_id")
+        .and_then(Value::as_str)
+        .unwrap_or("")
 }
 
 fn short_hash(text: &str) -> String {
@@ -903,9 +914,35 @@ pub fn forget_repeats(event: &Value) {
     }
 }
 
-pub fn note_bash_start(_event: &Value) {}
+/// PreToolUse of a Bash call. A call still marked never reached PostToolUse
+/// (it failed, was denied or interrupted, or its hook died), so the record
+/// no longer holds what the agent last got. Then this call is marked.
+pub fn note_bash_start(event: &Value) {
+    if event.get("tool_name").and_then(Value::as_str) == Some("Bash")
+        && let Ok(config) = Config::load()
+    {
+        note_bash_start_with(&config, event);
+    }
+}
 
-fn note_bash_start_with(_config: &Config, _event: &Value) {}
+fn note_bash_start_with(config: &Config, event: &Value) {
+    if !dedup_active(config, event) {
+        return;
+    }
+    let Some((record, mark)) = agent_files(config, event) else {
+        return;
+    };
+    if mark.exists() {
+        let _ = std::fs::remove_file(&record);
+    }
+    let written = mark.parent().is_some_and(|dir| {
+        crate::core::utils::create_private_dir(dir).is_ok()
+            && std::fs::write(&mark, tool_use_id(event)).is_ok()
+    });
+    if !written {
+        let _ = std::fs::remove_file(&record);
+    }
+}
 
 fn forget_repeats_with(config: &Config, event: &Value) {
     if let Some(dir) = repeat_dir(config, event) {
@@ -914,11 +951,12 @@ fn forget_repeats_with(config: &Config, event: &Value) {
 }
 
 /// Hands back what the agent gets for this Bash call (`emitted`, or `None`
-/// for the command's own output), unless `[hooks] dedup_repeats` is on and
-/// the same agent's previous Bash call ran the same command and got these
-/// same bytes: then a pointer to them. Claude Code sends `agent_id` only
-/// from a subagent, so its absence is the main thread; other hosts are left
-/// alone. Every other call becomes the agent's new previous call.
+/// for the command's own output), or a pointer when `[hooks] dedup_repeats`
+/// is on and the agent's last completed Bash call ran the same command and
+/// got these same bytes. A call counts as completed only when its PreToolUse
+/// marked it and nothing else started since; any doubt delivers the output.
+/// Claude Code sends `agent_id` only from a subagent, so its absence is the
+/// main thread; other hosts are left alone.
 fn deliver(
     config: &Config,
     event: &Value,
@@ -928,23 +966,32 @@ fn deliver(
     stderr: &str,
     emitted: Option<String>,
 ) -> Option<String> {
-    if !config.hooks.dedup_repeats
-        || super::hook_agent().as_deref().unwrap_or("claude-code") != "claude-code"
-    {
+    if !dedup_active(config, event) {
         return emitted;
     }
-    let Some(file) = last_call_file(config, event) else {
+    let Some((record, mark)) = agent_files(config, event) else {
         return emitted;
     };
-    let delivered = combine_streams(stdout, stderr);
-    let seen = format!("{} {}", short_hash(command), short_hash(&delivered));
-    if std::fs::read_to_string(&file).ok().as_deref() != Some(seen.as_str()) {
-        if let Some(dir) = file.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
-        let _ = std::fs::write(&file, seen);
+    let id = tool_use_id(event);
+    if id.is_empty() || std::fs::read_to_string(&mark).ok().as_deref() != Some(id) {
+        let _ = std::fs::remove_file(&record);
         return emitted;
     }
+    let delivered = combine_streams(stdout, stderr);
+    let seen = format!("{} {}", short_hash(command), short_hash(&delivered));
+    let out = if std::fs::read_to_string(&record).ok().as_deref() == Some(seen.as_str()) {
+        pointer(config, response, &delivered).or(emitted)
+    } else {
+        if std::fs::write(&record, seen).is_err() {
+            let _ = std::fs::remove_file(&record);
+        }
+        emitted
+    };
+    let _ = std::fs::remove_file(&mark);
+    out
+}
+
+fn pointer(config: &Config, response: &Value, delivered: &str) -> Option<String> {
     let crate::core::retriever::Stored::Saved(stored) = crate::core::retriever::store(
         &config.retriever,
         delivered.as_bytes(),
@@ -952,18 +999,19 @@ fn deliver(
         None,
         1,
     ) else {
-        return emitted;
+        return None;
     };
+    let text = format!(
+        "[rtk: same output as the previous run of this command ({} lines): rtk recall {}]",
+        delivered.lines().count(),
+        stored.hash
+    );
+    if text.len() >= delivered.len() {
+        return None;
+    }
     let mut updated = response.clone();
     let obj = updated.as_object_mut()?;
-    obj.insert(
-        "stdout".into(),
-        json!(format!(
-            "[rtk: same output as the previous run of this command ({} lines): rtk recall {}]",
-            delivered.lines().count(),
-            stored.hash
-        )),
-    );
+    obj.insert("stdout".into(), json!(text));
     obj.insert("stderr".into(), json!(""));
     Some(
         json!({

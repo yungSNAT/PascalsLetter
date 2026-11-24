@@ -59,7 +59,7 @@ enabled = false             # opt-in anonymous daily ping (off by default) — s
 exclude_commands = []       # commands to never auto-rewrite
 suppress_hook_warning = false # suppress the missing-hook warning only
 wrap_fish_scripts = false   # opt in to handing a fish script back as `rtk run --shell fish -c '…'`
-dedup_repeats = false       # Claude Code: a Bash output identical to the same agent's previous run of the same command becomes a one-line `rtk recall` pointer
+dedup_repeats = false       # Claude Code: a Bash output identical to the same agent's last completed run of the same command becomes a one-line `rtk recall` pointer (see Repeated outputs)
 
 [awareness]
 level = "default"           # "default", "high", "full" — see Awareness level
@@ -137,6 +137,10 @@ rtk config recall disabled  # no recovery storage
 ```
 
 Setting a mode rewrites only the relevant keys in `config.toml` (comments and other sections are preserved), and migrates a legacy `[tee]` section — its `max_files`/`max_file_size`/`directory` values are carried over. The equivalent config field, if you prefer editing the file directly, is `[retriever] mode = "sqlite" | "tee" | "disabled"` (see the full structure above).
+
+### Repeated outputs
+
+With `[hooks] dedup_repeats = true`, the Claude Code PostToolUse hook replaces a Bash output with `[rtk: same output as the previous run of this command (N lines): rtk recall <hash>]` when the same agent's last completed Bash call ran the same command and got the same bytes. Each agent (the main thread, or a subagent by `agent_id`) has its own record. The output is delivered whole whenever completion is in doubt: the previous call failed, was denied or interrupted (Claude Code fires no PostToolUse for these), Bash calls overlapped, the PreToolUse hook is not installed, the hook input lacks `tool_use_id`, or recall storage is not `sqlite`. After a context compaction the pointer can name output that has left the context; `rtk recall <hash>` returns it. A Claude Code version that omits `agent_id` inside subagents makes them share the main thread's record.
 
 To see how often your assistant actually goes back for elided output — and which filter caps deserve tuning — see [`rtk gain --recalls`](../analytics/gain.md#recall-efficiency).
 
