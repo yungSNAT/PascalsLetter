@@ -485,6 +485,8 @@ jobs:
           persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: clippy, rustfmt
 
       # The Linux test leg's cache holds this debug build's dependencies; reuse
       # it rather than saving a copy of our own.
@@ -511,8 +513,23 @@ jobs:
       - name: Install Go tools
         run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
 
+      # tools/dev is its own workspace, so the workspace jobs do not see it. Its
+      # parity test replays the cases recorded from the shell benchmark it replaced.
+      # Its build goes outside the checkout: the raw `find .` rows would count it.
+      - name: Lint and test the benchmark tool
+        run: |
+          cargo fmt --manifest-path tools/dev/Cargo.toml --check
+          cargo clippy --manifest-path tools/dev/Cargo.toml --locked --all-targets -- -D warnings
+          cargo test --manifest-path tools/dev/Cargo.toml --locked
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/rtk-dev-target
+
+      # Built, then run directly: `cargo run` would add its CARGO_* variables to
+      # the environment the env rows measure.
       - name: Run benchmark
-        run: ./scripts/benchmark.sh
+        run: |
+          CARGO_TARGET_DIR="$RUNNER_TEMP/rtk-dev-target" cargo build --manifest-path tools/dev/Cargo.toml --locked
+          "$RUNNER_TEMP/rtk-dev-target/debug/rtk-dev" benchmark
         env:
           RTK_BIN: target/debug/rtk
 
