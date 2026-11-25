@@ -2462,7 +2462,10 @@ mod tests {
         let now = std::time::SystemTime::now();
 
         prune_repeats(&live, now + std::time::Duration::from_secs(1800));
-        assert!(tombstone.exists(), "a tombstone under an hour old may be mid-delete");
+        assert!(
+            tombstone.exists(),
+            "a tombstone under an hour old may be mid-delete"
+        );
 
         prune_repeats(&live, now + std::time::Duration::from_secs(2 * 3600));
         assert!(!tombstone.exists(), "an hour-old tombstone is deleted");
