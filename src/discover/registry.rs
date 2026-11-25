@@ -2879,6 +2879,21 @@ mod tests {
         }
 
         #[test]
+        fn test_lone_cr_after_rewrite_prefix_is_kept() {
+            // Bash does not split words at `\r`, so `\r12` is an argument and `>` sends
+            // stdout to `x`. Trimming the `\r` would turn `12>` into a redirect of
+            // descriptor 12 (found by the rewrite fuzz target).
+            assert_eq!(
+                rewrite_command_no_prefixes("npx \r12>x", &[]),
+                Some("rtk npx \r12>x".into())
+            );
+            assert_eq!(
+                rewrite_command_no_prefixes("ls & npx \r\r\r12>x\nls", &[]),
+                Some("rtk ls & rtk npx \r\r\r12>x\nrtk ls".into())
+            );
+        }
+
+        #[test]
         fn test_quoted_lone_cr_does_not_bail_out_the_block() {
             // The raw-break parity check counts `\n` and the `\r` of a CRLF pair
             // only. Counting a quoted lone `\r` too would make the block look
