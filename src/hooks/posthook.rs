@@ -2443,6 +2443,29 @@ mod tests {
         assert!(other.exists(), "only taken marks are removed");
     }
 
+    /// A tombstone a partial delete left behind (its time refreshed by the
+    /// entries already removed) is retried after an hour, not another week.
+    #[test]
+    fn test_prune_repeats_retries_a_leftover_tombstone_after_an_hour() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let live = session_dir(&config, "live");
+        std::fs::create_dir_all(&live).unwrap();
+        let mut name = session_dir(&config, "old").into_os_string();
+        name.push(".pruning.4242");
+        let tombstone = std::path::PathBuf::from(name);
+        std::fs::create_dir_all(&tombstone).unwrap();
+        std::fs::write(tombstone.join("left"), "x").unwrap();
+        let now = std::time::SystemTime::now();
+
+        prune_repeats(&live, now + std::time::Duration::from_secs(1800));
+        assert!(tombstone.exists(), "a tombstone under an hour old may be mid-delete");
+
+        prune_repeats(&live, now + std::time::Duration::from_secs(2 * 3600));
+        assert!(!tombstone.exists(), "an hour-old tombstone is deleted");
+        assert!(live.exists(), "the live session survives");
+    }
+
     /// When another process holds a file open on Windows without delete share,
     /// renaming the folder fails and the folder (mark and records) is left alone.
     #[cfg(windows)]
