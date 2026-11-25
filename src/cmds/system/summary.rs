@@ -324,3 +324,31 @@ fn extract_number(text: &str, after: &str) -> Option<usize> {
         .and_then(|c| c.get(1))
         .and_then(|m| m.as_str().parse().ok())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_number_takes_the_count_before_the_requested_word() {
+        let line = "3 failed, 12 passed, 1 skipped";
+        assert_eq!(extract_number(line, "passed"), Some(12));
+        assert_eq!(extract_number(line, "failed"), Some(3));
+        assert_eq!(extract_number(line, "skipped"), Some(1));
+        assert_eq!(extract_number(line, "ignored"), None);
+        assert_eq!(extract_number("2 passed", "passed"), Some(2));
+        assert_eq!(extract_number("1failed 7passed", "passed"), Some(7));
+    }
+
+    #[test]
+    fn summarize_tests_counts_each_kind() {
+        let mut result = Vec::new();
+        summarize_tests(
+            "test result: FAILED. 15 passed; 2 failed; 3 ignored; 0 measured",
+            &mut result,
+        );
+        assert!(result.contains(&"   [ok] 15 passed".to_string()), "{result:?}");
+        assert!(result.contains(&"   [FAIL] 2 failed".to_string()), "{result:?}");
+        assert!(result.contains(&"   skip 3 skipped".to_string()), "{result:?}");
+    }
+}
