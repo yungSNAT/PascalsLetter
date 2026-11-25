@@ -2619,7 +2619,9 @@ fn strip_word_prefix<'a>(cmd: &'a str, prefix: &str) -> Option<&'a str> {
         && cmd.starts_with(prefix)
         && cmd.as_bytes()[prefix.len()] == b' '
     {
-        Some(cmd[prefix.len() + 1..].trim_start())
+        // Only bash's word separators: `trim_start` would also eat a `\r` that bash keeps
+        // in the next word, so `npx \r12>x` would gain a descriptor-12 redirect.
+        Some(cmd[prefix.len() + 1..].trim_start_matches(is_word_boundary_whitespace))
     } else {
         None
     }
@@ -2875,6 +2877,21 @@ mod tests {
             assert_eq!(
                 rewrite_command_no_prefixes("git status\rgit log\ngit diff", &[]),
                 Some("rtk git status\rgit log\nrtk git diff".into())
+            );
+        }
+
+        #[test]
+        fn test_lone_cr_after_rewrite_prefix_is_kept() {
+            // Bash does not split words at `\r`, so `\r12` is an argument and `>` sends
+            // stdout to `x`. Trimming the `\r` would turn `12>` into a redirect of
+            // descriptor 12 (found by the rewrite fuzz target).
+            assert_eq!(
+                rewrite_command_no_prefixes("npx \r12>x", &[]),
+                Some("rtk npx \r12>x".into())
+            );
+            assert_eq!(
+                rewrite_command_no_prefixes("ls & npx \r\r\r12>x\nls", &[]),
+                Some("rtk ls & rtk npx \r\r\r12>x\nrtk ls".into())
             );
         }
 
