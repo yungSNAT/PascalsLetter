@@ -750,107 +750,6 @@ fn an_empty_history_says_what_a_running_proxy_still_needs() {
     );
 }
 
-/// Runs a command with its standard input and output on a pseudo-terminal,
-/// typing `input` first, so the views take their terminal paths.
-mod tty {
-    use std::fs::File;
-    use std::io::{Read, Write};
-    use std::os::fd::FromRawFd;
-    use std::os::unix::fs::OpenOptionsExt;
-    use std::process::{Command, Stdio};
-
-    pub struct Run {
-        pub screen: String,
-        pub stderr: String,
-        pub success: bool,
-    }
-
-    #[allow(unsafe_code)]
-    fn open() -> (File, File) {
-        // SAFETY: plain libc calls on a descriptor this function owns; the
-        // name buffer is large enough and NUL-terminated by `ptsname_r`.
-        // nosemgrep: unsafe-block
-        unsafe {
-            let fd = libc::posix_openpt(libc::O_RDWR | libc::O_NOCTTY);
-            assert!(fd >= 0, "posix_openpt");
-            let master = File::from_raw_fd(fd);
-            assert_eq!(libc::grantpt(fd), 0, "grantpt");
-            assert_eq!(libc::unlockpt(fd), 0, "unlockpt");
-            let size = libc::winsize {
-                ws_row: 40,
-                ws_col: 160,
-                ws_xpixel: 0,
-                ws_ypixel: 0,
-            };
-            assert_eq!(libc::ioctl(fd, libc::TIOCSWINSZ, &size), 0, "set size");
-            let mut name = [0 as libc::c_char; 128];
-            assert_eq!(libc::ptsname_r(fd, name.as_mut_ptr(), name.len()), 0);
-            let path = std::ffi::CStr::from_ptr(name.as_ptr())
-                .to_str()
-                .expect("a UTF-8 terminal name")
-                .to_owned();
-            let slave = std::fs::OpenOptions::new()
-                .read(true)
-                .write(true)
-                .custom_flags(libc::O_NOCTTY)
-                .open(path)
-                .expect("open the terminal");
-            (master, slave)
-        }
-    }
-
-    pub fn run(cmd: Command, input: &[u8]) -> Run {
-        run_answering(cmd, input, None)
-    }
-
-    /// [`run`], typing `answer.1` once the screen shows `answer.0`.
-    pub fn run_answering(mut cmd: Command, input: &[u8], answer: Option<(&str, &[u8])>) -> Run {
-        let (mut master, slave) = open();
-        cmd.stdin(Stdio::from(slave.try_clone().expect("clone terminal")))
-            .stdout(Stdio::from(slave))
-            .stderr(Stdio::piped())
-            .env("CLICOLOR_FORCE", "1");
-        let mut child = cmd.spawn().expect("spawn on a terminal");
-        // The command holds this process's copies of the terminal; with them
-        // closed, reading the master ends once the child exits.
-        drop(cmd);
-        master.write_all(input).expect("type the input");
-        let mut answer = answer.map(|(seen, keys)| (seen.as_bytes().to_vec(), keys.to_vec()));
-        let mut typist = master.try_clone().expect("clone the terminal");
-        let reader = std::thread::spawn(move || {
-            let mut screen = Vec::new();
-            let mut buf = [0u8; 8192];
-            while let Ok(n) = master.read(&mut buf) {
-                if n == 0 {
-                    break;
-                }
-                screen.extend_from_slice(&buf[..n]);
-                if let Some((seen, keys)) = &answer
-                    && screen.windows(seen.len()).any(|w| w == seen.as_slice())
-                {
-                    typist.write_all(keys).expect("type the answer");
-                    answer = None;
-                }
-            }
-            screen
-        });
-        let mut stderr = String::new();
-        child
-            .stderr
-            .take()
-            .expect("stderr")
-            .read_to_string(&mut stderr)
-            .expect("read stderr");
-        let status = child.wait().expect("wait for rtk");
-        let screen = reader.join().expect("terminal reader");
-        Run {
-            screen: String::from_utf8_lossy(&screen).replace("\r\n", "\n"),
-            stderr,
-            success: status.success(),
-        }
-    }
-}
-
 /// `text` as `colored` paints it with the SGR `codes`.
 fn painted(codes: &str, text: &str) -> String {
     format!("\x1b[{codes}m{text}\x1b[0m")
@@ -861,7 +760,7 @@ fn a_terminal_summary_colours_each_band_and_offers_sharing() {
     let home = rich_home();
     // A hint shown a moment ago is not due again; this fork never shows one.
     home.write("rtk/pro-hint-shown", "");
-    let run = tty::run(home.command(&[]), b"");
+    let run = common::tty::run(home.command(&[]), b"");
     assert!(run.success, "{}", run.stderr);
     let screen = &run.screen;
     assert!(!screen.contains("pro.rtk-ai.app"), "{screen}");
@@ -881,7 +780,7 @@ fn a_terminal_summary_colours_each_band_and_offers_sharing() {
     }
     assert!(screen.contains("\x1b[36m"), "a cyan impact bar:\n{screen}");
 
-    let quiet = tty::run(quiet_home().command(&[]), b"");
+    let quiet = common::tty::run(quiet_home().command(&[]), b"");
     assert!(
         quiet.screen.contains(&painted("1;31", "0.0%")),
         "{}",
@@ -890,7 +789,7 @@ fn a_terminal_summary_colours_each_band_and_offers_sharing() {
 
     let middle = Home::new();
     middle.commands(&[("rtk git diff", 1000, 500, "")]);
-    let run = tty::run(middle.command(&[]), b"");
+    let run = common::tty::run(middle.command(&[]), b"");
     assert!(
         run.screen.contains(&painted("1;33", "50.0%")),
         "{}",
@@ -901,7 +800,7 @@ fn a_terminal_summary_colours_each_band_and_offers_sharing() {
 #[test]
 fn a_terminal_pipeline_detail_colours_its_meters_by_band() {
     let home = rich_home();
-    let run = tty::run(home.command(&["--pipeline", "croft-pipe"]), b"");
+    let run = common::tty::run(home.command(&["--pipeline", "croft-pipe"]), b"");
     assert!(run.success, "{}", run.stderr);
     for expected in [
         painted("32", "██████░░░░"),
@@ -919,7 +818,7 @@ fn a_terminal_pipeline_detail_colours_its_meters_by_band() {
 #[test]
 fn a_terminal_recall_table_colours_rates_by_band() {
     let home = recall_home("sqlite");
-    let run = tty::run(home.command(&["--recalls"]), b"");
+    let run = common::tty::run(home.command(&["--recalls"]), b"");
     assert!(run.success, "{}", run.stderr);
     for expected in [
         painted("1;31", "too aggressive"),
@@ -937,7 +836,7 @@ fn a_terminal_recall_table_colours_rates_by_band() {
 #[test]
 fn a_terminal_reset_asks_and_resets_on_yes() {
     let home = quiet_home();
-    let run = tty::run(home.command(&["--reset"]), b"y\n");
+    let run = common::tty::run(home.command(&["--reset"]), b"y\n");
     assert!(run.success, "{}", run.stderr);
     assert!(
         run.stderr.contains("Continue? [y/N]"),
@@ -961,7 +860,7 @@ fn a_terminal_reset_asks_and_resets_on_yes() {
 fn a_terminal_watch_opens_the_dashboard_and_quits_on_q() {
     let home = rich_home();
     // The dashboard takes the alternate screen once it starts drawing.
-    let run = tty::run_answering(home.command(&["--watch"]), b"", Some(("\x1b[?1049h", b"q")));
+    let run = common::tty::run_answering(home.command(&["--watch"]), b"", &[("\x1b[?1049h", b"q")]);
     assert!(run.success, "{}", run.stderr);
     assert!(run.screen.contains("\x1b[?1049h"), "{}", run.screen);
     assert!(
