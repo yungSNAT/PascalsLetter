@@ -347,8 +347,17 @@ mod tests {
             "test result: FAILED. 15 passed; 2 failed; 3 ignored; 0 measured",
             &mut result,
         );
-        assert!(result.contains(&"   [ok] 15 passed".to_string()), "{result:?}");
-        assert!(result.contains(&"   [FAIL] 2 failed".to_string()), "{result:?}");
-        assert!(result.contains(&"   skip 3 skipped".to_string()), "{result:?}");
+        assert!(
+            result.contains(&"   [ok] 15 passed".to_string()),
+            "{result:?}"
+        );
+        assert!(
+            result.contains(&"   [FAIL] 2 failed".to_string()),
+            "{result:?}"
+        );
+        assert!(
+            result.contains(&"   skip 3 skipped".to_string()),
+            "{result:?}"
+        );
     }
 }
