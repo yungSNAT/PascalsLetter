@@ -2589,6 +2589,8 @@ mod tests {
             tokens_out: 995,
         });
         assert_eq!(data.headline().as_deref(), Some("80% prompt-cache hit"));
+        data.hook = None;
+        assert_eq!(data.headline().as_deref(), Some("80% prompt-cache hit"));
         data.proxy = Some(proxy_row(100, 0, 0, 0));
         assert_eq!(data.headline(), None);
         data.proxy = None;
