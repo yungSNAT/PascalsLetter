@@ -59,7 +59,10 @@ impl Home {
 
     fn command(&self, args: &[&str]) -> Command {
         let mut cmd = common::rtk_command_in(self.path());
-        cmd.arg("gain").args(args).env("LC_ALL", "C");
+        cmd.arg("gain")
+            .args(args)
+            .env("LC_ALL", "C")
+            .env("RTK_PROXY_BIND", common::no_proxy_bind());
         cmd
     }
 

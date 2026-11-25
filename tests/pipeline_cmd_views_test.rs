@@ -123,6 +123,7 @@ impl Home {
         cmd.env("RTK_CONFIG_DIR", self.path().join("config"))
             .env("TMPDIR", tmp)
             .env("LC_ALL", "C")
+            .env("RTK_PROXY_BIND", common::no_proxy_bind())
             .args(args);
         cmd
     }
