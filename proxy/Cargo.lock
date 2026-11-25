@@ -1770,7 +1770,6 @@ dependencies = [
  "icm-store",
  "image",
  "mimalloc",
- "once_cell",
  "regex",
  "reqwest",
  "rtk-engine",
