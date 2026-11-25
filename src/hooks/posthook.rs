@@ -1123,8 +1123,8 @@ const REPEAT_SESSION_MAX_AGE: std::time::Duration = std::time::Duration::from_se
 const TAKEN_MARK_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(3600);
 
 /// Removes other sessions' folders untouched for `REPEAT_SESSION_MAX_AGE`
-/// and taken marks older than `TAKEN_MARK_MAX_AGE`. `live` (the session
-/// being started or used) is never removed. Old folders are renamed to a
+/// and taken marks and leftover tombstones older than `TAKEN_MARK_MAX_AGE`.
+/// `live` (the session being started or used) is never removed. Old folders are renamed to a
 /// tombstone before deletion so a resuming session starts clean instead of
 /// reading a half-deleted folder, and a failed rename leaves the folder alone.
 fn is_pruning_tombstone(name: &std::ffi::OsStr) -> bool {
@@ -1157,7 +1157,10 @@ fn prune_repeats_with(
         if path == live {
             prune_taken_marks(&path, now);
         } else if is_pruning_tombstone(&entry.file_name()) {
-            if older_than(&path, now, REPEAT_SESSION_MAX_AGE) {
+            // No session reads a tombstone, so only a delete in progress needs
+            // waiting out; a partial delete refreshes its time, and a week's
+            // gate would defer the retry by another week.
+            if older_than(&path, now, TAKEN_MARK_MAX_AGE) {
                 remove_dir(&path);
             }
         } else if older_than(&path, now, REPEAT_SESSION_MAX_AGE) {
