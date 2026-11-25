@@ -962,7 +962,16 @@ fn promote_checks_the_shadow_and_asks_on_a_terminal() {
     // A superuser writes through the mode, so only an ordinary user sees the refusal.
     if std::fs::write(live.join("probe"), "").is_err() {
         let out = home.fails(&["pipeline", "promote", "stuck", "--force"]);
-        assert!(out.contains("move "), "{out}");
+        assert!(
+            out.contains(&format!(
+                "move {} to {}",
+                home.path()
+                    .join("config/pipelines/shadow/stuck.toml")
+                    .display(),
+                live.join("stuck.toml").display()
+            )),
+            "{out}"
+        );
         assert!(
             home.read("config/pipelines/shadow/stuck.toml").is_some(),
             "the shadow install stays"
