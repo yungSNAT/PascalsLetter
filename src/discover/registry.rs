@@ -2619,7 +2619,9 @@ fn strip_word_prefix<'a>(cmd: &'a str, prefix: &str) -> Option<&'a str> {
         && cmd.starts_with(prefix)
         && cmd.as_bytes()[prefix.len()] == b' '
     {
-        Some(cmd[prefix.len() + 1..].trim_start())
+        // Only bash's word separators: `trim_start` would also eat a `\r` that bash keeps
+        // in the next word, so `npx \r12>x` would gain a descriptor-12 redirect.
+        Some(cmd[prefix.len() + 1..].trim_start_matches(is_word_boundary_whitespace))
     } else {
         None
     }
