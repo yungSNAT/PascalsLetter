@@ -6,6 +6,7 @@ use std::io::{Read, Write};
 use std::os::fd::FromRawFd;
 use std::os::unix::fs::OpenOptionsExt;
 use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 pub struct Run {
     pub screen: String,
@@ -92,17 +93,34 @@ pub fn run_answering(mut cmd: Command, input: &[u8], answers: &[(&str, &[u8])]) 
         }
         screen
     });
-    let mut stderr = String::new();
-    child
-        .stderr
-        .take()
-        .expect("stderr")
-        .read_to_string(&mut stderr)
-        .expect("read stderr");
-    let status = child.wait().expect("wait for rtk");
+    let mut pipe = child.stderr.take().expect("stderr");
+    let stderr = std::thread::spawn(move || {
+        let mut text = String::new();
+        pipe.read_to_string(&mut text).expect("read stderr");
+        text
+    });
+    // A prompt that never shows leaves the child waiting on the terminal for
+    // good: stop it, and fail with what it drew, rather than hang the suite.
+    let deadline = Instant::now() + Duration::from_secs(120);
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("wait for rtk") {
+            break Some(status);
+        }
+        if Instant::now() > deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            break None;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
     let screen = reader.join().expect("terminal reader");
+    let screen = String::from_utf8_lossy(&screen).replace("\r\n", "\n");
+    let stderr = stderr.join().expect("stderr reader");
+    let Some(status) = status else {
+        panic!("still running after 120s, stopped; screen:\n{screen}\nstderr:\n{stderr}");
+    };
     Run {
-        screen: String::from_utf8_lossy(&screen).replace("\r\n", "\n"),
+        screen,
         stderr,
         success: status.success(),
     }
