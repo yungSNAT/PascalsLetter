@@ -7,6 +7,7 @@ use crate::core::truncate::CAP_WARNINGS;
 use crate::core::utils::truncate;
 use anyhow::{Context, Result};
 use regex::Regex;
+use std::sync::LazyLock;
 
 const MAX_SUMMARY_LIST: usize = CAP_WARNINGS;
 const MAX_SUMMARY_KEYS: usize = CAP_WARNINGS;
@@ -311,9 +312,15 @@ fn summarize_generic(output: &str, result: &mut Vec<String>) {
     }
 }
 
+/// `<count> <word>` for each word `summarize_tests` counts, compiled once rather than per line.
+static COUNT_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(\d+)\s*(passed|failed|skipped|ignored)").unwrap());
+
+/// The count before the first `after` in `text`; `after` is one of `COUNT_RE`'s words.
 fn extract_number(text: &str, after: &str) -> Option<usize> {
-    let re = Regex::new(&format!(r"(\d+)\s*{}", after)).ok()?;
-    re.captures(text)
+    COUNT_RE
+        .captures_iter(text)
+        .find(|c| &c[2] == after)
         .and_then(|c| c.get(1))
         .and_then(|m| m.as_str().parse().ok())
 }
