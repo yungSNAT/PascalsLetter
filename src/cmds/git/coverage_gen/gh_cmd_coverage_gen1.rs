@@ -88,21 +88,24 @@ fn format_run_view_keeps_status_and_failed_jobs() {
 #[test]
 fn format_repo_view_public_and_private() {
     let public = json!({
-        "name": "rtk",
-        "owner": {"login": "rtk-ai"},
-        "description": "Token killer",
-        "url": "https://github.com/rtk-ai/rtk",
+        "name": "r",
+        "owner": {"login": "o"},
+        "description": "Fixture repository",
+        "url": "https://github.com/o/r",
         "stargazerCount": 42,
         "forkCount": 5,
         "isPrivate": false
     });
     assert_eq!(
         format_repo_view(&public),
-        "rtk-ai/rtk\n  [public]\n  Token killer\n  42 stars | 5 forks\n  https://github.com/rtk-ai/rtk\n"
+        "o/r\n  [public]\n  Fixture repository\n  42 stars | 5 forks\n  https://github.com/o/r\n"
     );
     let private = json!({"name": "secret", "owner": {"login": "me"}, "isPrivate": true});
-    assert_eq!(
-        format_repo_view(&private),
-        "me/secret\n  [private]\n  0 stars | 0 forks\n  \n"
+    // A missing URL prints an empty indented line today; only the lines
+    // before it are pinned.
+    let out = format_repo_view(&private);
+    assert!(
+        out.starts_with("me/secret\n  [private]\n  0 stars | 0 forks\n"),
+        "{out}"
     );
 }

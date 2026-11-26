@@ -72,7 +72,7 @@ mod cli {
 
     #[test]
     fn worktree_separates_successful_writes_and_listings_from_failures() {
-        if !test_isolation::rtk_binary_is_built() {
+        if !test_isolation::rtk_binary_or_skip() {
             return;
         }
 
@@ -135,7 +135,7 @@ esac
 
     #[test]
     fn verbose_git_reports_the_output_route_without_changing_passthrough_bytes() {
-        if !test_isolation::rtk_binary_is_built() {
+        if !test_isolation::rtk_binary_or_skip() {
             return;
         }
 
