@@ -4,8 +4,8 @@
 //! cost estimates exist only when the operator adds them (via
 //! `RTK_PROXY_MODELS_TOML` or a registry edit). Loaded once at startup.
 
-use once_cell::sync::Lazy;
 use serde::Deserialize;
+use std::sync::LazyLock;
 use std::sync::RwLock;
 
 /// The embedded default registry — only a **seed**. At startup the DB copy (in
@@ -92,7 +92,7 @@ impl Registry {
 /// The process-wide registry. Starts as the embedded default so pricing works
 /// before the DB is read (and in tests); `install` overwrites it at startup with
 /// the DB copy — the shared source of truth for every pod.
-static REGISTRY: Lazy<RwLock<Registry>> = Lazy::new(|| {
+static REGISTRY: LazyLock<RwLock<Registry>> = LazyLock::new(|| {
     RwLock::new(Registry::parse(DEFAULT_TOML).expect("embedded models.toml must parse"))
 });
 
