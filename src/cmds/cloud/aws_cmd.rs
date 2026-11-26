@@ -2791,3 +2791,15 @@ upload: file10.txt to s3://bucket/file10.txt
         );
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/aws_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_cloud_aws_cmd;
+
+#[cfg(test)]
+#[path = "coverage_gen/aws_cmd_coverage_gen2.rs"]
+mod coverage_gen2_src_cmds_cloud_aws_cmd;
+
+#[cfg(test)]
+#[path = "coverage_gen/aws_cmd_coverage_gen1.rs"]
+mod coverage_gen1_src_cmds_cloud_aws_cmd;
