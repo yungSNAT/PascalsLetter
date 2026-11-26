@@ -51,3 +51,7 @@ pub fn run_test(command: &[String], shell: Option<&str>, verbose: u8) -> Result<
         )),
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/runner_coverage_gen.rs"]
+mod coverage_gen_src_cmds_rust_runner;
