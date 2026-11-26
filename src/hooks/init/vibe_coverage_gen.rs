@@ -31,7 +31,7 @@ fn global_vibe_lifecycle_leaves_artifacts_untouched_in_dry_run() {
         let hooks = fs::read_to_string(&hooks_path).unwrap();
         let prompt = fs::read_to_string(&prompt_path).unwrap();
         assert_eq!(hooks, vibe_hook_entry());
-        assert!(!prompt.trim().is_empty());
+        assert_eq!(prompt, awareness_content(InitContext::default().awareness));
 
         uninstall_vibe(verbose_context(true)).unwrap();
         assert!(is_configured());
@@ -172,7 +172,7 @@ fn vibe_io_errors_leave_unreadable_registry_and_blocked_prompt_in_place() {
 #[cfg(unix)]
 #[test]
 fn vibe_cli_treats_end_of_input_as_declining_the_patch() {
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_or_skip() {
         return;
     }
 

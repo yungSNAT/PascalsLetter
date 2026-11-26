@@ -315,7 +315,7 @@ fn omp_status_distinguishes_current_stock_from_an_older_stock_extension() {
 
     #[cfg(unix)]
     {
-        if !test_isolation::rtk_binary_is_built() {
+        if !test_isolation::rtk_binary_or_skip() {
             return;
         }
         let output = test_isolation::rtk_command()
