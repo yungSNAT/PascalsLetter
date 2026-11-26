@@ -285,10 +285,11 @@ impl Store {
         }
     }
 
-    /// Totals across all recorded requests.
+    /// Totals across all recorded requests, plus the successful requests'
+    /// saved tokens priced as a modelled band (`crate::pricing::ModelledSavings`).
     pub async fn summary(&self) -> serde_json::Value {
         self.query(|c| {
-            c.query_row(
+            let mut totals = c.query_row(
                 "SELECT count(*), COALESCE(sum(tokens_in),0), COALESCE(sum(tokens_out),0),
                         COALESCE(sum(tokens_saved),0),
                         COALESCE(sum(CASE WHEN status < 400 THEN cost_usd ELSE 0 END),0),
@@ -305,7 +306,14 @@ impl Store {
                         "failed_requests": r.get::<_, i64>(5)?,
                     }))
                 },
-            )
+            )?;
+            let saved = saved_by_model(c)?;
+            let m = crate::pricing::modelled_savings(saved, crate::pricing::input_rate);
+            totals["saved_usd_low"] = m.usd_low.into();
+            totals["saved_usd_high"] = m.usd_high.into();
+            totals["saved_tokens_priced"] = m.priced_tokens.into();
+            totals["saved_tokens_unpriced"] = m.unpriced_tokens.into();
+            Ok(totals)
         })
         .await
     }
@@ -679,6 +687,16 @@ impl Store {
         .await
         .unwrap_or_default()
     }
+}
+
+/// Successful requests' saved tokens, per model.
+fn saved_by_model(c: &Connection) -> rusqlite::Result<Vec<(String, i64)>> {
+    let mut stmt = c.prepare(
+        "SELECT model, COALESCE(sum(MAX(tokens_saved, 0)),0) FROM usage_records
+         WHERE status < 400 GROUP BY model",
+    )?;
+    stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect()
 }
 
 #[cfg(test)]
