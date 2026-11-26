@@ -66,8 +66,9 @@ pub fn modelled_savings(
         match rate(&model) {
             Some((input_price, read_mult)) => {
                 let fresh = saved as f64 * input_price / 1_000_000.0;
-                m.usd_low += fresh * read_mult;
-                m.usd_high += fresh * CACHE_WRITE_MULT;
+                let (read, write) = (fresh * read_mult, fresh * CACHE_WRITE_MULT);
+                m.usd_low += read.min(write);
+                m.usd_high += read.max(write);
                 m.priced_tokens += saved;
             }
             None => m.unpriced_tokens += saved,
