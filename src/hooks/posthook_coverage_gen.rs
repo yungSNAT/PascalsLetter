@@ -72,18 +72,26 @@ fn shell_tokens(out: &str) -> usize {
 fn kill_switches_stop_processing_before_any_load() {
     let event = repetitive_bash();
     let scratch = crate::core::test_isolation::tempdir();
-    assert!(
-        crate::core::test_isolation::with_root(scratch.path(), || process(&event)).is_some(),
-        "premise: without a kill switch the event is filtered"
-    );
-    let disabled =
-        crate::core::user_env::with_vars(&[("RTK_DISABLED", Some("1"))], || process(&event));
-    assert!(disabled.is_none(), "RTK_DISABLED=1 must emit nothing");
-    let posthook_off = crate::core::user_env::with_vars(
-        &[("RTK_DISABLED", Some("0")), ("RTK_POSTHOOK", Some("0"))],
-        || process(&event),
-    );
-    assert!(posthook_off.is_none(), "RTK_POSTHOOK=0 must emit nothing");
+    crate::core::test_isolation::with_root(scratch.path(), || {
+        let pipeline =
+            crate::core::pipeline_config::user_pipeline_path().expect("user config root");
+        std::fs::create_dir_all(pipeline.parent().expect("pipeline dir"))
+            .expect("create config dir");
+        std::fs::write(&pipeline, "[pipeline]\nextends = \"rtk:posthook\"\n")
+            .expect("write user pipeline");
+        assert!(
+            process(&event).is_some(),
+            "premise: without a kill switch the event is filtered"
+        );
+        let disabled =
+            crate::core::user_env::with_vars(&[("RTK_DISABLED", Some("1"))], || process(&event));
+        assert!(disabled.is_none(), "RTK_DISABLED=1 must emit nothing");
+        let posthook_off = crate::core::user_env::with_vars(
+            &[("RTK_DISABLED", Some("0")), ("RTK_POSTHOOK", Some("0"))],
+            || process(&event),
+        );
+        assert!(posthook_off.is_none(), "RTK_POSTHOOK=0 must emit nothing");
+    });
 }
 
 #[test]
