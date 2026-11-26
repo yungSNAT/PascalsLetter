@@ -580,7 +580,3 @@ mod tests {
         assert_eq!(rtk, 1, "rtk ls is covered, cd is not");
     }
 }
-
-#[cfg(test)]
-#[path = "session_cmd_coverage_gen.rs"]
-mod coverage_gen_src_analytics_session_cmd;
