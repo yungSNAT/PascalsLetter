@@ -41,9 +41,9 @@ pub fn cost_usd_cached(
 }
 
 /// Saved tokens priced as a scenario band at today's prices: every saved token
-/// a cache read at the low end, a cache write at the high end, fresh input in
-/// between. A band, not a measurement: which of those a removed token would
-/// have been is not observable.
+/// at the cheapest of a cache read, fresh input and a cache write at the low
+/// end, at the dearest at the high end. A band, not a measurement: which of
+/// those a removed token would have been is not observable.
 #[derive(Debug, Default, PartialEq)]
 pub struct ModelledSavings {
     pub usd_low: f64,
@@ -66,9 +66,9 @@ pub fn modelled_savings(
         match rate(&model) {
             Some((input_price, read_mult)) => {
                 let fresh = saved as f64 * input_price / 1_000_000.0;
-                let (read, write) = (fresh * read_mult, fresh * CACHE_WRITE_MULT);
-                m.usd_low += read.min(write);
-                m.usd_high += read.max(write);
+                let mults = [read_mult, 1.0, CACHE_WRITE_MULT];
+                m.usd_low += fresh * mults.into_iter().fold(f64::INFINITY, f64::min);
+                m.usd_high += fresh * mults.into_iter().fold(f64::NEG_INFINITY, f64::max);
                 m.priced_tokens += saved;
             }
             None => m.unpriced_tokens += saved,

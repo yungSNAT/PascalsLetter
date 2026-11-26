@@ -428,7 +428,7 @@ fn modelled_saving_lines(j: &serde_json::Value) -> Vec<String> {
             usd("saved_usd_high"),
         ));
         lines.push(format!(
-            "                   {priced} saved tokens on successful requests, priced from each model's cache-read rate to its cache-write rate"
+            "                   {priced} saved tokens on successful requests, priced from the cheapest to the dearest of each model's cache-read, input and cache-write rates"
         ));
     }
     let unpriced = int("saved_tokens_unpriced");
@@ -654,7 +654,7 @@ mod tests {
             lines,
             [
                 "  modelled saving: $1.5000 to $18.7500 (estimate at current prices)",
-                "                   1000000 saved tokens on successful requests, priced from each model's cache-read rate to its cache-write rate",
+                "                   1000000 saved tokens on successful requests, priced from the cheapest to the dearest of each model's cache-read, input and cache-write rates",
                 "  not priced     : 400 saved tokens on models with no price in models.toml",
             ]
         );

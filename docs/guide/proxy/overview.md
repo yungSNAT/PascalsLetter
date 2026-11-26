@@ -50,7 +50,7 @@ rtk llm-proxy stop      # ask it to shut down
 
 `setup` is the one to run first: it reports which AI agents on this machine can be pointed at the proxy, and how.
 
-`stats` counts the tokens the proxy removed with a local tokenizer, an approximation for Claude traffic. rtk ships no prices, so dollar figures appear only for models you price in the proxy's `models.toml`. For those, `modelled saving` gives a range, not a measurement: each saved token on a successful request is priced from the model's cache-read rate (low) to its cache-write rate, 1.25 times input (high), because whether a removed token would have been read from a cached prefix, written to one or sent fresh cannot be observed. The range uses today's prices for all past requests. Saved tokens on models with no price are counted on a separate `not priced` line.
+`stats` counts the tokens the proxy removed with a local tokenizer, an approximation for Claude traffic. rtk ships no prices, so dollar figures appear only for models you price in the proxy's `models.toml`. For those, `modelled saving` gives a range, not a measurement: each saved token on a successful request is priced from the cheapest to the dearest of the model's cache-read rate, its input rate and its cache-write rate (1.25 times input), because whether a removed token would have been read from a cached prefix, written to one or sent fresh cannot be observed. The range uses today's prices for all past requests. Saved tokens on models with no price are counted on a separate `not priced` line.
 
 You rarely need `start` by hand — `rtk claude` starts the daemon for you. See [Getting your agent onto the proxy](#getting-your-agent-onto-the-proxy).
 
