@@ -116,7 +116,7 @@ jobs:
       - run: cargo fmt --manifest-path proxy/Cargo.toml --all --check
       - run: cargo clippy --manifest-path proxy/Cargo.toml --all-targets
       - name: Install the pinned cargo-nextest
-        uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+        uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with:
           tool: cargo-nextest@0.9.150
           fallback: none
@@ -145,7 +145,7 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/develop' }}
       - run: cargo clippy --no-default-features --all-targets
       - name: Install the pinned cargo-nextest
-        uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+        uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with:
           tool: cargo-nextest@0.9.150
           fallback: none
@@ -230,7 +230,7 @@ jobs:
         # coverage.yml runs the same tests then.
       - name: Install the pinned cargo-nextest
         if: runner.os != 'Linux' || github.event_name != 'push'
-        uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+        uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with:
           tool: cargo-nextest@0.9.150
           fallback: none
@@ -368,7 +368,7 @@ jobs:
           save-if: false
 
       - name: Install the pinned cargo-audit
-        uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+        uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with:
           tool: cargo-audit@0.22.2
           fallback: none
