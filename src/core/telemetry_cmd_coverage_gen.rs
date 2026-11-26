@@ -94,7 +94,9 @@ fn status_reports_unasked_consent_and_the_environment_override() {
     }
     // Only the label is pinned: the named controller is the upstream project's.
     assert!(
-        stdout.lines().any(|line| line.starts_with("Data controller: ")),
+        stdout
+            .lines()
+            .any(|line| line.starts_with("Data controller: ")),
         "{stdout}"
     );
     assert!(

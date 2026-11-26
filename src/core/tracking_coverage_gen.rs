@@ -124,7 +124,7 @@ fn migration_normalizes_null_paths_without_changing_period_totals() {
         )
         .unwrap();
 
-    run_schema_migrations(&tracker.conn).unwrap();
+    run_schema_migrations(&tracker.conn.conn, MigrationMode::Always).unwrap();
 
     let unscoped = tracker.get_recent_filtered(10, Some("")).unwrap();
     assert_eq!(unscoped.len(), 1);

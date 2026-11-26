@@ -49,6 +49,7 @@ fn headline_prefers_hooks_then_proxy_cache_then_nothing() {
         saved_normalize: 350,
         saved_ingest_filter: 0,
         saved_pixel_compress: 0,
+        saved_rules: 0,
         cache_read: 4000,
         cache_created: 1000,
     };
@@ -123,6 +124,7 @@ fn terminal_and_markdown_cards_render_every_lever() {
             saved_normalize: 350,
             saved_ingest_filter: 0,
             saved_pixel_compress: 0,
+            saved_rules: 0,
             cache_read: 4000,
             cache_created: 1000,
         }),

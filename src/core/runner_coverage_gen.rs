@@ -163,8 +163,7 @@ fn test_summaries_keep_ecosystem_specific_failures_and_totals() {
     );
     let (failures, summary) = go.split_once("\nSUMMARY:\n").expect("summary section");
     assert_eq!(
-        failures,
-        "[FAIL] FAILURES:\n  --- FAIL: TestSubtract (0.00s)\n  FAIL\tmath\t0.003s\n",
+        failures, "[FAIL] FAILURES:\n  --- FAIL: TestSubtract (0.00s)\n  FAIL\tmath\t0.003s\n",
         "{go}"
     );
     assert!(summary.contains("  FAIL\tmath\t0.003s\n"), "{go}");

@@ -26,6 +26,7 @@ fn proxy_row(
         saved_normalize: 0,
         saved_ingest_filter: 0,
         saved_pixel_compress: 0,
+        saved_rules: 0,
         cache_read,
         cache_created,
     }
