@@ -85,6 +85,21 @@ fn repeated_filtered_reads_count_actual_stdout_and_stay_unattributed() {
     );
 }
 
+/// A lookup that finds nothing prints nothing, so it books no emission.
+#[test]
+fn a_failed_lookup_records_no_emission() {
+    let dir = common::tempdir();
+    seed_recall(dir.path());
+    let output = command(dir.path(), dir.path())
+        .args(["recall", "nothere"])
+        .output()
+        .expect("recall");
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    let export = exported(dir.path(), dir.path(), &["--history"]);
+    assert_eq!(export["output_accounting"]["recall_events"], 0);
+}
+
 #[test]
 fn project_export_scopes_commands_and_recalls_by_their_own_directories() {
     let db = common::tempdir();
