@@ -1686,6 +1686,9 @@ fn export_json(
         .get_summary_filtered(project_scope) // changed: use filtered variant
         .context("Failed to load token savings summary from database")?;
 
+    // A database whose migration failed lacks what the history reads; the
+    // export leaves the history out and the notice on stderr says why.
+    let history = history && tracker.not_upgraded().is_none();
     let export = ExportData {
         output_accounting: history
             .then(|| tracker.output_accounting(project_scope))

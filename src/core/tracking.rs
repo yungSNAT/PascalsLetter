@@ -959,6 +959,27 @@ impl Tracker {
         })
     }
 
+    /// Whether `table` exists. Only a database whose migration failed can lack
+    /// one this build creates, so a current one is not asked.
+    fn has_table(&self, table: &str) -> bool {
+        self.conn.behind.is_none()
+            || self
+                .conn
+                .conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+                    [table],
+                    |row| row.get(0),
+                )
+                .unwrap_or(false)
+    }
+
+    /// Whether `table.column` exists, on the same terms as [`Self::has_table`].
+    fn has_column(&self, table: &str, column: &str) -> bool {
+        self.conn.behind.is_none()
+            || db::column_exists(&self.conn.conn, table, column).unwrap_or(false)
+    }
+
     /// What to tell the user when a migration failed on open.
     pub fn not_upgraded(&self) -> Option<String> {
         let why = self.conn.behind.as_ref()?;
@@ -1009,23 +1030,37 @@ impl Tracker {
 
         let project_path = current_project_path_string(); // added: record cwd
 
-        self.conn.execute(
+        let timestamp = rfc3339(Timestamp::now());
+        let (input, output, time) = (
+            input_tokens as i64,
+            output_tokens as i64,
+            exec_time_ms as i64,
+        );
+        let invocation = super::invocation::current();
+        let mut values: Vec<&dyn rusqlite::ToSql> = vec![
+            &timestamp,
+            &original_cmd,
+            &rtk_cmd,
+            &project_path,
+            &input,
+            &output,
+            &saved,
+            &pct,
+            &time,
+        ];
+        // A database whose migration failed can lack `invocation_id`; its rows
+        // still go in, without one.
+        let sql = if self.has_column("commands", "invocation_id") {
+            values.push(&invocation);
             "INSERT INTO commands (timestamp, original_cmd, rtk_cmd, project_path, input_tokens, output_tokens, saved_tokens, savings_pct, exec_time_ms, invocation_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-            params![
-                rfc3339(Timestamp::now()),
-                original_cmd,
-                rtk_cmd,
-                project_path, // added
-                input_tokens as i64,
-                output_tokens as i64,
-                saved,
-                pct,
-                exec_time_ms as i64,
-                super::invocation::current(),
-            ],
-        )
-        .inspect_err(|e| warn_if_missing_table("record", e))?;
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"
+        } else {
+            "INSERT INTO commands (timestamp, original_cmd, rtk_cmd, project_path, input_tokens, output_tokens, saved_tokens, savings_pct, exec_time_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
+        };
+        self.conn
+            .execute(sql, values.as_slice())
+            .inspect_err(|e| warn_if_missing_table("record", e))?;
 
         self.cleanup_old()?;
         Ok(())
@@ -1126,10 +1161,12 @@ impl Tracker {
         let cutoff = rfc3339(cutoff);
         self.conn
             .execute("DELETE FROM commands WHERE timestamp < ?1", params![cutoff])?;
-        self.conn.execute(
-            "DELETE FROM recall_events WHERE timestamp < ?1",
-            params![cutoff],
-        )?;
+        if self.has_table("recall_events") {
+            self.conn.execute(
+                "DELETE FROM recall_events WHERE timestamp < ?1",
+                params![cutoff],
+            )?;
+        }
         self.conn.execute(
             "DELETE FROM parse_failures WHERE timestamp < ?1",
             params![cutoff],
@@ -1153,17 +1190,24 @@ impl Tracker {
         if self.conn.behind.is_some() {
             let _ = run_schema_migrations(&self.conn.conn, MigrationMode::Always);
         }
+        // A database stuck below the step that adds `recall_events` has none
+        // to clear, and its reset must not fail for that.
+        let recall_events = if self.has_table("recall_events") {
+            "DELETE FROM recall_events;"
+        } else {
+            ""
+        };
         self.conn
-            .execute_batch(
+            .execute_batch(&format!(
                 "BEGIN;
                  DELETE FROM commands;
                  DELETE FROM parse_failures;
                  DELETE FROM hook_decisions;
-                 DELETE FROM recall_events;
+                 {recall_events}
                  DELETE FROM engine_attribution;
                  DELETE FROM classifier_cache;
-                 COMMIT;",
-            )
+                 COMMIT;"
+            ))
             .context("Failed to reset tracking database")?;
         Ok(())
     }

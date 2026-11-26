@@ -67,7 +67,9 @@ rows of both sets recorded in the current directory or any directory below it.
   Partial selections, `--grep`, empty matches and repeated reads count separately.
   `emitted_bytes` counts bytes the stdout writer accepted, and `output_tokens`
   estimates tokens from those bytes. A failed lookup records no emission.
-  A write failure records only bytes accepted before the error, if any.
+  A write error records only bytes accepted before it, if any. On Linux and
+  macOS a reader that closes the pipe early (`rtk recall <hash> | head`) ends
+  `rtk recall` at once, so that read records nothing.
 - Hash references don't identify a specific capture. Their
   `source_invocation_id` and `source_capture_id` are null.
   `unattributed_recall_events` counts the events with no `source_invocation_id`.
@@ -83,7 +85,8 @@ subtracted to infer net savings. They do not measure model context or billing.
 and tracking failures are not measured here. `rtk gain --recalls` remains a
 separate unique-content metric. `retention_days` reports the configured tracking
 retention, and `rtk gain --reset` clears both histories. IDs are not sent in
-telemetry.
+telemetry. A tracking database that could not be upgraded keeps recording
+commands without an `invocation_id`, and its export leaves these fields out.
 
 ## Privacy
 
