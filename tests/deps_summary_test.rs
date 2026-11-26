@@ -58,8 +58,8 @@ fn cargo_summary_lists_dependencies_and_counts_the_rest() {
     for i in 0..5 {
         expected.push_str(&format!("    dev{i} (0.{i})\n"));
     }
-    expected.push_str("    ... +1 more\n");
-    assert_eq!(out, expected, "build-dependencies are not listed");
+    expected.push_str("    ... +1 more\n  Build (1):\n    cc (1)\n");
+    assert_eq!(out, expected);
 }
 
 #[test]
@@ -180,6 +180,56 @@ fn cargo_summary_keeps_file_order_for_inline_and_dotted_tables() {
             "{manifest}"
         );
     }
+}
+
+/// Build dependencies in every table form, root and `[target.<cfg>]`, listed where the file declares them.
+#[test]
+fn cargo_summary_lists_build_dependencies_in_file_order() {
+    for (manifest, expected) in [
+        (
+            "[build-dependencies]\ncc = \"1\"\nbindgen = { version = \"0.70\" }\n\
+             prost-build.workspace = true\n\n\
+             [target.'cfg(windows)'.build-dependencies]\nwinres = \"0.1\"\n",
+            "Build (4):\n    cc (1)\n    bindgen (0.70)\n    prost-build (workspace)\n    winres (0.1)",
+        ),
+        (
+            "build-dependencies = { cc = \"1\", vergen = \"9\" }\n\n[dependencies]\nserde = \"1\"\n",
+            "Dependencies (1):\n    serde (1)\n  Build (2):\n    cc (1)\n    vergen (9)",
+        ),
+        (
+            "target.'cfg(unix)'.build-dependencies.pkg-config = \"0.3\"\nbuild-dependencies.cc = \"1\"\n",
+            "Build (2):\n    pkg-config (0.3)\n    cc (1)",
+        ),
+    ] {
+        let dir = common::tempdir();
+        fs::write(
+            dir.path().join("Cargo.toml"),
+            format!("{PADDING}{manifest}"),
+        )
+        .expect("write Cargo.toml");
+        assert_eq!(
+            deps(dir.path()),
+            format!("Rust (Cargo.toml):\n  {expected}\n"),
+            "{manifest}"
+        );
+    }
+}
+
+/// Cargo reads the underscore spellings before edition 2024.
+#[test]
+fn cargo_summary_reads_underscore_dev_and_build_tables() {
+    let dir = common::tempdir();
+    fs::write(
+        dir.path().join("Cargo.toml"),
+        format!(
+            "{PADDING}[dev_dependencies]\ntempfile = \"3\"\n\n[build_dependencies]\ncc = \"1\"\n"
+        ),
+    )
+    .expect("write Cargo.toml");
+    assert_eq!(
+        deps(dir.path()),
+        "Rust (Cargo.toml):\n  Dev (1):\n    tempfile (3)\n  Build (1):\n    cc (1)\n"
+    );
 }
 
 #[test]

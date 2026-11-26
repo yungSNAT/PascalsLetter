@@ -961,8 +961,7 @@ mod tests {
         // is the standard one-shot retrieval command over the hidden entries.
         if hint.lines().count() > 1 {
             assert!(
-                hint.contains("[see remaining: tail -n +1 ")
-                    || hint.contains("hidden: rtk recall "),
+                hint.contains("[see remaining: tail -n +1 ") || hint.contains("): rtk recall "),
                 "recovery hint must be a standard retrieval form: {hint}"
             );
         }

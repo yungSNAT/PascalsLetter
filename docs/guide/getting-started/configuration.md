@@ -59,6 +59,7 @@ enabled = false             # opt-in anonymous daily ping (off by default) — s
 exclude_commands = []       # commands to never auto-rewrite
 suppress_hook_warning = false # suppress the missing-hook warning only
 wrap_fish_scripts = false   # opt in to handing a fish script back as `rtk run --shell fish -c '…'`
+dedup_repeats = false       # Claude Code: a Bash, Read, Grep or Glob result identical to one the same agent already got becomes a one-line `rtk recall` pointer (see Repeated outputs)
 
 [awareness]
 level = "default"           # "default", "high", "full" — see Awareness level
@@ -109,6 +110,7 @@ since the agent must type `rtk` itself. `rtk init` prints a note when it does th
 | `RTK_TEE_DIR` | Override the tee directory (tee mode) |
 | `RTK_TELEMETRY_DISABLED=1` | Disable telemetry |
 | `RTK_HOOK_AUDIT=1` | Enable hook audit logging |
+| `RTK_AUDIT_DIR` | Override the hook audit log directory (default `~/.local/share/rtk`) |
 | `RTK_SUPPRESS_HOOK_WARNING=1` | Suppress the missing-hook warning only (not the outdated-hook upgrade prompt); `true`, `yes`, `on` also accepted |
 | `RTK_SUPPRESS_HOOK_WARNING=0` | Force the missing-hook warning back on, overriding `hooks.suppress_hook_warning`; `false`, `no`, `off` also accepted |
 | `SKIP_ENV_VALIDATION=1` | Skip env validation (useful with Next.js) |
@@ -136,6 +138,15 @@ rtk config recall disabled  # no recovery storage
 ```
 
 Setting a mode rewrites only the relevant keys in `config.toml` (comments and other sections are preserved), and migrates a legacy `[tee]` section — its `max_files`/`max_file_size`/`directory` values are carried over. The equivalent config field, if you prefer editing the file directly, is `[retriever] mode = "sqlite" | "tee" | "disabled"` (see the full structure above).
+
+### Repeated outputs
+
+With `[hooks] dedup_repeats = true`, the Claude Code PostToolUse hook replaces a result the same agent already received verbatim with a one-line pointer:
+
+- **Bash**: `[rtk: same output as the previous run of this command (N lines): rtk recall <hash>]` when the agent's last completed Bash call ran the same command and got the same bytes.
+- **Read, Grep and Glob**: `[rtk: same result as an earlier identical Read in this session (N lines): rtk recall <hash>]` (or Grep, Glob) when the agent's last completed call of that tool with the same arguments got the same result. The result is compared, not the path: a file that changed since it was read is delivered whole. Another range of a file, or other Grep options, is another call. Glob's duration is not part of the comparison.
+
+Each agent (the main thread, or a subagent by `agent_id`) has its own records. The result is delivered whole whenever completion is in doubt: the agent's previous call failed, was denied or interrupted (Claude Code fires no PostToolUse for these), calls overlapped, the PreToolUse hook is not installed for the tool, the hook input lacks `tool_use_id`, or recall storage is not `sqlite`. A pointer is never longer than the result it replaces. Run `rtk init -g` after turning the option on: it adds Read, Grep and Glob to the PreToolUse and PostToolUse matchers. After a context compaction the pointer can name output that has left the context; `rtk recall <hash>` returns it. A Claude Code version that omits `agent_id` inside subagents makes them share the main thread's records. The records live in a `repeat` folder beside recall storage, one folder per session: another session's folder untouched for 7 days is removed when a session starts (where the SessionStart hook is registered) or makes its first call, and so is a file a hook left when it died, after an hour. The current session's folder is never removed this way.
 
 To see how often your assistant actually goes back for elided output — and which filter caps deserve tuning — see [`rtk gain --recalls`](../analytics/gain.md#recall-efficiency).
 
