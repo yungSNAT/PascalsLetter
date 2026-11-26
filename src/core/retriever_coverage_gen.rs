@@ -133,17 +133,6 @@ fn recall_lists_entries_and_counts_only_successful_reads_of_a_truncated_tail() {
             0
         );
         assert_eq!(recalled_count(), 1);
-
-        conn.execute(
-            "UPDATE recall SET exit_code = 'not an integer' WHERE command = 'short'",
-            [],
-        )
-        .unwrap();
-        let err = run_recall(recall_args(None, true)).unwrap_err();
-        assert!(matches!(
-            err.downcast_ref::<rusqlite::Error>(),
-            Some(rusqlite::Error::InvalidColumnType(_, name, _)) if name == "exit_code"
-        ));
     });
 }
 

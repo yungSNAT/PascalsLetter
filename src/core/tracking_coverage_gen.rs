@@ -376,7 +376,7 @@ fn tracking_helpers_write_to_the_configured_database_and_tolerate_an_open_error(
                 assert_eq!(
                     err.to_string(),
                     format!(
-                        "Failed to pre-create private DB file: {}",
+                        "Failed to pre-create private tracking DB file: {}",
                         bad_path.display()
                     )
                 );
