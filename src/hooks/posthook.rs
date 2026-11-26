@@ -2396,9 +2396,10 @@ mod tests {
     }
 
     /// Classic `diff` hunks applied to `old`, as an agent would rebuild the
-    /// current text from them.
-    fn apply_classic(old: &str, hunks: &str) -> String {
-        let old: Vec<&str> = old.lines().collect();
+    /// current text from them. The hook sends hunks only when both texts end
+    /// alike, so the result ends with a newline exactly when `old` does.
+    fn apply_classic(old_text: &str, hunks: &str) -> String {
+        let old: Vec<&str> = old_text.lines().collect();
         let mut out: Vec<String> = Vec::new();
         let mut next = 0usize; // index of the next old line to copy
         let mut lines = hunks.lines().peekable();
@@ -2424,7 +2425,48 @@ mod tests {
             }
         }
         out.extend(old[next..].iter().map(|l| l.to_string()));
-        out.iter().map(|l| format!("{l}\n")).collect()
+        let mut text: String = out.iter().map(|l| format!("{l}\n")).collect();
+        if !old_text.ends_with('\n') {
+            text.pop();
+        }
+        text
+    }
+
+    /// Hunks rebuild the current text byte for byte whether or not both texts
+    /// end with a newline, including a change to the last line.
+    #[test]
+    fn test_reread_hunks_rebuild_the_text_byte_for_byte() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = hunk_config(dir.path());
+        let first = lines(400);
+        let middle = first.replace("line 10\n", "line ten\n");
+        let last = first.replace("line 399\n", "line three nine nine\n");
+        let cases = [
+            ("final newline, middle", first.clone(), middle.clone()),
+            ("final newline, last line", first.clone(), last.clone()),
+            (
+                "no final newline, middle",
+                first.trim_end().to_string(),
+                middle.trim_end().to_string(),
+            ),
+            (
+                "no final newline, last line",
+                first.trim_end().to_string(),
+                last.trim_end().to_string(),
+            ),
+        ];
+        for (n, (name, before, after)) in cases.into_iter().enumerate() {
+            let path = format!("/repo/src/bytes{n}.rs");
+            Call::read(&format!("{n}a"), &path, &before).run(&config);
+            let shown = hunks_of(&Call::read(&format!("{n}b"), &path, &after).run(&config))
+                .unwrap_or_else(|| panic!("{name}: hunks"));
+            let (_, hunks) = shown.split_once('\n').expect("hunks after the header");
+            assert_eq!(
+                apply_classic(&before, hunks).as_bytes(),
+                after.as_bytes(),
+                "{name}"
+            );
+        }
     }
 
     /// With `dedup_hunks`, a re-read of a file that changed a little gets hunks
