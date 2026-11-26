@@ -822,3 +822,7 @@ mod tests {
         assert!(legacy_path.with_extension("json.bak").exists());
     }
 }
+
+#[cfg(test)]
+#[path = "droid_coverage_gen.rs"]
+mod coverage_gen_src_hooks_init_droid;

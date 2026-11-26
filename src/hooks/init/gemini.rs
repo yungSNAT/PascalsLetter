@@ -595,3 +595,7 @@ mod tests {
         assert!(before_tool(&settings).is_empty());
     }
 }
+
+#[cfg(test)]
+#[path = "gemini_coverage_gen.rs"]
+mod coverage_gen_src_hooks_init_gemini;
