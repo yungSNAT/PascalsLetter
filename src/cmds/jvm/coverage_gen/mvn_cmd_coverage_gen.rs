@@ -105,12 +105,12 @@ fn quiet_module_tag_stripping_preserves_nonmodule_prefixes() {
 #[cfg(unix)]
 #[test]
 fn cli_filters_each_maven_route_using_isolated_tools() {
-    use crate::core::test_isolation::{rtk_binary_is_built, rtk_command, tempdir};
+    use crate::core::test_isolation::{rtk_binary_ready, rtk_command, tempdir};
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
     use std::process::Stdio;
 
-    if !rtk_binary_is_built() {
+    if !rtk_binary_ready() {
         return;
     }
 

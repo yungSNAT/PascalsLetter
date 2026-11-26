@@ -411,7 +411,7 @@ fn run_rtk_with_fake_dotnet(args: &[&str]) -> std::process::Output {
 #[cfg(unix)]
 #[test]
 fn rtk_dotnet_restore_and_build_with_fake_tool() {
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
 
@@ -437,7 +437,7 @@ fn rtk_dotnet_restore_and_build_with_fake_tool() {
 #[cfg(unix)]
 #[test]
 fn rtk_dotnet_format_and_help_passthrough_with_fake_tool() {
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
 
@@ -445,7 +445,10 @@ fn rtk_dotnet_format_and_help_passthrough_with_fake_tool() {
     let stdout = String::from_utf8_lossy(&out.stdout);
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(out.status.success(), "{stdout}\n{stderr}");
-    assert!(stdout.contains("dotnet format"), "{stdout}");
+    assert!(
+        stdout.contains("ok dotnet format: 0 files formatted correctly"),
+        "{stdout}"
+    );
     assert!(stderr.contains("Running: dotnet format"), "{stderr}");
 
     let out = run_rtk_with_fake_dotnet(&["-v", "dotnet", "build", "-c", "Release", "--help"]);

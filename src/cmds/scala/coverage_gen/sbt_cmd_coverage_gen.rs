@@ -145,10 +145,10 @@ fn run_keeps_program_output_and_diagnostics_but_removes_build_preamble() {
 #[cfg(unix)]
 #[test]
 fn cli_forwards_sbt_arguments_and_filters_only_supported_tasks() {
-    use crate::core::test_isolation::{rtk_binary_is_built, rtk_command, tempdir};
+    use crate::core::test_isolation::{rtk_binary_ready, rtk_command, tempdir};
     use std::{fs, os::unix::fs::PermissionsExt, process::Stdio};
 
-    if !rtk_binary_is_built() {
+    if !rtk_binary_ready() {
         return;
     }
 

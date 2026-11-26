@@ -115,7 +115,7 @@ fn gradlew_cli_prefers_the_wrapper_and_routes_each_task() {
         fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();
     }
 
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
 
