@@ -47,13 +47,18 @@ fn successful_stderr_only_run_keeps_both_ends_and_offers_recall() {
 
         // The hidden count is left unpinned: it counts every line after the
         // head, including the tail shown above, not just the 3 omitted.
-        let (count, _) = hint
+        let count = hint
             .strip_prefix("[+")
-            .and_then(|rest| rest.split_once(" hidden: rtk recall "))
+            .and_then(|rest| rest.split_once(" hidden"))
+            .and_then(|(count, _)| count.parse::<usize>().ok())
             .unwrap_or_else(|| panic!("unexpected recall hint: {hint:?}"));
-        assert!(count.parse::<usize>().is_ok_and(|n| n >= 3), "{hint:?}");
-        let prefix = format!("[+{count} hidden: rtk recall ");
-        assert!(!recall_id(hint, &prefix).is_empty());
+        assert!(count >= 3, "{hint:?}");
+        let id = hidden_hint_id(hint, count)
+            .unwrap_or_else(|| panic!("unexpected recall hint: {hint:?}"));
+        assert!(
+            id.len() == 16 && id.bytes().all(|byte| byte.is_ascii_hexdigit()),
+            "invalid recall ID in {hint:?}"
+        );
     });
 }
 
@@ -184,4 +189,14 @@ fn uv_cli_filters_run_but_passes_other_subcommands_through() {
         stderr.lines().any(|line| line == "fixture diagnostic"),
         "{stderr}"
     );
+}
+
+/// The recall ID in a `[+N hidden (lines A-B): rtk recall <id>]` tail hint,
+/// provided the range covers exactly `hidden` lines.
+fn hidden_hint_id(line: &str, hidden: usize) -> Option<&str> {
+    let rest = line.strip_prefix(&format!("[+{hidden} hidden (lines "))?;
+    let (range, id) = rest.split_once("): rtk recall ")?;
+    let (first, last) = range.split_once('-')?;
+    let (first, last): (usize, usize) = (first.parse().ok()?, last.parse().ok()?);
+    (first >= 1 && last + 1 == first + hidden).then_some(id.strip_suffix(']')?)
 }

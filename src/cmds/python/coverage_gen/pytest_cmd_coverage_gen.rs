@@ -77,16 +77,18 @@ fn overflow_caps_both_sections_and_emits_distinct_recall_hints() {
     }
 
     let [xfail_id, failure_id] = [
-        ("  … +1 more", "  [+1 hidden: rtk recall "),
-        ("… +2 more failures", "  [full output: rtk recall "),
+        ("  … +1 more", None),
+        ("… +2 more failures", Some("  [full output: rtk recall ")),
     ]
     .map(|(overflow, prefix)| {
         let id = result
             .lines()
             .skip_while(|line| *line != overflow)
             .nth(1)
-            .and_then(|line| line.strip_prefix(prefix))
-            .and_then(|line| line.strip_suffix(']'))
+            .and_then(|line| match prefix {
+                Some(prefix) => line.strip_prefix(prefix)?.strip_suffix(']'),
+                None => hidden_hint_id(line.strip_prefix("  ")?, 1),
+            })
             .unwrap_or_else(|| panic!("missing recall hint after {overflow:?}: {result}"));
         assert!(
             !id.is_empty() && id.bytes().all(|byte| byte.is_ascii_hexdigit()),
@@ -95,4 +97,14 @@ fn overflow_caps_both_sections_and_emits_distinct_recall_hints() {
         id
     });
     assert_ne!(xfail_id, failure_id, "{result}");
+}
+
+/// The recall ID in a `[+N hidden (lines A-B): rtk recall <id>]` tail hint,
+/// provided the range covers exactly `hidden` lines.
+fn hidden_hint_id(line: &str, hidden: usize) -> Option<&str> {
+    let rest = line.strip_prefix(&format!("[+{hidden} hidden (lines "))?;
+    let (range, id) = rest.split_once("): rtk recall ")?;
+    let (first, last) = range.split_once('-')?;
+    let (first, last): (usize, usize) = (first.parse().ok()?, last.parse().ok()?);
+    (first >= 1 && last + 1 == first + hidden).then_some(id.strip_suffix(']')?)
 }
