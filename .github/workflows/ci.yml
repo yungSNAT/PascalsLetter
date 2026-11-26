@@ -236,6 +236,16 @@ jobs:
           fallback: none
       - if: runner.os != 'Linux' || github.event_name != 'push'
         run: cargo nextest run --locked --workspace --no-fail-fast
+      - name: Check the proxy's bundled SQLite on native macOS and Windows
+        if: github.event_name == 'pull_request' && runner.os != 'Linux' && !matrix.target
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if git diff --quiet "$BASE_SHA"...HEAD -- proxy/Cargo.toml proxy/Cargo.lock proxy/compat proxy/src/store.rs proxy/src/memory.rs proxy/tests/sqlite_stores.rs; then
+            exit 0
+          fi
+          cargo nextest run --locked --manifest-path proxy/Cargo.toml --test sqlite_stores
       - if: runner.os == 'Linux' && github.event_name == 'push'
         run: cargo test --all --no-run
 
