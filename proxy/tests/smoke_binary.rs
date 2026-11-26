@@ -51,6 +51,9 @@ async fn real_binary_boots_forwards_and_records() {
         .mount(&up)
         .await;
 
+    let dir = tempfile::tempdir().unwrap();
+    let rates = dir.path().join("rates.toml");
+    std::fs::write(&rates, "[default]\ninput = 1.0\noutput = 2.0\n").unwrap();
     let port = free_port();
     let base = format!("http://127.0.0.1:{port}");
     let child = Command::new(env!("CARGO_BIN_EXE_rtk-proxy"))
@@ -59,6 +62,7 @@ async fn real_binary_boots_forwards_and_records() {
         .env("RTK_PROXY_ANTHROPIC_UPSTREAM", up.uri())
         .env("RTK_PROXY_OPENAI_UPSTREAM", up.uri())
         .env("RTK_PROXY_CCR", "true")
+        .env("RTK_PROXY_MODELS_TOML", &rates)
         .env("RTK_PROXY_DB", ":memory:")
         // Both stores in memory: the ICM default is cwd-relative, so leaving
         // it unset drops a real SQLite file into the crate root on every run.
@@ -121,10 +125,81 @@ async fn real_binary_boots_forwards_and_records() {
         .unwrap();
     assert_eq!(s["total_requests"], 1, "request recorded");
     assert_eq!(s["tokens_out"], 7, "real output tokens tallied");
+    let estimate = s["cost_usd"].as_f64().unwrap();
+    assert!(
+        (estimate - 0.000024).abs() < 1e-12,
+        "configured price for 10 input and 7 output tokens: {estimate}"
+    );
 
     // 4) No embedded dashboard: an unmatched path is a plain 404.
     let d = client.get(format!("{base}/")).send().await.unwrap();
     assert_eq!(d.status(), 404, "no dashboard fallback");
+}
+
+#[test]
+fn model_registry_errors_stop_startup_before_listening() {
+    let dir = tempfile::tempdir().unwrap();
+    let rates = dir.path().join("rates.toml");
+    // If startup ever misses a configuration error it still exits on this occupied port.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    for (db, text, reason) in [
+        (
+            dir.path().to_str().unwrap(),
+            "[default]\ninput = 1.0\noutput = 2.0",
+            "configured usage database is unavailable",
+        ),
+        (
+            "off",
+            "invalid-private-fixture",
+            "invalid model registry TOML",
+        ),
+    ] {
+        std::fs::write(&rates, text).unwrap();
+        let output = Command::new(env!("CARGO_BIN_EXE_rtk-proxy"))
+            .arg("start")
+            .env("RTK_PROXY_BIND", listener.local_addr().unwrap().to_string())
+            .env("RTK_PROXY_DB", db)
+            .env("RTK_PROXY_ICM_DB", "off")
+            .env("RTK_PROXY_MODELS_TOML", &rates)
+            .env("RUST_LOG", "error")
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        let log = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(log.contains(reason), "{log}");
+        assert!(!log.contains("invalid-private-fixture"));
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn first_start_creates_the_default_usage_directory_with_memory_disabled() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = dir.path().join("config");
+    let settings = dir.path().join("settings.toml");
+    std::fs::write(&settings, "# defaults\n").unwrap();
+    let port = free_port();
+    let addr = format!("127.0.0.1:{port}");
+    let child = Command::new(env!("CARGO_BIN_EXE_rtk-proxy"))
+        .arg("start")
+        .current_dir(dir.path())
+        .env("XDG_CONFIG_HOME", &config)
+        .env("RTK_PROXY_CONFIG", settings)
+        .env("RTK_PROXY_BIND", &addr)
+        .env_remove("RTK_PROXY_DB")
+        .env_remove("RTK_PROXY_MODELS_TOML")
+        .env("RTK_PROXY_ICM_DB", "off")
+        .stdout(Stdio::null())
+        .spawn()
+        .unwrap();
+    let _kill = Kill(child);
+    let client = reqwest::Client::new();
+    wait_healthy(&client, &format!("http://{addr}")).await;
+    assert!(config.join("rtk/llm-proxy/rtk-proxy.db").is_file());
 }
 
 /// Run `rtk-proxy <args...>` as a real child process and return its stdout.

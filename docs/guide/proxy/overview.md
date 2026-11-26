@@ -52,6 +52,16 @@ rtk llm-proxy stop      # ask it to shut down
 
 `stats` counts the tokens the proxy removed with a local tokenizer, an approximation for Claude traffic. rtk ships no prices, so dollar figures appear only for models you price in the proxy's `models.toml`. For those, `modelled saving` gives a range, not a measurement: each saved token on a successful request is priced from the cheapest to the dearest of the model's cache-read rate, its input rate and its cache-write rate (1.25 times input), because whether a removed token would have been read from a cached prefix, written to one or sent fresh cannot be observed. The range uses today's prices for all past requests. Saved tokens on models with no price are counted on a separate `not priced` line.
 
+To set prices, copy the proxy's `models.toml` and add your input and output rates per million tokens. For a new usage database, set `RTK_PROXY_MODELS_TOML` to the copy's absolute path and start the proxy once. For a background service, make that first start in the foreground with `rtk-proxy start` and the same `RTK_PROXY_DB` path the service will use. The service subsequently reads the saved registry.
+
+To change rates in an existing database, stop the proxy and back up the database with SQLite's `.backup` command. Open the usage database in the SQLite CLI and replace its registry with the edited file. Run the following from the directory containing `rates.toml`, then restart the proxy. A missing file fails the update. Invalid rates prevent startup and can be corrected with the same update. Historical request costs keep their recorded amounts.
+
+```sql
+INSERT INTO app_settings (key, value)
+VALUES ('models_toml', CAST(readfile('rates.toml') AS TEXT))
+ON CONFLICT (key) DO UPDATE SET value = excluded.value;
+```
+
 You rarely need `start` by hand — `rtk claude` starts the daemon for you. See [Getting your agent onto the proxy](#getting-your-agent-onto-the-proxy).
 
 ## Getting your agent onto the proxy
