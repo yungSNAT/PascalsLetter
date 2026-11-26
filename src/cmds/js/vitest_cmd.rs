@@ -667,3 +667,7 @@ Scope: all 6 workspace projects
         assert_eq!(render(""), "[full output: vitest_run.log]");
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/vitest_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_js_vitest_cmd;

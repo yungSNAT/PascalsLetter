@@ -762,3 +762,7 @@ mod tests {
         assert_eq!(named_runner(&args, skip), None);
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/lint_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_js_lint_cmd;

@@ -221,3 +221,7 @@ Route (app)                    Size     First Load JS
         assert_eq!(extract_time("No time here"), None);
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/next_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_js_next_cmd;
