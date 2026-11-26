@@ -175,6 +175,33 @@ fn model_registry_errors_stop_startup_before_listening() {
     }
 }
 
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn first_start_creates_the_default_usage_directory_with_memory_disabled() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = dir.path().join("config");
+    let settings = dir.path().join("settings.toml");
+    std::fs::write(&settings, "# defaults\n").unwrap();
+    let port = free_port();
+    let addr = format!("127.0.0.1:{port}");
+    let child = Command::new(env!("CARGO_BIN_EXE_rtk-proxy"))
+        .arg("start")
+        .current_dir(dir.path())
+        .env("XDG_CONFIG_HOME", &config)
+        .env("RTK_PROXY_CONFIG", settings)
+        .env("RTK_PROXY_BIND", &addr)
+        .env_remove("RTK_PROXY_DB")
+        .env_remove("RTK_PROXY_MODELS_TOML")
+        .env("RTK_PROXY_ICM_DB", "off")
+        .stdout(Stdio::null())
+        .spawn()
+        .unwrap();
+    let _kill = Kill(child);
+    let client = reqwest::Client::new();
+    wait_healthy(&client, &format!("http://{addr}")).await;
+    assert!(config.join("rtk/llm-proxy/rtk-proxy.db").is_file());
+}
+
 /// Run `rtk-proxy <args...>` as a real child process and return its stdout.
 fn run_cli(args: &[&str]) -> String {
     let out = Command::new(env!("CARGO_BIN_EXE_rtk-proxy"))

@@ -186,6 +186,12 @@ impl Store {
         let conn = if path == ":memory:" {
             Connection::open_in_memory()?
         } else {
+            if let Some(parent) = std::path::Path::new(path)
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty() && path == crate::config::default_db_path())
+            {
+                std::fs::create_dir_all(parent)?;
+            }
             Connection::open(path)?
         };
         conn.execute_batch(SCHEMA)?;
