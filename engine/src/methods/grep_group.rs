@@ -166,3 +166,7 @@ mod tests {
         assert_eq!(apply(""), "");
     }
 }
+
+#[cfg(test)]
+#[path = "grep_group_coverage_gen.rs"]
+mod coverage_gen_engine_src_methods_grep_group;

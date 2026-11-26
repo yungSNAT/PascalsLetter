@@ -689,3 +689,7 @@ action = "passthrough"
         assert!(decisions[0].shadow());
     }
 }
+
+#[cfg(test)]
+#[path = "eval_coverage_gen.rs"]
+mod coverage_gen_engine_src_pipeline_eval;

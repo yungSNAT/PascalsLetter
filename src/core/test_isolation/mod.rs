@@ -158,13 +158,21 @@ fn data_dir() -> PathBuf {
 /// `tests/` gets this from `CARGO_BIN_EXE_rtk`, which cargo sets only for
 /// integration targets.
 fn rtk_bin() -> PathBuf {
-    // The harness runs from `<target>/<profile>/deps/`, and cargo puts the bin
-    // one level up from it. Taking the path from the running test covers a
-    // custom target directory, `--target <triple>` and `--profile <name>`
-    // alike; none of those reach the test binary as an environment variable.
+    // The harness runs from `<target>/<profile>/deps/`, or from
+    // `<target>/<profile>/build/rtk/<hash>/out/` under cargo's newer build
+    // layout, and cargo puts the bin in `<target>/<profile>/`: the first
+    // directory above the harness that holds `deps/` or `build/`. Taking the
+    // path from the running test covers a custom target directory,
+    // `--target <triple>` and `--profile <name>` alike; none of those reach
+    // the test binary as an environment variable.
     std::env::current_exe()
         .ok()
-        .and_then(|exe| Some(exe.parent()?.parent()?.to_path_buf()))
+        .and_then(|exe| {
+            exe.ancestors()
+                .skip(1)
+                .find(|dir| dir.join("deps").is_dir() || dir.join("build").is_dir())
+                .map(Path::to_path_buf)
+        })
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/debug"))
         .join(format!("rtk{}", std::env::consts::EXE_SUFFIX))
 }

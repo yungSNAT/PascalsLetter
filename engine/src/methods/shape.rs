@@ -55,3 +55,7 @@ mod tests {
         assert!(apply("short").is_none());
     }
 }
+
+#[cfg(test)]
+#[path = "shape_coverage_gen.rs"]
+mod coverage_gen_engine_src_methods_shape;

@@ -471,3 +471,7 @@ mod tests {
         assert_eq!(n.lines[0].content, "a");
     }
 }
+
+#[cfg(test)]
+#[path = "shape_coverage_gen.rs"]
+mod coverage_gen_engine_src_shape;
