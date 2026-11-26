@@ -105,9 +105,9 @@ mod tests {
         assert!((m.usd_high - 18.75).abs() < 1e-9, "{m:?}");
         assert_eq!((m.priced_tokens, m.unpriced_tokens), (1_000_000, 400));
         // An operator's cache-read multiplier above the write multiplier
-        // still gives low <= high.
+        // still gives low <= high, and fresh input stays inside the band.
         let m = modelled_savings([("dear".to_string(), 1_000_000)], |_| Some((15.0, 2.0)));
-        assert!((m.usd_low - 18.75).abs() < 1e-9, "{m:?}");
+        assert!((m.usd_low - 15.0).abs() < 1e-9, "{m:?}");
         assert!((m.usd_high - 30.0).abs() < 1e-9, "{m:?}");
         assert_eq!(
             modelled_savings(Vec::new(), rate),
