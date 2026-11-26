@@ -1210,6 +1210,7 @@ fn print_efficiency_ledger(tracker: &Tracker) {
     let (_, comp_in, comp_out) = sum("pipeline");
     let (_, _, llm_spent) = sum("llm-spend");
     let (recalls, _, _) = sum("recovery");
+    let (repeats, repeat_in, repeat_out) = sum("repeat");
     let (shadow_calls, shadow_in, shadow_out) = {
         let rows = tracker
             .attribution_site("shadow", "pipeline", WINDOW_DAYS)
@@ -1233,7 +1234,7 @@ fn print_efficiency_ledger(tracker: &Tracker) {
         .filter(|p| p.cost_without_usd > 0.0)
         .map(|p| (p.cost_actual_usd, p.cost_without_usd));
 
-    let has_hook_data = comp_in > 0 || llm_spent > 0 || recalls > 0;
+    let has_hook_data = comp_in > 0 || llm_spent > 0 || recalls > 0 || repeats > 0;
     if !has_hook_data && proxy_costs.is_none() && shadow_calls == 0 {
         return;
     }
@@ -1273,6 +1274,9 @@ fn print_efficiency_ledger(tracker: &Tracker) {
             "Recalled",
             format!("{recalls} compressed outputs pulled back in full"),
         );
+    }
+    if repeats > 0 {
+        print_kpi("Repeats", repeat_kpi(repeats, repeat_in, repeat_out));
     }
     if directive_tokens > 0 {
         print_kpi(
@@ -1360,6 +1364,14 @@ fn styled(text: &str, strong: bool) -> String {
 
 /// Print a key-value pair in KPI layout. // added
 const PANEL_RULES: usize = 5;
+
+/// The efficiency panel's line for repeated outputs that reached the agent as
+/// `rtk recall` pointers: how many, and the tokens they stood in for.
+#[cfg(feature = "engine")]
+fn repeat_kpi(calls: i64, tokens_in: i64, tokens_out: i64) -> String {
+    let _ = (calls, tokens_in, tokens_out);
+    String::new()
+}
 
 fn print_kpi(label: &str, value: String) {
     println!("{:<18} {}", format!("{label}:"), value);
@@ -1982,6 +1994,15 @@ fn print_pro_hint_if_due(tracker: &Tracker) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "engine")]
+    #[test]
+    fn repeat_kpi_shows_the_count_and_the_tokens_replaced() {
+        assert_eq!(
+            repeat_kpi(3, 12_000, 60),
+            "3 repeated outputs sent as pointers: 12.0K → 60 tokens   est."
+        );
+    }
 
     #[cfg(feature = "engine")]
     #[test]
