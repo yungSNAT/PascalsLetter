@@ -107,17 +107,48 @@ fn tool_output_report(output: &ToolOutputBytes, logs_read: usize, logs_total: us
 
 /// Total API usage in `paths`, with how many of the logs could be read.
 fn sum_token_usage(paths: &[PathBuf]) -> (TokenUsage, usize) {
-    let _ = paths;
     let mut total = TokenUsage::default();
-    total.add(TokenUsage::default());
-    (total, 0)
+    let mut logs_read = 0;
+    for path in paths {
+        if let Ok(usage) = ClaudeProvider.token_usage(path) {
+            total.add(usage);
+            logs_read += 1;
+        }
+    }
+    (total, logs_read)
 }
 
 /// Where the billed tokens went, by kind. RTK shrinks tool results, which
 /// reach the model as input, so this is the denominator its savings sit in.
 fn token_usage_report(usage: &TokenUsage, logs_read: usize, logs_total: usize) -> String {
-    let _ = (usage, logs_read, logs_total);
-    String::new()
+    let total = usage.total();
+    if total == 0 {
+        return format!(
+            "No API usage logged in these sessions ({logs_read} of {logs_total} read)."
+        );
+    }
+    let mut report = format!(
+        "Where the tokens go ({} from API usage, {logs_read} of {logs_total} sessions):",
+        format_tokens(total)
+    );
+    for (label, tokens) in [
+        ("Cache reads", usage.cache_read),
+        ("Cache writes", usage.cache_write),
+        ("Fresh input", usage.input),
+        ("Output", usage.output),
+    ] {
+        let pct = tokens as f64 / total as f64 * 100.0;
+        report.push_str(&format!(
+            "\n  {label:<13}{:>9}  {pct:>3.0}%",
+            format_tokens(tokens)
+        ));
+    }
+    report.push_str(
+        "\n  Token counts, not cost: each kind bills at its own rate. Tool results reach \
+         the model as input, are written to the cache once and read back on each later \
+         turn. Subagent logs are not counted.",
+    );
+    report
 }
 
 /// Sort `paths` newest first, calling `mtime` once per file. A file it can't date counts as the
@@ -254,6 +285,11 @@ pub fn run(_verbose: u8) -> Result<()> {
         "{}",
         tool_output_report(&tool_output, logs_read, session_files.len())
     );
+    let (usage, usage_logs) = sum_token_usage(&session_files);
+    println!(
+        "{}",
+        token_usage_report(&usage, usage_logs, session_files.len())
+    );
     println!("Tip: Run `rtk discover` to find missed RTK opportunities");
 
     Ok(())
@@ -363,7 +399,10 @@ mod tests {
     #[test]
     fn test_token_usage_report_without_usage() {
         let report = token_usage_report(&TokenUsage::default(), 2, 3);
-        assert_eq!(report, "No API usage logged in these sessions (2 of 3 read).");
+        assert_eq!(
+            report,
+            "No API usage logged in these sessions (2 of 3 read)."
+        );
     }
 
     #[test]

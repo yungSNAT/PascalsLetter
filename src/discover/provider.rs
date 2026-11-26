@@ -87,10 +87,64 @@ pub trait SessionProvider {
 pub struct ClaudeProvider;
 
 impl ClaudeProvider {
-    /// API usage of the assistant messages in a session log.
+    /// API usage of the assistant messages in a session log. Claude Code
+    /// writes one line per content block of a message, each carrying the
+    /// message's usage, so a message counts once by `message.id`, at its
+    /// largest figures in case an earlier line was written mid-stream. A line
+    /// with no id counts alone.
     pub fn token_usage(&self, path: &Path) -> Result<TokenUsage> {
-        fs::File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
-        Ok(TokenUsage::default())
+        let file =
+            fs::File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
+        let mut by_id: HashMap<String, TokenUsage> = HashMap::new();
+        let mut total = TokenUsage::default();
+        for line in BufReader::new(file).split(b'\n') {
+            // A failed read would fail again, so stop there and keep what was counted.
+            let Ok(line) = line else { break };
+            let Ok(line) = String::from_utf8(line) else {
+                continue;
+            };
+            if !line.contains("\"usage\"") {
+                continue;
+            }
+            let Ok(entry) = serde_json::from_str::<serde_json::Value>(&line) else {
+                continue;
+            };
+            if entry.get("type").and_then(|t| t.as_str()) != Some("assistant") {
+                continue;
+            }
+            let Some(usage) = entry.pointer("/message/usage") else {
+                continue;
+            };
+            let count = |key: &str| {
+                usage
+                    .get(key)
+                    .and_then(serde_json::Value::as_u64)
+                    .and_then(|n| usize::try_from(n).ok())
+                    .unwrap_or(0)
+            };
+            let usage = TokenUsage {
+                input: count("input_tokens"),
+                cache_write: count("cache_creation_input_tokens"),
+                cache_read: count("cache_read_input_tokens"),
+                output: count("output_tokens"),
+            };
+            match entry.pointer("/message/id").and_then(|i| i.as_str()) {
+                Some(id) => {
+                    let seen = by_id.entry(id.to_string()).or_default();
+                    *seen = TokenUsage {
+                        input: seen.input.max(usage.input),
+                        cache_write: seen.cache_write.max(usage.cache_write),
+                        cache_read: seen.cache_read.max(usage.cache_read),
+                        output: seen.output.max(usage.output),
+                    };
+                }
+                None => total.add(usage),
+            }
+        }
+        for usage in by_id.into_values() {
+            total.add(usage);
+        }
+        Ok(total)
     }
 }
 
