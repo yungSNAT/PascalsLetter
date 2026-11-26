@@ -41,7 +41,7 @@ fn invoke(dir: &Path, args: &[&str], expected_code: i32) -> Output {
 
 #[test]
 fn package_commands_forward_arguments_and_filter_bun_output() {
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
     let dir = test_isolation::tempdir();
@@ -102,7 +102,7 @@ esac
 
 #[test]
 fn bun_test_summarizes_one_shot_runs_but_keeps_watch_output() {
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
     let dir = test_isolation::tempdir();
@@ -127,7 +127,11 @@ printf '\n 8 pass\n 0 fail\n 8 expect() calls\nRan 8 tests across 1 file. [3.00m
     let file = "coverage sample.test.ts";
     let filtered = invoke(dir.path(), &["bun", "test", file], 0);
     let stdout = String::from_utf8_lossy(&filtered.stdout);
-    assert!(!stdout.trim().is_empty(), "{filtered:?}");
+    assert!(stdout.contains("8 pass\n"), "{filtered:?}");
+    assert!(
+        stdout.contains("Ran 8 tests across 1 file."),
+        "{filtered:?}"
+    );
     assert!(!stdout.contains("coverage passing case"), "{filtered:?}");
     assert!(
         !String::from_utf8_lossy(&filtered.stderr).contains("coverage passing case"),
@@ -145,7 +149,7 @@ printf '\n 8 pass\n 0 fail\n 8 expect() calls\nRan 8 tests across 1 file. [3.00m
 
 #[test]
 fn build_run_and_bunx_preserve_useful_tool_output() {
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
     let dir = test_isolation::tempdir();

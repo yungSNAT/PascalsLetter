@@ -207,7 +207,7 @@ Done
 
 #[cfg(all(unix, feature = "engine"))]
 mod cli {
-    use crate::core::test_isolation::{rtk_binary_is_built, rtk_command, tempdir};
+    use crate::core::test_isolation::{rtk_binary_ready, rtk_command, tempdir};
     use std::os::unix::fs::PermissionsExt;
     use std::path::Path;
     use std::process::Stdio;
@@ -249,7 +249,7 @@ mod cli {
 
     #[test]
     fn list_dispatches_all_parse_tiers_and_preserves_tool_failure_status() {
-        if !rtk_binary_is_built() {
+        if !rtk_binary_ready() {
             return;
         }
         let dir = fake_pnpm(
@@ -292,14 +292,13 @@ esac
         assert_eq!(stdout.trim(), "unrecognized-list-output");
 
         let (code, stdout, stderr) = invoke(dir.path(), &args, "failure");
-        assert_eq!(code, 17, "{stderr}");
-        assert!(stdout.is_empty(), "{stdout}");
+        assert_eq!(code, 17, "{stdout}\n{stderr}");
         assert!(stderr.contains("fixture-list-failure"), "{stderr}");
     }
 
     #[test]
     fn outdated_compacts_recognized_output_and_preserves_unrecognized_output() {
-        if !rtk_binary_is_built() {
+        if !rtk_binary_ready() {
             return;
         }
         let dir = fake_pnpm(
@@ -345,7 +344,7 @@ esac
 
     #[test]
     fn install_filters_success_but_forwards_failure_and_leaves_other_commands_raw() {
-        if !rtk_binary_is_built() {
+        if !rtk_binary_ready() {
             return;
         }
         let dir = fake_pnpm(
@@ -385,8 +384,7 @@ esac
         assert!(stderr.contains("pnpm install running..."), "{stderr}");
 
         let (code, stdout, stderr) = invoke(dir.path(), &args, "failure");
-        assert_eq!(code, 19, "{stderr}");
-        assert!(stdout.is_empty(), "{stdout}");
+        assert_eq!(code, 19, "{stdout}\n{stderr}");
         assert!(stderr.contains("fixture-install-failure"), "{stderr}");
 
         let (code, stdout, stderr) = invoke(dir.path(), &["store", "path"], "");

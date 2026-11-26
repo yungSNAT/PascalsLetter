@@ -250,7 +250,7 @@ fn lint_with_fake_tool(
 #[cfg(all(unix, feature = "engine"))]
 #[test]
 fn lint_dispatches_to_the_right_filter_and_preserves_tool_status() {
-    if !crate::core::test_isolation::rtk_binary_is_built() {
+    if !crate::core::test_isolation::rtk_binary_ready() {
         return;
     }
 
@@ -303,7 +303,7 @@ done
              'sample.py:10: error: Incompatible types in assignment  [assignment]' \
              'Found 1 error in 1 file (checked 1 source file)' >&2\nexit 1",
             1,
-            "mypy:",
+            "mypy: 1 errors in 1 files",
         ),
         (
             "flake8",
@@ -332,7 +332,7 @@ done
 #[cfg(all(unix, feature = "engine"))]
 #[test]
 fn lint_reports_abnormal_status_without_rendering_partial_results() {
-    if !crate::core::test_isolation::rtk_binary_is_built() {
+    if !crate::core::test_isolation::rtk_binary_ready() {
         return;
     }
 

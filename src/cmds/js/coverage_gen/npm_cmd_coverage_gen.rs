@@ -53,7 +53,7 @@ mod cli {
 
     #[test]
     fn routes_npm_scripts_and_package_runners_through_the_filter() {
-        if !test_isolation::rtk_binary_is_built() {
+        if !test_isolation::rtk_binary_ready() {
             return;
         }
 

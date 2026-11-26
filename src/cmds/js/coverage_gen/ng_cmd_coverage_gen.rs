@@ -51,7 +51,7 @@ fn compacting_the_final_bundle_row_does_not_add_a_newline() {
 fn verbose_build_reports_the_command_and_compacts_the_table() {
     use std::os::unix::fs::PermissionsExt;
 
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
 

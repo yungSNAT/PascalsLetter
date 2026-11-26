@@ -65,7 +65,7 @@ fn passing_test_output() -> String {
 
 #[test]
 fn lint_and_check_strip_download_noise_and_log_the_invocation() {
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
 
@@ -85,12 +85,16 @@ fn lint_and_check_strip_download_noise_and_log_the_invocation() {
 
 #[test]
 fn default_test_output_omits_individual_passing_cases() {
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
 
     let raw = passing_test_output();
     let (stdout, _) = run_fake_deno(&["test", "fixture_test.ts"], &raw, false);
+    assert!(
+        stdout.contains("ok | 32 passed | 0 failed"),
+        "summary missing: {stdout:?}"
+    );
     assert!(
         !stdout.contains("passing_fixture_case_"),
         "passing test details were not filtered: {stdout:?}"
@@ -99,7 +103,7 @@ fn default_test_output_omits_individual_passing_cases() {
 
 #[test]
 fn watch_reporter_compile_and_task_preserve_stdout() {
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
 

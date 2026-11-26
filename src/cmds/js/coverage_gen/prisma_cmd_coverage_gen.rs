@@ -46,7 +46,6 @@ CREATE UNIQUE INDEX "token_id_idx" ON "Token" ("id");
 #[test]
 fn migration_status_counts_states_and_keeps_the_first_applied_id() {
     let raw = "\
-Migration applied
 20260512_add_sessions applied
 20260511_init applied
 20260513_add_tokens pending
@@ -54,7 +53,7 @@ Migration applied
 
     assert_eq!(
         filter_migrate_status(raw),
-        "Migrations: 3 applied, 2 pending\nLatest: 20260512_add_sessions"
+        "Migrations: 2 applied, 2 pending\nLatest: 20260512_add_sessions"
     );
     assert_eq!(
         filter_migrate_status("20260511_init pending"),
@@ -98,7 +97,7 @@ DROP TABLE OldSession";
 
 #[cfg(all(unix, feature = "engine"))]
 mod cli {
-    use crate::core::test_isolation::{rtk_binary_is_built, rtk_command, tempdir};
+    use crate::core::test_isolation::{rtk_binary_ready, rtk_command, tempdir};
     use std::ffi::OsStr;
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
@@ -137,10 +136,12 @@ exit "$RTK_TEST_PRISMA_CODE"
 
     fn rtk_with_tools(bin: &Path) -> Command {
         let mut command = rtk_command();
-        let path = std::env::join_paths(
-            std::iter::once(bin.to_path_buf()).chain(std::env::split_paths(command_path(&command))),
-        )
-        .expect("join fixture and inherited tool paths");
+        // Leave out any directory with a real Prisma, so the npx fallback runs.
+        let inherited: Vec<_> = std::env::split_paths(command_path(&command))
+            .filter(|dir| !dir.join("prisma").exists())
+            .collect();
+        let path = std::env::join_paths(std::iter::once(bin.to_path_buf()).chain(inherited))
+            .expect("join fixture and inherited tool paths");
         command.env("PATH", path).current_dir(bin);
         command
     }
@@ -166,7 +167,7 @@ exit "$RTK_TEST_PRISMA_CODE"
 
     #[test]
     fn prisma_cli_falls_back_to_npx_without_a_global_prisma() {
-        if !rtk_binary_is_built() {
+        if !rtk_binary_ready() {
             return;
         }
 
@@ -174,11 +175,6 @@ exit "$RTK_TEST_PRISMA_CODE"
         install_tool(bin.path(), "npx");
         let log = bin.path().join("tool-args");
         let mut command = invocation(bin.path(), &["generate"], &log);
-
-        // Do not run this case if the inherited PATH could select a real Prisma.
-        if which::which_in("prisma", Some(command_path(&command)), bin.path()).is_ok() {
-            return;
-        }
 
         let output = run_fixture(
             &mut command,

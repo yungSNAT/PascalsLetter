@@ -120,10 +120,10 @@ fn explicit_reporter_keeps_combined_output_but_parse_failure_keeps_stdout() {
 #[cfg(unix)]
 #[test]
 fn cli_runs_vitest_and_jest_with_their_respective_json_flags() {
-    use crate::core::test_isolation::{rtk_binary_is_built, rtk_command, tempdir};
+    use crate::core::test_isolation::{rtk_binary_ready, rtk_command, tempdir};
     use std::os::unix::fs::PermissionsExt;
 
-    if !rtk_binary_is_built() {
+    if !rtk_binary_ready() {
         return;
     }
 

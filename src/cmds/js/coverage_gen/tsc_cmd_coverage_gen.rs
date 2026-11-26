@@ -34,11 +34,11 @@ fn buffered_output_without_diagnostics_or_a_zero_error_marker_reports_completion
 #[cfg(unix)]
 #[test]
 fn verbose_tsc_forwards_arguments_to_the_direct_tool_or_package_runner() {
-    use crate::core::test_isolation::{rtk_binary_is_built, rtk_command, tempdir};
+    use crate::core::test_isolation::{rtk_binary_ready, rtk_command, tempdir};
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
 
-    if !rtk_binary_is_built() {
+    if !rtk_binary_ready() {
         return;
     }
 
