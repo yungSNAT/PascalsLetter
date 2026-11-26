@@ -1604,3 +1604,7 @@ pub(crate) mod tests {
         assert!(result.contains("demo: 1 kept"), "got: {}", result);
     }
 }
+
+#[cfg(test)]
+#[path = "stream_coverage_gen.rs"]
+mod coverage_gen_src_core_stream;
