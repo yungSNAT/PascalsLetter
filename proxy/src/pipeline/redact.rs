@@ -8,12 +8,12 @@
 use crate::error::AppResult;
 use crate::model::InterceptedRequest;
 use crate::pipeline::Transform;
-use once_cell::sync::Lazy;
 use regex::{Regex, RegexSet};
 use std::borrow::Cow;
+use std::sync::LazyLock;
 
 /// High-confidence secret patterns (provider keys), replaced with a marker.
-static PATTERNS: Lazy<Vec<(Regex, &'static str)>> = Lazy::new(|| {
+static PATTERNS: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
     vec![
         (
             Regex::new(r"sk-ant-[A-Za-z0-9_\-]{20,}").unwrap(),
@@ -35,8 +35,8 @@ static PATTERNS: Lazy<Vec<(Regex, &'static str)>> = Lazy::new(|| {
 });
 
 /// All patterns combined for a single-pass "does anything match?" gate.
-static PATTERN_SET: Lazy<RegexSet> =
-    Lazy::new(|| RegexSet::new(PATTERNS.iter().map(|(re, _)| re.as_str())).unwrap());
+static PATTERN_SET: LazyLock<RegexSet> =
+    LazyLock::new(|| RegexSet::new(PATTERNS.iter().map(|(re, _)| re.as_str())).unwrap());
 
 pub struct RedactTransform;
 

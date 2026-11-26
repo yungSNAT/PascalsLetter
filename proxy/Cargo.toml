@@ -17,7 +17,7 @@ authors = ["RTK AI Labs"]
 license = "BUSL-1.1"
 description = "rtk-proxy: a local LLM proxy that compresses context with CCR (Compress-Cache-Retrieve) before forwarding it to the provider."
 homepage = "https://www.rtk-ai.app"
-repository = "https://github.com/rtk-ai/rtk"
+repository = "https://github.com/yungSNAT/PascalsLetter"
 readme = "README.md"
 # Source-available, not OSI-open-source: crates.io is not a distribution
 # channel for this crate. It ships as a binary alongside `rtk`.
@@ -33,7 +33,6 @@ path = "src/main.rs"
 
 [dependencies]
 rtk-engine = { path = "../engine" }
-once_cell = "1"
 tiktoken-rs = "0.12.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
