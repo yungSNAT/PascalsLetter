@@ -24,7 +24,11 @@ fn refresh_replaces_a_stale_tracker_snapshot() {
     test_isolation::with_root(scratch.path(), || {
         let _working_dir = test_isolation::enter(scratch.path());
         user_env::with_path("RTK_DB_PATH", Some(&db), || {
-            let mut state = empty_state(Instant::now().checked_sub(REFRESH_INTERVAL).unwrap_or_else(Instant::now));
+            let mut state = empty_state(
+                Instant::now()
+                    .checked_sub(REFRESH_INTERVAL)
+                    .unwrap_or_else(Instant::now),
+            );
             state.project_scope = Some("isolated-project".to_owned());
             state.refresh();
 
@@ -96,7 +100,9 @@ fn dashboard_shows_empty_sections_and_updates_refresh_age() {
         assert!(rows[table + 1].contains("no data yet"));
         assert!(rows[rows.len() - 1].contains("data unaffected by watching it"));
 
-        state.last_refresh = Instant::now().checked_sub(REFRESH_INTERVAL).unwrap_or_else(Instant::now);
+        state.last_refresh = Instant::now()
+            .checked_sub(REFRESH_INTERVAL)
+            .unwrap_or_else(Instant::now);
         terminal.draw(|frame| draw(frame, &state)).unwrap();
         let buffer = terminal.backend().buffer();
         let header = row_text(buffer, 1);
