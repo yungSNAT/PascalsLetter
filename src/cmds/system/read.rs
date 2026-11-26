@@ -1058,3 +1058,7 @@ fn main() {{
         );
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/read_coverage_gen.rs"]
+mod coverage_gen_src_cmds_system_read;

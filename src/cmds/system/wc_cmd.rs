@@ -386,3 +386,7 @@ mod tests {
         assert_eq!(result, "");
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/wc_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_system_wc_cmd;

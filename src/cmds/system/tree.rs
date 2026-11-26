@@ -166,3 +166,7 @@ mod tests {
         assert!(NOISE_DIRS.contains(&"build"));
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/tree_coverage_gen.rs"]
+mod coverage_gen_src_cmds_system_tree;

@@ -726,3 +726,7 @@ b.rs:3:eight
         );
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/ast_grep_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_system_ast_grep_cmd;
