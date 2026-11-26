@@ -768,6 +768,16 @@ mod tests {
         assert_eq!(registry.price("fixture"), Some((1.0, 2.0)));
     }
 
+    #[tokio::test]
+    async fn malformed_stored_registry_is_rejected_without_reading_the_seed() {
+        let store = Store::open(":memory:").unwrap();
+        store.put_setting("models_toml", "[").await;
+        let error = store
+            .model_registry(|| panic!("a stored registry must take precedence"))
+            .unwrap_err();
+        assert_eq!(error.to_string(), "invalid model registry TOML");
+    }
+
     /// The band covers successful requests only; a model no test prices puts
     /// its tokens in `saved_tokens_unpriced` with no dollars.
     #[tokio::test]
