@@ -90,7 +90,7 @@ esac
 #[cfg(unix)]
 #[test]
 fn docker_ps_formats_containers_via_binary() {
-    if !crate::core::test_isolation::rtk_binary_or_skip() {
+    if !crate::core::test_isolation::rtk_binary_ready() {
         return;
     }
     let out = run_rtk_with_fake_docker(FAKE_DOCKER_PS, &["docker", "ps"]);
@@ -114,7 +114,7 @@ fn docker_ps_formats_containers_via_binary() {
 #[cfg(unix)]
 #[test]
 fn docker_ps_falls_back_to_raw_when_format_fails() {
-    if !crate::core::test_isolation::rtk_binary_or_skip() {
+    if !crate::core::test_isolation::rtk_binary_ready() {
         return;
     }
     let script = r#"#!/bin/sh
@@ -136,7 +136,7 @@ esac
 #[cfg(unix)]
 #[test]
 fn docker_ps_propagates_failure_exit_code() {
-    if !crate::core::test_isolation::rtk_binary_or_skip() {
+    if !crate::core::test_isolation::rtk_binary_ready() {
         return;
     }
     let script = "#!/bin/sh\necho 'boom-from-fake-docker' >&2\nexit 3\n";

@@ -160,7 +160,7 @@ mod cli {
 
     #[test]
     fn docker_compose_filters_output_and_docker_passthrough_preserves_arguments() {
-        if !test_isolation::rtk_binary_or_skip() {
+        if !test_isolation::rtk_binary_ready() {
             return;
         }
         let tools = fake_tools(&[(
@@ -249,7 +249,7 @@ esac
 
     #[test]
     fn kubectl_and_oc_route_get_aliases_logs_and_passthrough() {
-        if !test_isolation::rtk_binary_or_skip() {
+        if !test_isolation::rtk_binary_ready() {
             return;
         }
         let script = r#"

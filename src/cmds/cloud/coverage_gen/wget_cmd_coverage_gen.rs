@@ -60,7 +60,7 @@ fn error_summary_classifies_failures_and_trims_unrecognized_diagnostics() {
 
 #[cfg(unix)]
 mod cli {
-    use crate::core::test_isolation::{rtk_binary_or_skip, rtk_command, tempdir};
+    use crate::core::test_isolation::{rtk_binary_ready, rtk_command, tempdir};
     use std::fs::{self, Permissions};
     use std::os::unix::fs::PermissionsExt;
     use std::path::Path;
@@ -157,7 +157,7 @@ esac
 
     #[test]
     fn download_reports_the_written_file_or_the_http_failure() {
-        if !rtk_binary_or_skip() {
+        if !rtk_binary_ready() {
             return;
         }
 

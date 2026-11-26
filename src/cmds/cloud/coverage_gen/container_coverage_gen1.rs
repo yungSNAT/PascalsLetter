@@ -201,7 +201,7 @@ exit 0
 #[cfg(unix)]
 #[test]
 fn docker_images_via_rtk_binary() {
-    if !crate::core::test_isolation::rtk_binary_or_skip() {
+    if !crate::core::test_isolation::rtk_binary_ready() {
         return;
     }
     let dir = crate::core::test_isolation::tempdir();
@@ -242,7 +242,7 @@ fn docker_images_via_rtk_binary() {
 #[cfg(unix)]
 #[test]
 fn docker_logs_via_rtk_binary() {
-    if !crate::core::test_isolation::rtk_binary_or_skip() {
+    if !crate::core::test_isolation::rtk_binary_ready() {
         return;
     }
     let dir = crate::core::test_isolation::tempdir();

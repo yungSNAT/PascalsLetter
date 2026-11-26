@@ -238,7 +238,7 @@ fn run_with_fake_aws(body: &str, args: &[&str]) -> std::process::Output {
 #[cfg(unix)]
 #[test]
 fn binary_sts_rewrites_output_flag_and_filters() {
-    if !crate::core::test_isolation::rtk_binary_or_skip() {
+    if !crate::core::test_isolation::rtk_binary_ready() {
         return;
     }
     let argdir = crate::core::test_isolation::tempdir();
@@ -288,7 +288,7 @@ fn binary_sts_rewrites_output_flag_and_filters() {
 #[cfg(unix)]
 #[test]
 fn binary_filtered_failure_none_and_truncation_paths() {
-    if !crate::core::test_isolation::rtk_binary_or_skip() {
+    if !crate::core::test_isolation::rtk_binary_ready() {
         return;
     }
     // Failure: exit code and stderr propagate.
@@ -323,7 +323,7 @@ fn binary_filtered_failure_none_and_truncation_paths() {
 #[cfg(unix)]
 #[test]
 fn binary_s3_ls_paths() {
-    if !crate::core::test_isolation::rtk_binary_or_skip() {
+    if !crate::core::test_isolation::rtk_binary_ready() {
         return;
     }
     let n = MAX_ITEMS + 13;
@@ -349,7 +349,7 @@ fn binary_s3_ls_paths() {
 #[cfg(unix)]
 #[test]
 fn binary_s3_transfer_paths() {
-    if !crate::core::test_isolation::rtk_binary_or_skip() {
+    if !crate::core::test_isolation::rtk_binary_ready() {
         return;
     }
     let body: String = (0..12)
