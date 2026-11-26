@@ -216,6 +216,10 @@ async fn run_start(args: StartArgs) {
         });
     }
     let state = AppState::new(config).with_pipeline_name(&rules.pipeline);
+    if let Err(e) = rtk_proxy::models::load_at_start(state.store.as_ref()) {
+        tracing::error!(error = %e, "model registry configuration error");
+        std::process::exit(1);
+    }
     let shutdown = state.shutdown.clone();
     let app = server::build_router(state);
 

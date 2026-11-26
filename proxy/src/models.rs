@@ -55,7 +55,27 @@ pub struct Registry {
 
 impl Registry {
     pub fn parse(toml_str: &str) -> anyhow::Result<Registry> {
-        Ok(toml::from_str(toml_str)?)
+        // A TOML error's display includes the input line, which may be operator data.
+        let registry: Self =
+            toml::from_str(toml_str).map_err(|_| anyhow::anyhow!("invalid model registry TOML"))?;
+        let defaults = &registry.default;
+        for (input, output, cache) in
+            std::iter::once((defaults.input, defaults.output, defaults.cache_read_mult)).chain(
+                registry
+                    .models
+                    .iter()
+                    .map(|m| (m.input, m.output, m.cache_read_mult)),
+            )
+        {
+            anyhow::ensure!(
+                [input, output, Some(cache)]
+                    .into_iter()
+                    .flatten()
+                    .all(|v| v.is_finite() && v >= 0.0),
+                "model registry rates must be finite and nonnegative"
+            );
+        }
+        Ok(registry)
     }
 
     /// First spec whose `pattern` is a substring of the (lowercased) model id.
@@ -109,19 +129,28 @@ pub fn install(registry: Registry) {
 /// bootstrap), else the embedded default. It deliberately does NOT override an
 /// existing DB value, so replicas never diverge on a per-pod env var.
 pub fn boot_seed_toml() -> String {
-    if let Ok(path) = std::env::var("RTK_PROXY_MODELS_TOML") {
-        match std::fs::read_to_string(&path) {
-            Ok(s) => {
-                tracing::info!(path, "model registry seed from RTK_PROXY_MODELS_TOML");
-                return s;
-            }
-            Err(e) => tracing::warn!(
-                path, error = %e,
-                "RTK_PROXY_MODELS_TOML unreadable; seeding with embedded default"
-            ),
-        }
+    read_seed().unwrap_or_else(|error| {
+        tracing::warn!(%error, "using embedded model registry");
+        DEFAULT_TOML.to_owned()
+    })
+}
+
+fn read_seed() -> anyhow::Result<String> {
+    match std::env::var_os("RTK_PROXY_MODELS_TOML") {
+        Some(path) => std::fs::read_to_string(path)
+            .map_err(|e| anyhow::anyhow!("cannot read RTK_PROXY_MODELS_TOML ({})", e.kind())),
+        None => Ok(DEFAULT_TOML.to_owned()),
     }
-    DEFAULT_TOML.to_string()
+}
+
+/// Install the database's registry, or a process-local registry when recording is off.
+pub fn load_at_start(store: Option<&crate::store::Store>) -> anyhow::Result<()> {
+    let registry = match store {
+        Some(store) => store.model_registry(read_seed)?,
+        None => Registry::parse(&read_seed()?)?,
+    };
+    install(registry);
+    Ok(())
 }
 
 /// (input $/Mtok, output $/Mtok) for a model; `None` unless the operator
