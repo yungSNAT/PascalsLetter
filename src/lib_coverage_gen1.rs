@@ -123,7 +123,7 @@ mod spawned {
 
     #[test]
     fn project_scoped_init_agents_refuse_global_and_dispatch_otherwise() {
-        if !test_isolation::rtk_binary_or_skip() {
+        if !test_isolation::rtk_binary_ready() {
             return;
         }
         let sb = Sandbox::new();
@@ -163,7 +163,7 @@ mod spawned {
 
     #[test]
     fn config_recall_sets_shows_and_rejects_modes() {
-        if !test_isolation::rtk_binary_or_skip() {
+        if !test_isolation::rtk_binary_ready() {
             return;
         }
         let sb = Sandbox::new();
@@ -191,7 +191,7 @@ mod spawned {
 
     #[test]
     fn npx_routes_tools_and_requires_a_command() {
-        if !test_isolation::rtk_binary_or_skip() {
+        if !test_isolation::rtk_binary_ready() {
             return;
         }
         let sb = Sandbox::new();
@@ -216,7 +216,7 @@ mod spawned {
 
     #[test]
     fn cargo_bun_and_deno_subcommands_reach_their_tool() {
-        if !test_isolation::rtk_binary_or_skip() {
+        if !test_isolation::rtk_binary_ready() {
             return;
         }
         let sb = Sandbox::new();
@@ -258,7 +258,7 @@ mod spawned {
 
     #[test]
     fn wget_ast_grep_and_ctest_forward_their_arguments() {
-        if !test_isolation::rtk_binary_or_skip() {
+        if !test_isolation::rtk_binary_ready() {
             return;
         }
         let sb = Sandbox::new();
@@ -282,7 +282,7 @@ mod spawned {
 
     #[test]
     fn js_tool_subcommands_dispatch() {
-        if !test_isolation::rtk_binary_or_skip() {
+        if !test_isolation::rtk_binary_ready() {
             return;
         }
         let sb = Sandbox::new();
@@ -325,7 +325,7 @@ mod spawned {
     #[cfg(feature = "engine")]
     #[test]
     fn methods_list_names_the_builtin_methods() {
-        if !test_isolation::rtk_binary_or_skip() {
+        if !test_isolation::rtk_binary_ready() {
             return;
         }
         let sb = Sandbox::new();

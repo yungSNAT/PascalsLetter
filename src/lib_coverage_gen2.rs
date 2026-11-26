@@ -14,7 +14,7 @@ fn rtk_output(args: &[&str]) -> Output {
 
 #[test]
 fn run_without_command_bypass_without_args_and_hook_audit() {
-    if !test_isolation::rtk_binary_or_skip() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
 
@@ -114,7 +114,7 @@ impl FakeEnv {
 #[cfg(unix)]
 #[test]
 fn npx_routes_prisma_and_unknown_tools_to_fake_npx() {
-    if !test_isolation::rtk_binary_or_skip() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
     let env = fake_env(&["npx", "npm", "prisma", "next", "prettier", "playwright"]);
@@ -158,7 +158,7 @@ fn npx_routes_prisma_and_unknown_tools_to_fake_npx() {
 #[cfg(unix)]
 #[test]
 fn language_tool_wrappers_dispatch_to_their_tools() {
-    if !test_isolation::rtk_binary_or_skip() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
     let env = fake_env(&[
@@ -215,7 +215,7 @@ fn language_tool_wrappers_dispatch_to_their_tools() {
 #[cfg(unix)]
 #[test]
 fn verbose_bypass_splits_a_quoted_command_and_streams_both_pipes() {
-    if !test_isolation::rtk_binary_or_skip() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
     let env = fake_env(&[]);
