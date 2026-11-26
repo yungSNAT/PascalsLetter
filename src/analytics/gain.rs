@@ -707,6 +707,7 @@ pub fn run(
         "json" => {
             return export_json(
                 &tracker,
+                history,
                 daily,
                 weekly,
                 monthly,
@@ -1661,6 +1662,12 @@ fn print_monthly(tracker: &Tracker, project_scope: Option<&str>) -> Result<()> {
 struct ExportData {
     summary: ExportSummary,
     #[serde(skip_serializing_if = "Option::is_none")]
+    output_accounting: Option<crate::core::tracking::OutputAccounting>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    commands: Option<Vec<crate::core::tracking::InvocationRecord>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recall_events: Option<Vec<crate::core::tracking::RecallEventRecord>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     daily: Option<Vec<DayStats>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     weekly: Option<Vec<WeekStats>>,
@@ -1680,8 +1687,10 @@ struct ExportSummary {
     oversized_capped: usize,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn export_json(
     tracker: &Tracker,
+    history: bool,
     daily: bool,
     weekly: bool,
     monthly: bool,
@@ -1692,7 +1701,19 @@ fn export_json(
         .get_summary_filtered(project_scope) // changed: use filtered variant
         .context("Failed to load token savings summary from database")?;
 
+    // A database whose migration failed lacks what the history reads; the
+    // export leaves the history out and the notice on stderr says why.
+    let history = history && tracker.not_upgraded().is_none();
     let export = ExportData {
+        output_accounting: history
+            .then(|| tracker.output_accounting(project_scope))
+            .transpose()?,
+        commands: history
+            .then(|| tracker.invocation_history(100, project_scope))
+            .transpose()?,
+        recall_events: history
+            .then(|| tracker.recall_event_history(100, project_scope))
+            .transpose()?,
         summary: ExportSummary {
             total_commands: summary.total_commands,
             total_input: summary.total_input,

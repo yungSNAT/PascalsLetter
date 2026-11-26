@@ -13,9 +13,7 @@
 # explicitly from its own directory:
 #   cargo build --release --manifest-path proxy/Cargo.toml
 #
-# The cost of the split is a second lockfile, with its own rusqlite: the
-# daemon's is held to what icm-store links (see proxy/Cargo.toml), and this
-# crate's is not. CI lints and tests the daemon in its own job.
+# The daemon has a separate lockfile. CI lints and tests it in its own job.
 [workspace]
 members = [".", "text", "engine", "plugin"]
 
@@ -75,11 +73,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 colored = "3"
 dirs = "7"
-# Free of proxy/'s pin: nothing in this workspace links icm-store. 0.41 brings
-# libsqlite3-sys 0.39, whose bundled SQLite 3.54 fixes RUSTSEC-2026-0459. The
-# CLI opens the daemon's older-SQLite rtk-proxy.db read-only, which SQLite's
-# backward-compatible file format allows. proxy/ also builds `engine` and
-# `text`: if either takes rusqlite, it must accept proxy/'s 0.34.
+# The CLI reads the daemon's usage database. Both use rusqlite 0.43.
 # `fallible_uint` restores the u64 and usize conversions 0.34 had built in,
 # which only the tests use.
 rusqlite = { version = "0.43", features = ["bundled", "fallible_uint"] }
