@@ -71,6 +71,11 @@ fn shell_tokens(out: &str) -> usize {
 #[test]
 fn kill_switches_stop_processing_before_any_load() {
     let event = repetitive_bash();
+    let scratch = crate::core::test_isolation::tempdir();
+    assert!(
+        crate::core::test_isolation::with_root(scratch.path(), || process(&event)).is_some(),
+        "premise: without a kill switch the event is filtered"
+    );
     let disabled =
         crate::core::user_env::with_vars(&[("RTK_DISABLED", Some("1"))], || process(&event));
     assert!(disabled.is_none(), "RTK_DISABLED=1 must emit nothing");
@@ -200,10 +205,9 @@ fn shell_output_with_recall_hint_never_grows() {
     let raw_stdout = event["tool_response"]["stdout"].as_str().unwrap_or("");
     let raw_stderr = event["tool_response"]["stderr"].as_str().unwrap_or("");
     let raw_tokens = estimate_tokens(&combine_streams(raw_stdout, raw_stderr));
-    if let Some(out) = process_with_config(&event, &config, &pipeline) {
-        assert!(shell_tokens(&out) <= raw_tokens);
-        assert!(out.contains("[x40]"));
-    }
+    let out = process_with_config(&event, &config, &pipeline).expect("repetitive output filtered");
+    assert!(shell_tokens(&out) <= raw_tokens);
+    assert!(out.contains("[x40]"));
 
     let unique = (0..3000)
         .map(|i| format!("unique build line number {i} with details"))
@@ -241,14 +245,19 @@ fn mcp_output_with_recall_hint_never_grows() {
     let noisy = std::iter::repeat_n("repeated mcp line", 400)
         .collect::<Vec<_>>()
         .join("\n");
-    for text in [noisy, barely] {
+    for (text, must_filter) in [(noisy, true), (barely, false)] {
         let event = json!({
             "tool_name": "mcp__linear__get_issue",
             "tool_input": {},
             "tool_response": {"result": text.clone()},
             "duration_ms": 5
         });
-        if let Some(out) = process_with_config(&event, &config, &pipeline) {
+        let out = process_with_config(&event, &config, &pipeline);
+        assert!(
+            out.is_some() || !must_filter,
+            "repeated lines must be filtered"
+        );
+        if let Some(out) = out {
             let v: Value = serde_json::from_str(&out).expect("valid JSON");
             let result = v["hookSpecificOutput"]["updatedToolOutput"]["result"]
                 .as_str()
@@ -282,17 +291,17 @@ fn websearch_string_results_are_filtered_in_place() {
 
     let tee_dir = tempfile::tempdir().expect("tempdir");
     let raw_concat = format!("Summary of results\n\n{noisy}");
-    if let Some(out) = process_with_config(&event, &tee_config(tee_dir.path()), &web_pipeline()) {
-        let v: Value = serde_json::from_str(&out).expect("valid JSON");
-        let joined = v["hookSpecificOutput"]["updatedToolOutput"]["results"]
-            .as_array()
-            .expect("results")
-            .iter()
-            .filter_map(Value::as_str)
-            .collect::<Vec<_>>()
-            .join("\n\n");
-        assert!(estimate_tokens(&joined) <= estimate_tokens(&raw_concat));
-    }
+    let out = process_with_config(&event, &tee_config(tee_dir.path()), &web_pipeline())
+        .expect("websearch results rewritten with a recall hint");
+    let v: Value = serde_json::from_str(&out).expect("valid JSON");
+    let joined = v["hookSpecificOutput"]["updatedToolOutput"]["results"]
+        .as_array()
+        .expect("results")
+        .iter()
+        .filter_map(Value::as_str)
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    assert!(estimate_tokens(&joined) <= estimate_tokens(&raw_concat));
 }
 
 #[test]

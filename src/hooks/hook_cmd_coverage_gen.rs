@@ -129,7 +129,7 @@ fn invoke_hook(project: &Path, hook: &str, input: &str) -> Output {
 
 #[test]
 fn native_hooks_keep_their_protocol_on_blank_malformed_and_commandless_input() {
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
 
@@ -159,7 +159,7 @@ fn native_hooks_keep_their_protocol_on_blank_malformed_and_commandless_input() {
 
 #[test]
 fn codex_accepts_one_mib_but_reports_oversized_input_without_a_reply() {
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
 
@@ -185,7 +185,7 @@ fn codex_accepts_one_mib_but_reports_oversized_input_without_a_reply() {
 fn copilot_heals_a_project_registration_without_removing_custom_hooks() {
     use crate::hooks::constants::{COPILOT_HOOK_FILE, GITHUB_DIR, HOOKS_SUBDIR};
 
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
 

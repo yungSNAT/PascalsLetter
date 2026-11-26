@@ -63,7 +63,7 @@ fn assert_verify_report(
 ) {
     user_env::with_path("RTK_DB_PATH", Some(db_path), || run_verify(1).unwrap());
 
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
 
