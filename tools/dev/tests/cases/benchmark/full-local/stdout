@@ -1,0 +1,111 @@
+RTK Benchmark
+═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+   TEST                     │ SHELL                                    │ RTK                                      │ TOKENS
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+── ls ──
+✅ ls                       │ ls -la                                   │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk ls │     29 →      1 (+96%)
+✅ ls src/                  │ ls -la src/                              │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk ls src/ │     31 →      1 (+96%)
+✅ ls -l src/               │ ls -l src/                               │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk ls -l src/ │     30 →      1 (+96%)
+✅ ls -la src/              │ ls -la src/                              │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk ls -la src/ │     31 →      1 (+96%)
+✅ ls -lh src/              │ ls -lh src/                              │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk ls -lh src/ │     31 →      1 (+96%)
+✅ ls src/ -l               │ ls -l src/                               │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk ls src/ -l │     30 →      1 (+96%)
+✅ ls -a                    │ ls -la                                   │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk ls -a │     29 →      1 (+96%)
+✅ ls multi                 │ ls -la src/ scripts/                     │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk ls src/ scripts/ │     33 →      1 (+96%)
+
+── tree ──
+✅ tree                     │ tree -L 2 -I target                      │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk tree -L 2 │     10 →      1 (+90%)
+✅ tree src/                │ tree src/ -L 2                           │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk tree src/ -L 2 │     10 →      1 (+90%)
+
+── read ──
+✅ read                     │ cat src/lib.rs                           │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk read src/lib.rs │     29 →      2 (+93%)
+⚠️ read -l minimal          │ cat src/lib.rs                           │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk read src/lib.rs -l minimal │     29 →     29 (+0%)
+⚠️ read -l aggressive       │ cat src/lib.rs                           │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk read src/lib.rs -l aggressive │     29 →     15 (+48%)
+🔴 read -n                  │ cat -n src/lib.rs                        │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk read src/lib.rs -n │     45 →     86 (-91%)
+
+── find ──
+⚠️ find *                   │ find . -not -path './target/*' -not -path './.git/*' -type f │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk find '*' │     36 →     24 (+33%)
+⚠️ find *.rs                │ find . -not -path './target/*' -not -path './.git/*' -name '*.rs' -type f │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk find '*.rs' │     36 →     24 (+33%)
+⚠️ find --max 100           │ find . -not -path './target/*' -not -path './.git/*' -type f │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk find '*' --max 100 │     36 →     24 (+33%)
+✅ find --max 10 cap        │ rtk find '*' --max 10                    │ 4/4 names displayed
+✅ find --max 100 cap       │ rtk find '*' --max 100                   │ 4/4 names displayed
+
+── git ──
+✅ git status               │ git status                               │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk git status │     14 →      3 (+78%)
+✅ git log -n 10            │ git log -10                              │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk git log -n 10 │     17 →      3 (+82%)
+✅ git log -n 5             │ git log -5                               │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk git log -n 5 │     17 →      3 (+82%)
+⏭️ git diff                 │ git diff HEAD~1 2>/dev/null || echo ''   │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk git diff HEAD~1 │      0 →      3 (+0%)
+✅ git show                 │ git show HEAD --stat 2>/dev/null || true │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk git show HEAD --stat │     15 →      3 (+80%)
+
+── grep ──
+✅ grep fn                  │ grep -rn 'fn ' src/ || true              │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk grep -rn 'fn ' src/ │     16 →      1 (+93%)
+✅ grep struct              │ grep -rn 'struct ' src/ || true          │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk grep -rn 'struct ' src/ │     16 →      1 (+93%)
+✅ grep --max-len 40        │ grep -rn 'fn ' src/ || true              │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk grep --max-len 40 -rn 'fn ' src/ │     16 →      1 (+93%)
+✅ grep -c                  │ grep -ron 'fn ' src/ || true             │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk grep -rc 'fn ' src/ │     16 →      1 (+93%)
+
+── rg ──
+✅ rg fn                    │ rg -n 'fn ' src/ || true                 │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk rg 'fn ' src/ │      7 →      1 (+85%)
+✅ rg struct                │ rg -n 'struct ' src/ || true             │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk rg 'struct ' src/ │      7 →      1 (+85%)
+✅ rg -l files              │ rg -l 'fn ' src/ || true                 │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk rg -l 'fn ' src/ │      7 →      1 (+85%)
+✅ rg -c count              │ rg -c 'fn ' src/ || true                 │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk rg -c 'fn ' src/ │      7 →      1 (+85%)
+
+── json ──
+✅ json                     │ cat /tmp/rtk_bench.json                  │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk json /tmp/rtk_bench.json │     59 →      4 (+93%)
+❌ json -d 2                │ cat /tmp/rtk_bench.json                  │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk json /tmp/rtk_bench.json -d 2 │     59 →      - (--)
+
+── deps ──
+🔴 deps                     │ cat Cargo.toml                           │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk deps │     18 →     35 (-94%)
+
+── env ──
+✅ env                      │ env                                      │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk env │     69 →      1 (+98%)
+✅ env -f PATH              │ env | grep -i '^[^=]*path'               │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk env -f PATH │     10 →      1 (+90%)
+
+── err ──
+✅ err cargo build          │ cargo build 2>&1 || true                 │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk err cargo build 2>&1 │     23 →      1 (+95%)
+
+── test ──
+✅ test cargo test          │ cargo test --lib 2>&1 || true            │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk test cargo test --lib 2>&1 │     23 →      1 (+95%)
+
+── log ──
+✅ log                      │ cat /tmp/rtk_bench_sample.log            │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk log /tmp/rtk_bench_sample.log │    158 →      1 (+99%)
+
+── summary ──
+✅ summary cargo --help     │ cargo --help                             │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk summary cargo --help │     22 →      1 (+95%)
+⏭️  summary rustc --help (rustc not in PATH, skipped)
+
+── cargo ──
+✅ cargo build              │ cargo build 2>&1 || true                 │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk cargo build 2>&1 │     23 →      1 (+95%)
+✅ cargo test               │ cargo test --lib 2>&1 || true            │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk cargo test --lib 2>&1 │     23 →      1 (+95%)
+✅ cargo clippy             │ cargo clippy 2>&1 || true                │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk cargo clippy 2>&1 │     23 →      1 (+95%)
+✅ cargo check              │ cargo check 2>&1 || true                 │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk cargo check 2>&1 │     23 →      1 (+95%)
+
+── smart ──
+✅ smart main.rs            │ cat src/main.rs                          │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk smart src/main.rs │      8 →      1 (+87%)
+
+── wc ──
+✅ wc                       │ wc Cargo.toml src/main.rs                │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk wc Cargo.toml src/main.rs │     16 →      1 (+93%)
+
+── curl ──
+✅ curl json                │ curl -s http://127.0.0.1:40404/data.json │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk curl http://127.0.0.1:40404/data.json │     13 →      1 (+92%)
+✅ curl text                │ curl -s http://127.0.0.1:40404/robots.txt │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk curl http://127.0.0.1:40404/robots.txt │      9 →      1 (+88%)
+
+── wget ──
+✅ wget                     │ wget -qO- http://127.0.0.1:40404/data.json │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk wget http://127.0.0.1:40404/data.json │     13 →      1 (+92%)
+
+── rewrite ──
+✅ rewrite quoted           │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk rewrite 'git status' │ rtk git status
+✅ rewrite unquoted         │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk rewrite git status │ rtk git status
+✅ rewrite ls -al           │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk rewrite ls -al │ rtk ls -al
+✅ rewrite npm exec         │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk rewrite npm exec │ rtk npm exec
+✅ rewrite cargo test       │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk rewrite cargo test │ rtk cargo test
+❌ rewrite compound         │ /tmp/rtk-dev-parity/full-local/rtkbin/rtk rewrite 'cargo test && git push' │ got: rtk cargo test && git push (expected: rtk cargo test && rtk git push)
+
+═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+  ✅ 46 good  ⚠️ 6 warn  🔴 2 negative  ❌ 2 fail    46/56 (82%)
+  Tokens: 1251 → 347  (-72%)
+
+  Debug: /tmp/rtk-dev-parity/full-local/root/scripts/benchmark/{unix,rtk,diff}/
+
+  BENCHMARK FAILED: 2 filter(s) produced more tokens than raw output
+  BENCHMARK FAILED: 2 filter(s) returned empty output

@@ -196,32 +196,7 @@ PascalsLetter uses 670 tokens fewer than RTK although it shows `git diff` whole 
 
 ### Quick Start
 
-```bash
-# 1. Install for your AI tool
-rtk init -g                     # Claude Code (default)
-rtk init -g --copilot           # GitHub Copilot
-rtk init -g --gemini            # Gemini CLI
-rtk init -g --codex             # Codex (OpenAI)
-rtk init -g --agent cursor      # Cursor
-rtk init -g --agent windsurf    # Windsurf
-rtk init --agent cline          # Cline / Roo Code
-rtk init --agent kilocode       # Kilo Code
-rtk init --agent antigravity    # Google Antigravity
-rtk init --agent kimi           # Kimi AI
-rtk init -g --agent pi          # Pi
-rtk init --agent omp            # Oh My Pi (OMP)
-rtk init --agent hermes         # Hermes
-rtk init -g --agent droid       # Factory Droid
-rtk init --agent trae           # Trae (project: .trae/hooks.json)
-rtk init -g --agent trae        # Trae global: ~/.trae and existing ~/.trae-cn
-
-# 2. Restart your AI tool, then test
-git status  # Automatically rewritten to rtk git status
-```
-
-The agent receives compact output without ever calling `rtk` explicitly.
-
-**The hook only fires on Bash tool calls.** Built-in tools like `Read`, `Grep` and `Glob` do not pass through it. Use shell commands (`cat`, `rg`, `find`) or call `rtk read`, `rtk grep`, `rtk find` directly.
+Run your agent's `rtk init` line from [Supported AI Tools](#supported-ai-tools) (`rtk init -g` for Claude Code), restart the agent, then have it run `git status`: the hook rewrites it to `rtk git status`, so the agent gets compact output without calling `rtk` itself.
 
 > Per-agent setup, `--dry-run`, and uninstall: **[Quick Start](docs/guide/getting-started/quick-start.md)** · **[Supported Agents](docs/guide/getting-started/supported-agents.md)**
 

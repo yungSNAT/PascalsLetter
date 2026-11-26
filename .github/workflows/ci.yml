@@ -35,8 +35,10 @@ jobs:
           fetch-depth: 50
       - name: Check filter modules have tests
         run: |
-          git fetch origin "${{ github.base_ref }}" --depth=1 || true
-          bash scripts/check-test-presence.sh "origin/${{ github.base_ref }}"
+          git fetch origin "$BASE_REF" --depth=1 || true
+          cargo run --quiet --locked --manifest-path tools/dev/Cargo.toml -- check-test-presence "origin/$BASE_REF"
+        env:
+          BASE_REF: ${{ github.base_ref }}
 
   fmt:
     timeout-minutes: 30
@@ -113,7 +115,12 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/develop' }}
       - run: cargo fmt --manifest-path proxy/Cargo.toml --all --check
       - run: cargo clippy --manifest-path proxy/Cargo.toml --all-targets
-      - run: cargo test --manifest-path proxy/Cargo.toml
+      - name: Install the pinned cargo-nextest
+        uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+        with:
+          tool: cargo-nextest@0.9.150
+          fallback: none
+      - run: cargo nextest run --locked --manifest-path proxy/Cargo.toml --no-fail-fast
 
   # The Apache-2.0 edition. Two things must hold: it builds and passes its own
   # tests, and its dependency graph contains no BUSL crate. The purity check is
@@ -137,7 +144,12 @@ jobs:
         with:
           save-if: ${{ github.ref == 'refs/heads/develop' }}
       - run: cargo clippy --no-default-features --all-targets
-      - run: cargo test --no-default-features
+      - name: Install the pinned cargo-nextest
+        uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+        with:
+          tool: cargo-nextest@0.9.150
+          fallback: none
+      - run: cargo nextest run --locked --no-default-features --no-fail-fast
       # Match the crate-name column, not the whole line: the checkout path
       # can contain 'rtk-engine', which would match every line's path and
       # fail a clean tree.
@@ -216,8 +228,14 @@ jobs:
         # its own job, since it is not a member. On a develop push the Linux
         # leg only builds the tests, for the cache pull requests restore:
         # coverage.yml runs the same tests then.
+      - name: Install the pinned cargo-nextest
+        if: runner.os != 'Linux' || github.event_name != 'push'
+        uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+        with:
+          tool: cargo-nextest@0.9.150
+          fallback: none
       - if: runner.os != 'Linux' || github.event_name != 'push'
-        run: cargo test --all
+        run: cargo nextest run --locked --workspace --no-fail-fast
       - if: runner.os == 'Linux' && github.event_name == 'push'
         run: cargo test --all --no-run
 
@@ -275,6 +293,22 @@ jobs:
         shell: pwsh
         run: ./scripts/test-install-proxy.ps1
 
+  # install.sh's archive path traversal check (issue #1250, CWE-22).
+  install-sh:
+    timeout-minutes: 5
+    name: install.sh (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Path traversal check
+        run: sh scripts/test-install.sh
+
   # The agent plugins' own tests. Windows matters: there a program started by
   # bare name runs from the working folder first, which the plugins must avoid.
   hook-plugins:
@@ -324,7 +358,7 @@ jobs:
           save-if: false
 
       - name: Install the pinned cargo-audit
-        uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
+        uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
         with:
           tool: cargo-audit@0.22.2
           fallback: none
@@ -469,6 +503,8 @@ jobs:
           persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: clippy, rustfmt
 
       # The Linux test leg's cache holds this debug build's dependencies; reuse
       # it rather than saving a copy of our own.
@@ -488,15 +524,30 @@ jobs:
         run: pip install --only-binary ':all:' --require-hashes --requirement .github/ci/benchmark-requirements.txt
 
       - name: Install Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: "stable"
 
       - name: Install Go tools
         run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
 
+      # tools/dev is its own workspace, so the workspace jobs do not see it. Its
+      # parity test replays the cases recorded from the shell benchmark it replaced.
+      # Its build goes outside the checkout: the raw `find .` rows would count it.
+      - name: Lint and test the benchmark tool
+        run: |
+          cargo fmt --manifest-path tools/dev/Cargo.toml --check
+          cargo clippy --manifest-path tools/dev/Cargo.toml --locked --all-targets -- -D warnings
+          cargo test --manifest-path tools/dev/Cargo.toml --locked
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/rtk-dev-target
+
+      # Built, then run directly: `cargo run` would add its CARGO_* variables to
+      # the environment the env rows measure.
       - name: Run benchmark
-        run: ./scripts/benchmark.sh
+        run: |
+          CARGO_TARGET_DIR="$RUNNER_TEMP/rtk-dev-target" cargo build --manifest-path tools/dev/Cargo.toml --locked
+          "$RUNNER_TEMP/rtk-dev-target/debug/rtk-dev" benchmark
         env:
           RTK_BIN: target/debug/rtk
 

@@ -6,6 +6,9 @@
 #   2. Archives with absolute paths are rejected pre-extraction.
 #   3. Archives with ".." components are rejected pre-extraction.
 #   4. The check is still present in install.sh (regression guard).
+#
+# The pattern under test is read from install.sh itself, so a weakened
+# pattern there fails these checks. CI runs this script (ci.yml, install-sh).
 
 set -eu
 
@@ -18,17 +21,29 @@ if [ ! -f "$INSTALL_SH" ]; then
 fi
 
 if ! command -v python3 >/dev/null 2>&1; then
+    if [ -n "${CI:-}" ]; then
+        echo "FAIL: python3 not available in CI — crafted tarball tests require python3"
+        exit 1
+    fi
     echo "SKIP: python3 not available — crafted tarball tests require python3"
     exit 0
+fi
+
+# The pattern install.sh rejects archive entries with, from its one
+# `if tar -tzf "$ARCHIVE" | grep -qE '...'; then` line.
+PATTERN=$(sed -n "s/^[[:space:]]*if tar -tzf \"\$ARCHIVE\" | grep -qE '\(.*\)'; then\$/\1/p" "$INSTALL_SH")
+if [ -z "$PATTERN" ] || [ "$(printf '%s\n' "$PATTERN" | wc -l)" -ne 1 ]; then
+    echo "FAIL: install.sh has no single 'tar -tzf \"\$ARCHIVE\" | grep -qE' check — was it removed?"
+    exit 1
 fi
 
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
 
-# The check replicated from install.sh (keep in sync with install.sh).
+# install.sh's check with its own pattern.
 # Returns 0 when archive is safe, 1 when unsafe.
 check_archive() {
-    if tar -tzf "$1" | grep -qE '^/|(^|/)\.\.(/|$)'; then
+    if tar -tzf "$1" | grep -qE "$PATTERN"; then
         return 1
     fi
     return 0
