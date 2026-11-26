@@ -1269,7 +1269,14 @@ fn deliver_native(config: &Config, event: &Value, emitted: Option<String>) -> Op
             && hunkable(text)
     });
     deliver_seen(config, event, seen, baseline, emitted, |previous| {
-        native_pointer(config, event, envelope, response?, &text?, previous)
+        native_pointer(
+            config,
+            event,
+            envelope,
+            response?,
+            text.as_deref()?,
+            previous,
+        )
     })
 }
 
