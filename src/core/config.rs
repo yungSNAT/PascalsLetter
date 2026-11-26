@@ -150,6 +150,12 @@ pub struct HooksConfig {
     /// PostToolUse hooks). Off by default.
     #[serde(default)]
     pub dedup_repeats: bool,
+    /// With `dedup_repeats`, a Read whose file changed since the same agent's
+    /// last completed Read of the same input gets classic `diff` hunks
+    /// against the text it got then, when they are at most half the file.
+    /// Off by default.
+    #[serde(default)]
+    pub dedup_hunks: bool,
     /// Suppress the "No hook installed" warning only.
     /// Useful when running rtk via CLAUDE.md instructions instead of hooks,
     /// or with tools like OpenCode that don't use Claude Code hooks.

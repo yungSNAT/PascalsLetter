@@ -60,6 +60,7 @@ exclude_commands = []       # commands to never auto-rewrite
 suppress_hook_warning = false # suppress the missing-hook warning only
 wrap_fish_scripts = false   # opt in to handing a fish script back as `rtk run --shell fish -c '…'`
 dedup_repeats = false       # Claude Code: a Bash, Read, Grep or Glob result identical to one the same agent already got becomes a one-line `rtk recall` pointer (see Repeated outputs)
+dedup_hunks = false         # with dedup_repeats: a re-read of a file that changed a little gets diff hunks instead of the whole file
 
 [awareness]
 level = "default"           # "default", "high", "full" — see Awareness level
@@ -144,9 +145,11 @@ Setting a mode rewrites only the relevant keys in `config.toml` (comments and ot
 With `[hooks] dedup_repeats = true`, the Claude Code PostToolUse hook replaces a result the same agent already received verbatim with a one-line pointer:
 
 - **Bash**: `[rtk: same output as the previous run of this command (N lines): rtk recall <hash>]` when the agent's last completed Bash call ran the same command and got the same bytes.
-- **Read, Grep and Glob**: `[rtk: same result as an earlier identical Read in this session (N lines): rtk recall <hash>]` (or Grep, Glob) when the agent's last completed call of that tool with the same arguments got the same result. The result is compared, not the path: a file that changed since it was read is delivered whole. Another range of a file, or other Grep options, is another call. Glob's duration is not part of the comparison.
+- **Read, Grep and Glob**: `[rtk: same result as an earlier identical Read in this session (N lines): rtk recall <hash>]` (or Grep, Glob) when the agent's last completed call of that tool with the same arguments got the same result. The result is compared, not the path: a file that changed since it was read is delivered whole, unless `dedup_hunks` is on (see below). Another range of a file, or other Grep options, is another call. Glob's duration is not part of the comparison.
 
 Each agent (the main thread, or a subagent by `agent_id`) has its own records. The result is delivered whole whenever completion is in doubt: the agent's previous call failed, was denied or interrupted (Claude Code fires no PostToolUse for these), calls overlapped, the PreToolUse hook is not installed for the tool, the hook input lacks `tool_use_id`, or recall storage is not `sqlite`. A pointer is never longer than the result it replaces. Run `rtk init -g` after turning the option on: it adds Read, Grep and Glob to the PreToolUse and PostToolUse matchers. After a context compaction the pointer can name output that has left the context; `rtk recall <hash>` returns it. A Claude Code version that omits `agent_id` inside subagents makes them share the main thread's records. The records live in a `repeat` folder beside recall storage, one folder per session: another session's folder untouched for 7 days is removed when a session starts (where the SessionStart hook is registered) or makes its first call, and so is a file a hook left when it died, after an hour. The current session's folder is never removed this way.
+
+With `[hooks] dedup_hunks = true` as well, a Read of a file that changed since the same agent's last completed Read of the same input (path and range) gets classic `diff` hunks (`11c11,12`, `< old`, `---`, `> new`) against the text it got from that Read, with a header naming the file and `rtk recall <hash>` for the current text whole. Hunks are sent only when they are at most half the file, the file is at most 64 KiB, and its lines rebuild it exactly (no carriage returns, the same final newline); otherwise the file is delivered whole. A Read answered with hunks keeps no record, so the next change to that file is delivered whole: hunks only ever apply to text the agent was given. Grep, Glob and Bash results are never hunked. The text kept for this lives in the session's `repeat` folder and goes with it.
 
 `rtk gain` counts each pointer that reached the agent: its 'Repeats' line gives how many there were in the last 30 days and the estimated tokens of the results they replaced against those of the pointers.
 
