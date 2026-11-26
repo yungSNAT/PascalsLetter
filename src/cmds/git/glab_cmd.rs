@@ -1782,3 +1782,11 @@ mod tests {
         assert!(!output.contains('✗'));
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/glab_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_git_glab_cmd;
+
+#[cfg(test)]
+#[path = "coverage_gen/glab_cmd_coverage_gen1.rs"]
+mod coverage_gen1_src_cmds_git_glab_cmd;
