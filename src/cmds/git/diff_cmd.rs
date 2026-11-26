@@ -787,12 +787,20 @@ fn format_classic_diff(diff: &DiffResult) -> String {
 }
 
 /// `old` to `new` as classic `diff` hunks (`NcM`, `< old`, `---`, `> new`),
-/// or `None` when no change list was built within this diff's budgets or the
-/// difference is only what `lines()` hides (line endings, a final newline).
+/// numbered as if both began at line `first`, or `None` when no change list
+/// was built within this diff's budgets or the difference is only what
+/// `lines()` hides (line endings, a final newline).
 #[cfg(feature = "engine")]
-pub(crate) fn classic_hunks(old: &str, new: &str) -> Option<String> {
+pub(crate) fn classic_hunks(old: &str, new: &str, first: usize) -> Option<String> {
     match compare_files(old, new) {
-        FileComparison::Lines(diff) if diff.unaligned.is_none() => Some(format_classic_diff(&diff)),
+        FileComparison::Lines(mut diff) if diff.unaligned.is_none() => {
+            let by = first.checked_sub(1)?;
+            for hunk in &mut diff.hunks {
+                hunk.start1 += by;
+                hunk.start2 += by;
+            }
+            Some(format_classic_diff(&diff))
+        }
         _ => None,
     }
 }

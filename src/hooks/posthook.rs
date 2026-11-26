@@ -1403,12 +1403,15 @@ fn deliver_seen(
     emitted
 }
 
-/// A repeat pointer: the hook output that carries it, and the byte lengths of
-/// the text it replaces and of the pointer line the agent gets instead.
+/// A repeat pointer: the hook output that carries it, the byte lengths of
+/// the text it replaces and of the pointer line the agent gets instead, and
+/// the kind `rtk gain` books it under (`repeat`, or `hunks` for a changed
+/// re-read sent as diff hunks).
 struct Pointer {
     output: String,
     replaced: usize,
     line: usize,
+    kind: &'static str,
 }
 
 #[cfg(test)]
@@ -1418,8 +1421,8 @@ thread_local! {
     static REPEAT_TRACKER: Tracker = Tracker::new_in_memory().expect("in-memory tracker");
 }
 
-/// Books a delivered pointer as its own `repeat` kind, per tool, so `rtk gain`
-/// counts what repeated outputs save.
+/// Books a delivered pointer under its kind, per tool, so `rtk gain` counts
+/// what repeated outputs and hunked re-reads save.
 fn record_repeat(event: &Value, pointer: &Pointer) {
     let tool = event
         .get("tool_name")
@@ -1428,7 +1431,7 @@ fn record_repeat(event: &Value, pointer: &Pointer) {
     let tokens_in = estimate_tokens_from_len(pointer.replaced);
     let tokens_out = estimate_tokens_from_len(pointer.line);
     let book = |tracker: &Tracker| {
-        let _ = tracker.record_attribution("hook", "repeat", tool, tokens_in, tokens_out);
+        let _ = tracker.record_attribution("hook", pointer.kind, tool, tokens_in, tokens_out);
     };
     #[cfg(test)]
     REPEAT_TRACKER.with(book);
@@ -1479,6 +1482,7 @@ fn pointer(config: &Config, response: &Value, delivered: &str) -> Option<Pointer
         output: hook_output(updated),
         replaced: delivered.len(),
         line: text.len(),
+        kind: "repeat",
     })
 }
 
@@ -1510,6 +1514,11 @@ fn native_pointer(
     previous: Option<&str>,
 ) -> Option<Pointer> {
     let tool = event.get("tool_name").and_then(Value::as_str)?;
+    let kind = if previous.is_some() {
+        "hunks"
+    } else {
+        "repeat"
+    };
     let line = match previous {
         None => {
             let hash = store_repeat(config, text)?;
@@ -1519,7 +1528,7 @@ fn native_pointer(
             )
         }
         Some(previous) => {
-            let hunks = read_hunks(previous, text)?;
+            let hunks = read_hunks(previous, text, read_first_line(event, &response)?)?;
             let path = event
                 .pointer("/tool_input/file_path")
                 .and_then(Value::as_str)
@@ -1531,7 +1540,7 @@ fn native_pointer(
             let hash = store_repeat(config, text)?;
             format!(
                 "[rtk: {path} changed since your last Read of it in this session ({} lines now). \
-                 These diff hunks, numbered from the first line of that Read, turn the text you got \
+                 These diff hunks, numbered by the file's own lines, turn the text you got \
                  then into the current one, which prints whole with: rtk recall {hash}]\n{hunks}",
                 text.lines().count(),
             )
@@ -1559,16 +1568,34 @@ fn native_pointer(
         output,
         replaced: text.len(),
         line: line.len(),
+        kind,
     })
 }
 
-/// `previous` to `current` as classic `diff` hunks, when their lines rebuild
-/// `current` exactly.
-fn read_hunks(previous: &str, current: &str) -> Option<String> {
+/// The file line a Read's text starts at, as the agent sees it numbered: the
+/// response's `startLine`, or line 1 for a Read of the whole file. `None` for
+/// a ranged Read whose response does not say, so its hunks are not sent.
+fn read_first_line(event: &Value, response: &Value) -> Option<usize> {
+    if let Some(start) = response.pointer("/file/startLine") {
+        return start
+            .as_u64()
+            .and_then(|n| usize::try_from(n).ok())
+            .filter(|&n| n > 0);
+    }
+    let input = event.get("tool_input");
+    let ranged = ["offset", "limit"]
+        .iter()
+        .any(|key| input.and_then(|i| i.get(key)).is_some_and(|v| !v.is_null()));
+    (!ranged).then_some(1)
+}
+
+/// `previous` to `current` as classic `diff` hunks numbered from file line
+/// `first`, when their lines rebuild `current` exactly.
+fn read_hunks(previous: &str, current: &str, first: usize) -> Option<String> {
     if !hunkable(current) || previous.ends_with('\n') != current.ends_with('\n') {
         return None;
     }
-    crate::cmds::git::diff_cmd::classic_hunks(previous, current)
+    crate::cmds::git::diff_cmd::classic_hunks(previous, current, first)
 }
 
 /// Path or URL the tracking rows and `when` facts key on.
@@ -2407,6 +2434,93 @@ mod tests {
             apply_classic(&third, hunks.split_once('\n').unwrap().1),
             fourth
         );
+        let booked = |kind: &str| {
+            REPEAT_TRACKER.with(|tracker| {
+                tracker
+                    .attribution_site("hook", kind, 30)
+                    .expect("attribution")
+                    .into_iter()
+                    .map(|row| (row.name, row.calls))
+                    .collect::<Vec<_>>()
+            })
+        };
+        assert_eq!(booked("hunks"), vec![("Read".to_string(), 2)]);
+        assert_eq!(booked("repeat"), vec![], "hunks are not booked as repeats");
+    }
+
+    /// A ranged Read's hunks carry the file's own line numbers, which is how
+    /// the agent saw the text numbered; a ranged Read whose response does not
+    /// say where it starts gets no hunks.
+    #[test]
+    fn test_ranged_reread_hunks_use_file_line_numbers() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = hunk_config(dir.path());
+        let path = "/repo/src/lib.rs";
+        let ranged = |id: &str, content: &str, start: Option<u64>| {
+            let mut call = Call::read(id, path, content);
+            call.event["tool_input"]["offset"] = serde_json::json!(101);
+            call.event["tool_input"]["limit"] = serde_json::json!(400);
+            match start {
+                Some(n) => call.event["tool_response"]["file"]["startLine"] = serde_json::json!(n),
+                None => {
+                    let file = call.event["tool_response"]["file"].as_object_mut().unwrap();
+                    file.remove("startLine");
+                }
+            }
+            call.run(&config)
+        };
+        let first = lines(400);
+        let second = first.replace("line 10\n", "line ten\n");
+        assert!(hunks_of(&ranged("a", &first, Some(101))).is_none());
+        let shown = hunks_of(&ranged("b", &second, Some(101))).expect("hunks");
+        let (header, hunks) = shown.split_once('\n').expect("hunks after the header");
+        assert!(
+            header.contains("numbered by the file's own lines"),
+            "{header}"
+        );
+        // Slice line 11 is file line 111.
+        assert_eq!(hunks, "111c111\n< line 10\n---\n> line ten\n");
+
+        let third = second.replace("line 20\n", "line twenty\n");
+        let fourth = third.replace("line 30\n", "line thirty\n");
+        ranged("c", &third, None);
+        assert!(
+            hunks_of(&ranged("d", &fourth, None)).is_none(),
+            "no startLine, no hunks"
+        );
+    }
+
+    /// A record whose kept text no longer matches its digest, or a record from
+    /// a build that kept no text, gives a whole delivery, never hunks.
+    #[test]
+    fn test_changed_reread_is_whole_when_the_record_is_unsound() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = hunk_config(dir.path());
+        let first = lines(400);
+        let second = first.replace("line 10\n", "line ten\n");
+        let record = |call: &Call| {
+            let files = agent_files(&config, &call.event).expect("agent files");
+            files.dir.join(&files.record)
+        };
+        let cases: [(&str, fn(&str) -> String); 2] = [
+            ("corrupt kept text", |body| {
+                body.replace("line 200\n", "line 2OO\n")
+            }),
+            ("old format", |body| {
+                body.lines().next().unwrap().to_string()
+            }),
+        ];
+        for (n, (name, rewrite)) in cases.into_iter().enumerate() {
+            let path = format!("/repo/src/{n}.rs");
+            let a = Call::read(&format!("{n}a"), &path, &first);
+            a.run(&config);
+            let body = std::fs::read_to_string(record(&a)).expect("record");
+            assert!(body.contains("line 200\n"), "{name}: the text is kept");
+            std::fs::write(record(&a), rewrite(&body)).expect("rewrite");
+            let out = Call::read(&format!("{n}b"), &path, &second).run(&config);
+            assert!(hunks_of(&out).is_none(), "{name}");
+            assert!(native_pointer_of(&out).is_none(), "{name}");
+        }
     }
 
     /// Off by default, and never for a change too large to be worth hunks, a
