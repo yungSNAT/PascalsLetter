@@ -1199,18 +1199,9 @@ fn print_efficiency_ledger(tracker: &Tracker) {
     // panel is headed "last 30 days", so older requests must not count.
     let proxy = crate::llm_proxy::read_gain_summary_since(WINDOW_DAYS);
     let proxy = proxy.as_ref();
-    let sum = |kind: &str| -> (i64, i64, i64) {
-        tracker
-            .attribution_site("hook", kind, WINDOW_DAYS)
-            .unwrap_or_default()
-            .iter()
-            .fold((0, 0, 0), |(c, i, o), r| {
-                (c + r.calls, i + r.tokens_in, o + r.tokens_out)
-            })
-    };
-    let (_, comp_in, comp_out) = sum("pipeline");
-    let (_, _, llm_spent) = sum("llm-spend");
-    let (recalls, _, _) = sum("recovery");
+    let hook = HookFigures::read(tracker, WINDOW_DAYS);
+    let (comp_in, comp_out) = (hook.comp_in, hook.comp_out);
+    let (llm_spent, recalls) = (hook.llm_spent, hook.recalls);
     let (shadow_calls, shadow_in, shadow_out) = {
         let rows = tracker
             .attribution_site("shadow", "pipeline", WINDOW_DAYS)
@@ -1234,8 +1225,7 @@ fn print_efficiency_ledger(tracker: &Tracker) {
         .filter(|p| p.cost_without_usd > 0.0)
         .map(|p| (p.cost_actual_usd, p.cost_without_usd));
 
-    let has_hook_data = comp_in > 0 || llm_spent > 0 || recalls > 0;
-    if !has_hook_data && proxy_costs.is_none() && shadow_calls == 0 {
+    if !hook.any() && proxy_costs.is_none() && shadow_calls == 0 {
         return;
     }
 
@@ -1274,6 +1264,9 @@ fn print_efficiency_ledger(tracker: &Tracker) {
             "Recalled",
             format!("{recalls} compressed outputs pulled back in full"),
         );
+    }
+    if let Some(line) = hook.repeat_line() {
+        print_kpi("Repeats", line);
     }
     if directive_tokens > 0 {
         print_kpi(
@@ -1361,6 +1354,65 @@ fn styled(text: &str, strong: bool) -> String {
 
 /// Print a key-value pair in KPI layout. // added
 const PANEL_RULES: usize = 5;
+
+/// The efficiency panel's line for repeated outputs that reached the agent as
+/// `rtk recall` pointers: how many, and the tokens they stood in for.
+#[cfg(feature = "engine")]
+fn repeat_kpi(calls: i64, tokens_in: i64, tokens_out: i64) -> String {
+    let sent = if calls == 1 {
+        "output sent as a pointer"
+    } else {
+        "outputs sent as pointers"
+    };
+    format!(
+        "{calls} repeated {sent}: {} → {} tokens   est.",
+        format_tokens(tokens_in.max(0) as usize),
+        format_tokens(tokens_out.max(0) as usize),
+    )
+}
+
+/// The hook's own figures for the efficiency panel, summed over its window.
+#[cfg(feature = "engine")]
+struct HookFigures {
+    comp_in: i64,
+    comp_out: i64,
+    llm_spent: i64,
+    recalls: i64,
+    repeats: (i64, i64, i64),
+}
+
+#[cfg(feature = "engine")]
+impl HookFigures {
+    fn read(tracker: &Tracker, days: u32) -> Self {
+        let sum = |kind: &str| -> (i64, i64, i64) {
+            tracker
+                .attribution_site("hook", kind, days)
+                .unwrap_or_default()
+                .iter()
+                .fold((0, 0, 0), |(c, i, o), r| {
+                    (c + r.calls, i + r.tokens_in, o + r.tokens_out)
+                })
+        };
+        let (_, comp_in, comp_out) = sum("pipeline");
+        Self {
+            comp_in,
+            comp_out,
+            llm_spent: sum("llm-spend").2,
+            recalls: sum("recovery").0,
+            repeats: sum("repeat"),
+        }
+    }
+
+    /// Whether the hook booked anything the panel shows.
+    fn any(&self) -> bool {
+        self.comp_in > 0 || self.llm_spent > 0 || self.recalls > 0 || self.repeats.0 > 0
+    }
+
+    fn repeat_line(&self) -> Option<String> {
+        let (calls, tokens_in, tokens_out) = self.repeats;
+        (calls > 0).then(|| repeat_kpi(calls, tokens_in, tokens_out))
+    }
+}
 
 fn print_kpi(label: &str, value: String) {
     println!("{:<18} {}", format!("{label}:"), value);
@@ -2003,6 +2055,33 @@ fn print_pro_hint_if_due(tracker: &Tracker) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "engine")]
+    #[test]
+    fn repeat_kpi_shows_the_count_and_the_tokens_replaced() {
+        assert_eq!(
+            repeat_kpi(3, 12_000, 60),
+            "3 repeated outputs sent as pointers: 12.0K → 60 tokens   est."
+        );
+        assert!(repeat_kpi(1, 400, 20).starts_with("1 repeated output sent as a pointer:"));
+    }
+
+    /// A panel whose only hook figure is a repeat still prints, with its line.
+    #[cfg(feature = "engine")]
+    #[test]
+    fn repeats_alone_fill_the_panel() {
+        let tracker = Tracker::new_in_memory().expect("tracker");
+        assert!(!HookFigures::read(&tracker, 30).any());
+        tracker
+            .record_attribution("hook", "repeat", "Bash", 4000, 20)
+            .expect("record");
+        let hook = HookFigures::read(&tracker, 30);
+        assert!(hook.any());
+        assert_eq!(
+            hook.repeat_line().as_deref(),
+            Some("1 repeated output sent as a pointer: 4.0K → 20 tokens   est.")
+        );
+    }
 
     #[cfg(feature = "engine")]
     #[test]
