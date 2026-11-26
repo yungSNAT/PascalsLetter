@@ -1928,6 +1928,12 @@ mod tests {
             self.pre(config);
             self.post(config)
         }
+
+        /// `run` through `pipeline` instead of the default one.
+        fn run_through(&self, config: &Config, pipeline: &Resolved) -> Option<String> {
+            self.pre(config);
+            run_with(&self.event, config, pipeline)
+        }
     }
 
     fn lines(n: usize) -> String {
@@ -2554,6 +2560,40 @@ mod tests {
             hunks_of(&out).is_none(),
             "hunks between 2 converted windows"
         );
+    }
+
+    /// The same through a real pipeline with a Read rule on: a cut Read the
+    /// rule rewrote gets no hunks, whilst whole Reads it rewrote still do.
+    #[test]
+    fn test_read_rule_rewrite_of_a_cut_read_gets_no_hunks() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = hunk_config(dir.path());
+        let pipeline = pipeline_from(
+            "[pipeline]\nextends = \"rtk:posthook\"\n[override.strip-line-numbers]\nenabled = true\n",
+        );
+        let file_old: Vec<String> = (1..=2100).map(|k| format!("r{k}")).collect();
+        let mut file_new = file_old.clone();
+        file_new.insert(9, "new".to_string());
+        // The first 2,000 lines as Read numbers them.
+        let numbered = |f: &[String]| -> String {
+            f[..2000]
+                .iter()
+                .enumerate()
+                .map(|(i, l)| format!("{}\u{2192}{l}\n", i + 1))
+                .collect()
+        };
+        let read = |id: &str, path: &str, total: usize, file: &[String]| {
+            let mut call = Call::read(id, path, &numbered(file));
+            call.event["tool_response"]["file"]["totalLines"] = serde_json::json!(total);
+            call.run_through(&config, &pipeline)
+        };
+        let first = read("a", "/repo/cut.txt", 2100, &file_old).expect("the rule rewrote it");
+        assert!(!first.contains('\u{2192}'), "line numbers stripped");
+        let out = read("b", "/repo/cut.txt", 2101, &file_new);
+        assert!(hunks_of(&out).is_none(), "hunks between 2 cut Reads");
+        // The control: whole Reads (2,000 lines each) through the same rule.
+        read("c", "/repo/whole.txt", 2000, &file_old);
+        assert!(hunks_of(&read("d", "/repo/whole.txt", 2000, &file_new)).is_some());
     }
 
     /// A record whose kept text no longer matches its digest, or a record from
