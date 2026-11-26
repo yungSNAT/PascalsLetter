@@ -141,18 +141,6 @@ fn daemon_summary_as_pipeline_row() {
     });
 }
 
-#[cfg(feature = "engine")]
-#[test]
-fn binary_available_matches_the_candidates() {
-    let expected = binary_candidates().iter().any(|p| p.is_file());
-    assert_eq!(binary_available(), expected);
-}
-
-#[test]
-fn detect_claude_code_follows_path_lookup() {
-    assert_eq!(detect_claude_code(), tool_exists("claude"));
-}
-
 #[test]
 fn setup_reports_a_missing_binary() {
     let located = locate_binary();

@@ -14,7 +14,7 @@ fn rtk_output(args: &[&str]) -> Output {
 
 #[test]
 fn run_without_command_bypass_without_args_and_hook_audit() {
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_or_skip() {
         return;
     }
 
@@ -114,7 +114,7 @@ impl FakeEnv {
 #[cfg(unix)]
 #[test]
 fn npx_routes_prisma_and_unknown_tools_to_fake_npx() {
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_or_skip() {
         return;
     }
     let env = fake_env(&["npx", "npm", "prisma", "next", "prettier", "playwright"]);
@@ -138,29 +138,27 @@ fn npx_routes_prisma_and_unknown_tools_to_fake_npx() {
     assert!(out.status.code().is_some(), "{out:?}");
     assert!(log.contains("push"), "log: {log}");
 
-    for args in [
-        &["npx", "next", "build"][..],
-        &["npx", "prettier", "--check", "."],
-        &["npx", "playwright", "test"],
-        &["npx", "cowsay", "hello"],
+    for (args, tool) in [
+        (&["npx", "next", "build"][..], "next"),
+        (&["npx", "prettier", "--check", "."], "prettier"),
+        (&["npx", "playwright", "test"], "playwright"),
+        (&["npx", "cowsay", "hello"], "cowsay"),
     ] {
         let (out, log) = env.run(args);
         assert!(out.status.code().is_some(), "{args:?}: {out:?}");
         assert!(
-            !log.trim().is_empty(),
-            "`rtk {}` never reached a tool; stderr: {}",
+            log.contains(tool),
+            "`rtk {}` never reached {tool}; log: {log}; stderr: {}",
             args.join(" "),
             String::from_utf8_lossy(&out.stderr)
         );
     }
-    let (_, log) = env.run(&["npx", "cowsay", "hello"]);
-    assert!(log.contains("cowsay"), "log: {log}");
 }
 
 #[cfg(unix)]
 #[test]
 fn language_tool_wrappers_dispatch_to_their_tools() {
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_or_skip() {
         return;
     }
     let env = fake_env(&[
@@ -169,43 +167,44 @@ fn language_tool_wrappers_dispatch_to_their_tools() {
         "gradlew", "gradle", "mvnd", "mvn",
     ]);
 
-    let cases: &[&[&str]] = &[
-        &["sqlfluff", "lint", "q.sql"],
-        &["pytest", "-q"],
-        &["mypy", "src"],
-        &["php", "-v"],
-        &["phpunit"],
-        &["phpstan", "analyse", "src"],
-        &["pest"],
-        &["paratest"],
-        &["ecs", "check", "src"],
-        &["pint", "--test"],
-        &["phpt", "Zend/tests/"],
-        &["rake", "test"],
-        &["rubocop"],
-        &["rspec"],
-        &["uv", "run", "python", "x.py"],
-        &["go", "build", "./..."],
-        &["sbt", "test"],
-        &["sbt", "compile"],
-        &["sbt", "run"],
-        &["sbt", "clean"],
-        &["gt", "log"],
-        &["gt", "submit"],
-        &["gt", "sync"],
-        &["gt", "restack"],
-        &["gt", "create", "feature"],
-        &["gt", "branch"],
-        &["gt", "foo"],
-        &["gradlew", "build"],
-        &["mvnd", "test"],
+    // Each wrapper must reach its own tool, named first in the fake's log line.
+    let cases: &[(&[&str], &str)] = &[
+        (&["sqlfluff", "lint", "q.sql"][..], "sqlfluff"),
+        (&["pytest", "-q"][..], "pytest"),
+        (&["mypy", "src"][..], "mypy"),
+        (&["php", "-v"][..], "php"),
+        (&["phpunit"][..], "phpunit"),
+        (&["phpstan", "analyse", "src"][..], "phpstan"),
+        (&["pest"][..], "pest"),
+        (&["paratest"][..], "paratest"),
+        (&["ecs", "check", "src"][..], "ecs"),
+        (&["pint", "--test"][..], "pint"),
+        (&["phpt", "Zend/tests/"][..], "php"),
+        (&["rake", "test"][..], "rake"),
+        (&["rubocop"][..], "rubocop"),
+        (&["rspec"][..], "rspec"),
+        (&["uv", "run", "python", "x.py"][..], "uv"),
+        (&["go", "build", "./..."][..], "go"),
+        (&["sbt", "test"][..], "sbt"),
+        (&["sbt", "compile"][..], "sbt"),
+        (&["sbt", "run"][..], "sbt"),
+        (&["sbt", "clean"][..], "sbt"),
+        (&["gt", "log"][..], "gt"),
+        (&["gt", "submit"][..], "gt"),
+        (&["gt", "sync"][..], "gt"),
+        (&["gt", "restack"][..], "gt"),
+        (&["gt", "create", "feature"][..], "gt"),
+        (&["gt", "branch"][..], "gt"),
+        (&["gt", "foo"][..], "gt"),
+        (&["gradlew", "build"][..], "gradlew"),
+        (&["mvnd", "test"][..], "mvnd"),
     ];
-    for args in cases {
+    for (args, tool) in cases {
         let (out, log) = env.run(args);
         assert!(out.status.code().is_some(), "{args:?}: {out:?}");
         assert!(
-            !log.trim().is_empty(),
-            "`rtk {}` never reached a tool; stderr: {}",
+            log.lines().any(|line| line.split(' ').next() == Some(*tool)),
+            "`rtk {}` never reached {tool}; log: {log}; stderr: {}",
             args.join(" "),
             String::from_utf8_lossy(&out.stderr)
         );
@@ -215,7 +214,7 @@ fn language_tool_wrappers_dispatch_to_their_tools() {
 #[cfg(unix)]
 #[test]
 fn verbose_bypass_splits_a_quoted_command_and_streams_both_pipes() {
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_or_skip() {
         return;
     }
     let env = fake_env(&[]);

@@ -157,7 +157,7 @@ mod binary {
 
     #[test]
     fn git_global_options_reach_the_passthrough() {
-        if !test_isolation::rtk_binary_is_built() {
+        if !test_isolation::rtk_binary_or_skip() {
             return;
         }
         let dir = test_isolation::tempdir();
@@ -196,7 +196,7 @@ mod binary {
 
     #[test]
     fn git_subcommands_reach_git() {
-        if !test_isolation::rtk_binary_is_built() {
+        if !test_isolation::rtk_binary_or_skip() {
             return;
         }
         let dir = test_isolation::tempdir();
@@ -216,7 +216,7 @@ mod binary {
 
     #[test]
     fn pnpm_global_flags_and_filters_reach_pnpm() {
-        if !test_isolation::rtk_binary_is_built() {
+        if !test_isolation::rtk_binary_or_skip() {
             return;
         }
         let dir = test_isolation::tempdir();
@@ -253,7 +253,7 @@ mod binary {
 
     #[test]
     fn docker_subcommands_reach_docker() {
-        if !test_isolation::rtk_binary_is_built() {
+        if !test_isolation::rtk_binary_or_skip() {
             return;
         }
         let dir = test_isolation::tempdir();
@@ -280,7 +280,7 @@ mod binary {
 
     #[test]
     fn kubectl_and_oc_subcommands_reach_their_tool() {
-        if !test_isolation::rtk_binary_is_built() {
+        if !test_isolation::rtk_binary_or_skip() {
             return;
         }
         let dir = test_isolation::tempdir();
@@ -322,7 +322,7 @@ mod binary {
 
     #[test]
     fn psql_and_dotnet_reach_their_tool() {
-        if !test_isolation::rtk_binary_is_built() {
+        if !test_isolation::rtk_binary_or_skip() {
             return;
         }
         let dir = test_isolation::tempdir();
@@ -345,7 +345,7 @@ mod binary {
 
     #[test]
     fn local_views_succeed_on_real_files() {
-        if !test_isolation::rtk_binary_is_built() {
+        if !test_isolation::rtk_binary_or_skip() {
             return;
         }
         let dir = test_isolation::tempdir();
@@ -368,6 +368,7 @@ mod binary {
             "{}",
             String::from_utf8_lossy(&out.stderr)
         );
+        assert!(String::from_utf8_lossy(&out.stdout).contains("boom"));
 
         let out = rtk(dir.path(), true, &["log"]);
         assert!(
@@ -382,6 +383,7 @@ mod binary {
             "{}",
             String::from_utf8_lossy(&out.stderr)
         );
+        assert!(String::from_utf8_lossy(&out.stdout).contains("PATH"));
 
         let src = dir.path().join("lib.rs");
         std::fs::write(
@@ -395,11 +397,12 @@ mod binary {
             "{}",
             String::from_utf8_lossy(&out.stderr)
         );
+        assert!(!out.stdout.is_empty(), "smart prints a summary");
     }
 
     #[test]
     fn fallback_reports_an_unrunnable_program_with_127() {
-        if !test_isolation::rtk_binary_is_built() {
+        if !test_isolation::rtk_binary_or_skip() {
             return;
         }
         let dir = test_isolation::tempdir();
@@ -410,7 +413,7 @@ mod binary {
 
     #[test]
     fn fallback_runs_a_filtered_tool_and_keeps_its_exit_code() {
-        if !test_isolation::rtk_binary_is_built() {
+        if !test_isolation::rtk_binary_or_skip() {
             return;
         }
         // Missing tool: PATH holds only an empty directory.

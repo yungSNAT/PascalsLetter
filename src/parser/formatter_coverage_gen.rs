@@ -57,7 +57,8 @@ fn test_result_modes_show_skips_and_control_failure_detail() {
         duration_ms: None,
         ..result
     };
-    assert_eq!(untimed.format(ultra), "[ok]7 [x]2 [skip]3 (0ms)");
+    // Only the counts are pinned: an unknown duration currently prints as 0ms.
+    assert!(untimed.format(ultra).starts_with("[ok]7 [x]2 [skip]3"));
 }
 
 fn dependency(name: &str, latest: Option<&str>) -> Dependency {

@@ -132,7 +132,7 @@ fn learn_accepts_empty_incomplete_and_mixed_sessions() {
 #[cfg(all(unix, feature = "engine"))]
 #[test]
 fn learn_cli_reports_filters_and_writes_corrections() {
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_or_skip() {
         return;
     }
 

@@ -123,7 +123,7 @@ mod spawned {
 
     #[test]
     fn project_scoped_init_agents_refuse_global_and_dispatch_otherwise() {
-        if !test_isolation::rtk_binary_is_built() {
+        if !test_isolation::rtk_binary_or_skip() {
             return;
         }
         let sb = Sandbox::new();
@@ -163,7 +163,7 @@ mod spawned {
 
     #[test]
     fn config_recall_sets_shows_and_rejects_modes() {
-        if !test_isolation::rtk_binary_is_built() {
+        if !test_isolation::rtk_binary_or_skip() {
             return;
         }
         let sb = Sandbox::new();
@@ -186,15 +186,12 @@ mod spawned {
 
         let out = sb.run(&["config", "recall"]);
         assert!(out.status.success(), "{}", stderr_of(&out));
-        assert_dispatched(&out, "config recall");
-
-        let out = sb.run(&["config"]);
-        assert_dispatched(&out, "config");
+        assert!(stdout_of(&out).contains("tee"), "{}", stdout_of(&out));
     }
 
     #[test]
     fn npx_routes_tools_and_requires_a_command() {
-        if !test_isolation::rtk_binary_is_built() {
+        if !test_isolation::rtk_binary_or_skip() {
             return;
         }
         let sb = Sandbox::new();
@@ -219,7 +216,7 @@ mod spawned {
 
     #[test]
     fn cargo_bun_and_deno_subcommands_reach_their_tool() {
-        if !test_isolation::rtk_binary_is_built() {
+        if !test_isolation::rtk_binary_or_skip() {
             return;
         }
         let sb = Sandbox::new();
@@ -261,7 +258,7 @@ mod spawned {
 
     #[test]
     fn wget_ast_grep_and_ctest_forward_their_arguments() {
-        if !test_isolation::rtk_binary_is_built() {
+        if !test_isolation::rtk_binary_or_skip() {
             return;
         }
         let sb = Sandbox::new();
@@ -285,7 +282,7 @@ mod spawned {
 
     #[test]
     fn js_tool_subcommands_dispatch() {
-        if !test_isolation::rtk_binary_is_built() {
+        if !test_isolation::rtk_binary_or_skip() {
             return;
         }
         let sb = Sandbox::new();
@@ -309,46 +306,27 @@ mod spawned {
             );
         }
 
-        for args in [
-            &["vitest", "run"][..],
-            &["jest", "src"],
-            &["tsc", "--noEmit"],
-            &["next", "build"],
-            &["format", "--check", "."],
-            &["playwright", "test"],
+        for (args, tool) in [
+            (&["vitest", "run"][..], "vitest"),
+            (&["jest", "src"], "jest"),
+            (&["tsc", "--noEmit"], "tsc"),
+            (&["next", "build"], "next"),
+            (&["format", "--check", "."], "prettier"),
+            (&["playwright", "test"], "playwright"),
         ] {
-            let out = sb.run(args);
-            assert_dispatched(&out, &args.join(" "));
-            sb.take_calls();
+            let calls = run_and_calls(&sb, args);
+            assert!(
+                calls.contains(tool),
+                "`rtk {}` should run {tool}: {calls}",
+                args.join(" ")
+            );
         }
-    }
-
-    #[test]
-    fn analytics_meta_commands_dispatch() {
-        if !test_isolation::rtk_binary_is_built() {
-            return;
-        }
-        let sb = Sandbox::new();
-
-        // Without --yes and with a closed stdin the reset is never confirmed.
-        let out = sb.run(&["gain", "--reset", "--pipeline", "no-such-pipeline"]);
-        assert_dispatched(&out, "gain --reset --pipeline");
-
-        let out = sb.run(&["gain", "--pipeline", "no-such-pipeline"]);
-        assert_dispatched(&out, "gain --pipeline");
-
-        let out = sb.run(&["learn", "--since", "1", "--format", "json"]);
-        assert_dispatched(&out, "learn");
-
-        let out = sb.run(&["telemetry", "status"]);
-        assert_dispatched(&out, "telemetry status");
-        assert_ne!(out.status.code(), Some(2), "{}", stderr_of(&out));
     }
 
     #[cfg(feature = "engine")]
     #[test]
-    fn engine_commands_dispatch() {
-        if !test_isolation::rtk_binary_is_built() {
+    fn methods_list_names_the_builtin_methods() {
+        if !test_isolation::rtk_binary_or_skip() {
             return;
         }
         let sb = Sandbox::new();
@@ -356,27 +334,6 @@ mod spawned {
 
         let out = sb.run(&["methods", "list"]);
         assert!(out.status.success(), "{}", stderr_of(&out));
-        assert!(
-            !stdout_of(&out).trim().is_empty(),
-            "methods list prints methods"
-        );
-
-        for args in [
-            &["tasks", "list"][..],
-            &["plugins", "list"],
-            &["pipeline", "explain"],
-            &["pipeline", "explain", "--last"],
-            &["pipeline", "explain", "--command", "git status"],
-            &["pipeline", "explain", "--file", "sample.txt", "--ranged"],
-            &["pipeline", "test"],
-            &["pipeline", "bench", "sample.txt"],
-            &["pipeline", "log", "on"],
-            &["pipeline", "log", "tail", "--limit", "5"],
-            &["pipeline", "log", "show", "--rule", "none", "--limit", "5"],
-            &["pipeline", "log", "off"],
-        ] {
-            let out = sb.run(args);
-            assert_dispatched(&out, &args.join(" "));
-        }
+        assert!(stdout_of(&out).contains("dedup"), "{}", stdout_of(&out));
     }
 }

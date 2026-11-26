@@ -72,13 +72,15 @@ fn report_limits_both_tables_without_limiting_savings_totals() {
     );
 
     let rule = "-".repeat(52);
+    // The issue link follows the package's own repository, not a fixed fork.
+    let repository = env!("CARGO_PKG_REPOSITORY").trim_start_matches("https://");
     let unhandled_section = format!(
         "\nTOP UNHANDLED COMMANDS -- open an issue?\n\
          {rule}\n\
          {:<24} {:>5}    Example\n\
          {:<24} {:>5}    unhandled-command-xé-extra --id café..\n\
          {rule}\n\
-         -> github.com/yungSNAT/PascalsLetter/issues\n",
+         -> {repository}/issues\n",
         "Command", "Count", "unhandled-command-xé..", 4
     );
     assert!(output.contains(&unhandled_section), "{output}");
