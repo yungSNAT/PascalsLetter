@@ -41,7 +41,6 @@ Thumbs.db
 scripts/benchmark/diff/
 scripts/benchmark/rtk/
 scripts/benchmark/unix/
-benchmark-report.md
 
 # SQLite databases
 *.db

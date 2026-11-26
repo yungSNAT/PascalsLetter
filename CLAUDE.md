@@ -41,7 +41,7 @@ rtk cargo test                # preferred (token-optimized)
 cargo test <test_name>        # specific test
 cargo test <module_name>::    # module tests
 cargo test -- --nocapture     # with stdout
-bash scripts/test-all.sh      # smoke tests (installed binary required)
+cargo run --manifest-path tools/dev/Cargo.toml -- smoke  # smoke tests (installed binary required)
 ```
 
 ### Linting & Quality
