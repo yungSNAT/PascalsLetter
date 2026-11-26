@@ -153,45 +153,15 @@ impl Sandbox {
         (code, stdout)
     }
 
-    /// Run a shipped shell hook the way an agent does: the hook input on stdin
-    /// and the built `rtk` first on PATH. It runs in the environment
-    /// `isolate_rtk` gives a child, so of what the developer's shell exports it
-    /// gets only what every isolated child keeps, never a `BASH_ENV`, another
-    /// `rtk`, an audit or data directory; config, data and cache all live in
-    /// this sandbox, and temporary files go to `TMPDIR` as they do for any
-    /// child.
-    #[cfg(unix)]
-    fn run_hook(&self, hook: &str, cmd: &str, env: &[(&str, &str)]) -> (i32, String, String) {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        // Only the binary's path is taken from this command: the hook gets an
-        // isolated environment of its own, and the variables below keep its
-        // data in the sandbox.
-        let rtk = common::rtk_command();
-        let rtk_dir = std::path::Path::new(rtk.get_program())
-            .parent()
-            .expect("rtk binary has a parent directory")
-            .to_path_buf();
-        // The built rtk first, then the caller's PATH for bash, jq and coreutils.
-        let inherited = std::env::var_os("PATH").unwrap_or_default();
-        let path =
-            std::env::join_paths(std::iter::once(rtk_dir).chain(std::env::split_paths(&inherited)))
-                .expect("PATH entries join");
-        let input = self.project.join("hook-input.json");
-        std::fs::write(
-            &input,
-            serde_json::json!({
-                "tool_name": "Bash",
-                "tool_input": { "command": cmd },
-            })
-            .to_string(),
-        )
-        .expect("write hook input");
-        let mut command = std::process::Command::new("bash");
-        common::isolate_rtk(&mut command);
+    /// Run `rtk hook <agent>` the way the agent does, with a Bash call of `cmd`
+    /// on stdin, in this sandbox.
+    fn run_hook(&self, agent: &str, cmd: &str, env: &[(&str, &str)]) -> (i32, String, String) {
+        use std::io::Write;
+        use std::process::Stdio;
+        let mut command = common::rtk_command();
         command
-            .arg(root.join(hook))
+            .args(["hook", agent])
             .current_dir(&self.project)
-            .env("PATH", path)
             .env("HOME", &self.home)
             .env("XDG_CONFIG_HOME", self.home.join(".config"))
             .env("XDG_DATA_HOME", self.home.join(".local/share"))
@@ -204,10 +174,23 @@ impl Sandbox {
         for (key, value) in env {
             command.env(key, value);
         }
-        let out = command
-            .stdin(std::fs::File::open(&input).expect("open hook input"))
-            .output()
-            .expect("run hook");
+        let mut child = command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn rtk hook");
+        let payload = serde_json::json!({
+            "tool_name": "Bash",
+            "tool_input": { "command": cmd },
+        });
+        child
+            .stdin
+            .take()
+            .expect("stdin")
+            .write_all(payload.to_string().as_bytes())
+            .expect("write hook input");
+        let out = child.wait_with_output().expect("wait rtk hook");
         (
             out.status.code().unwrap_or(-1),
             String::from_utf8_lossy(&out.stdout).into_owned(),
@@ -668,10 +651,8 @@ mod rewrite_host_scoping {
     /// inherited `RTK_REWRITE_HOST` reach `rtk rewrite`, or a variable meant
     /// for OpenClaw auto-approves every rewritable command in another agent's
     /// session. Each hook runs as the agent runs it, with the variable set. It
-    /// must still hand back the rewrite -- proof that the hook, `jq` and the
-    /// built `rtk` all ran, so a missing tool fails here rather than passing --
-    /// and must not answer with an allow.
-    #[cfg(unix)]
+    /// must still hand back the rewrite, proof that it ran, and must not answer
+    /// with an allow.
     #[test]
     fn affirmative_allow_hooks_ignore_an_inherited_host() {
         let bare = Sandbox::bare();
@@ -679,20 +660,11 @@ mod rewrite_host_scoping {
         // Claude hook answering in Cursor's keys would be ignored by Claude Code.
         for (hook, command_at, permission_at) in [
             (
-                "hooks/claude/rtk-rewrite.sh",
+                "claude",
                 "/hookSpecificOutput/updatedInput/command",
                 "/hookSpecificOutput/permissionDecision",
             ),
-            (
-                ".claude/hooks/rtk-rewrite.sh",
-                "/hookSpecificOutput/updatedInput/command",
-                "/hookSpecificOutput/permissionDecision",
-            ),
-            (
-                "hooks/cursor/rtk-rewrite.sh",
-                "/updated_input/command",
-                "/permission",
-            ),
+            ("cursor", "/updated_input/command", "/permission"),
         ] {
             let (code, stdout, stderr) =
                 bare.run_hook(hook, "git status", &[("RTK_REWRITE_HOST", "openclaw")]);

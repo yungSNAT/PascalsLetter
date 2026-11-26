@@ -1,0 +1,2501 @@
+== Cargo.toml
+[package]
+name = "rtk"
+version = "1.2.0"
+
+[dependencies]
+anyhow = "1"
+
+== scripts/benchmark/diff/FAIL-json_-d_2.md
+# Diff: json -d 2
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 59 | 0 |
+
+## Unix
+```
+{
+  "name": "rtk",
+  "version": "0.2.1",
+  "config": {
+    "debug": false,
+    "max_depth": 10,
+    "filters": ["node_modules", "target", ".git"]
+  },
+  "dependencies": {
+    "serde": "1.0",
+    "clap": "4.0",
+    "anyhow": "1.0"
+  }
+}
+```
+
+## RTK
+```
+
+```
+
+== scripts/benchmark/diff/GOOD-cargo_build.md
+# Diff: cargo build
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 23 | 1 |
+
+## Unix
+```
+   Compiling rtk v1.2.0 (/src)
+    Finished `dev` profile [unoptimized] target(s) in 0.10s
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-cargo_check.md
+# Diff: cargo check
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 23 | 1 |
+
+## Unix
+```
+   Compiling rtk v1.2.0 (/src)
+    Finished `dev` profile [unoptimized] target(s) in 0.10s
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-cargo_clippy.md
+# Diff: cargo clippy
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 23 | 1 |
+
+## Unix
+```
+   Compiling rtk v1.2.0 (/src)
+    Finished `dev` profile [unoptimized] target(s) in 0.10s
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-cargo_test.md
+# Diff: cargo test
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 23 | 1 |
+
+## Unix
+```
+   Compiling rtk v1.2.0 (/src)
+    Finished `dev` profile [unoptimized] target(s) in 0.10s
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-curl_json.md
+# Diff: curl json
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 13 | 1 |
+
+## Unix
+```
+{
+    "message": "Hello",
+    "status": "success"
+}
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-curl_text.md
+# Diff: curl text
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 9 | 1 |
+
+## Unix
+```
+User-agent: *
+Disallow: /private/
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-env.md
+# Diff: env
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 69 | 1 |
+
+## Unix
+```
+PWD=/tmp/rtk-dev-parity/full-local/root
+LANG=C.UTF-8
+RTK_STUB_MODE=mixed
+TMPDIR=/tmp/rtk-dev-parity/full-local/tmp
+CARGO_TERM_COLOR=never
+SHLVL=1
+PATH=/tmp/rtk-dev-parity/full-local/bin
+RTK_BIN=/tmp/rtk-dev-parity/full-local/rtkbin/rtk
+_=/tmp/rtk-dev-parity/full-local/bin/env
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-env_-f_PATH.md
+# Diff: env -f PATH
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 10 | 1 |
+
+## Unix
+```
+PATH=/tmp/rtk-dev-parity/full-local/bin
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-err_cargo_build.md
+# Diff: err cargo build
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 23 | 1 |
+
+## Unix
+```
+   Compiling rtk v1.2.0 (/src)
+    Finished `dev` profile [unoptimized] target(s) in 0.10s
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-git_log_-n_10.md
+# Diff: git log -n 10
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 17 | 3 |
+
+## Unix
+```
+commit 0123456789abcdef
+Author: A <a@example.com>
+
+    First commit
+```
+
+## RTK
+```
+git: é ok
+```
+
+== scripts/benchmark/diff/GOOD-git_log_-n_5.md
+# Diff: git log -n 5
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 17 | 3 |
+
+## Unix
+```
+commit 0123456789abcdef
+Author: A <a@example.com>
+
+    First commit
+```
+
+## RTK
+```
+git: é ok
+```
+
+== scripts/benchmark/diff/GOOD-git_show.md
+# Diff: git show
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 15 | 3 |
+
+## Unix
+```
+commit 0123456789abcdef
+ src/lib.rs | 2 +-
+ 1 file changed
+```
+
+## RTK
+```
+git: é ok
+```
+
+== scripts/benchmark/diff/GOOD-git_status.md
+# Diff: git status
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 14 | 3 |
+
+## Unix
+```
+On branch develop
+nothing to commit, working tree clean
+```
+
+## RTK
+```
+git: é ok
+```
+
+== scripts/benchmark/diff/GOOD-grep_--max-len_40.md
+# Diff: grep --max-len 40
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 16 | 1 |
+
+## Unix
+```
+src/lib.rs:7:pub fn run() -> usize {
+src/main.rs:1:fn main() {
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-grep_-c.md
+# Diff: grep -c
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 16 | 1 |
+
+## Unix
+```
+src/lib.rs:7:pub fn run() -> usize {
+src/main.rs:1:fn main() {
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-grep_fn.md
+# Diff: grep fn
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 16 | 1 |
+
+## Unix
+```
+src/lib.rs:7:pub fn run() -> usize {
+src/main.rs:1:fn main() {
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-grep_struct.md
+# Diff: grep struct
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 16 | 1 |
+
+## Unix
+```
+src/lib.rs:7:pub fn run() -> usize {
+src/main.rs:1:fn main() {
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-json.md
+# Diff: json
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 59 | 4 |
+
+## Unix
+```
+{
+  "name": "rtk",
+  "version": "0.2.1",
+  "config": {
+    "debug": false,
+    "max_depth": 10,
+    "filters": ["node_modules", "target", ".git"]
+  },
+  "dependencies": {
+    "serde": "1.0",
+    "clap": "4.0",
+    "anyhow": "1.0"
+  }
+}
+```
+
+## RTK
+```
+{"name":"rtk"}
+```
+
+== scripts/benchmark/diff/GOOD-log.md
+# Diff: log
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 158 | 1 |
+
+## Unix
+```
+2024-01-15 10:00:01 INFO  Application started
+2024-01-15 10:00:02 INFO  Loading configuration
+2024-01-15 10:00:03 ERROR Connection failed: timeout
+2024-01-15 10:00:04 ERROR Connection failed: timeout
+2024-01-15 10:00:05 ERROR Connection failed: timeout
+2024-01-15 10:00:06 ERROR Connection failed: timeout
+2024-01-15 10:00:07 ERROR Connection failed: timeout
+2024-01-15 10:00:08 WARN  Retrying connection
+2024-01-15 10:00:09 INFO  Connection established
+2024-01-15 10:00:10 INFO  Processing request
+2024-01-15 10:00:11 INFO  Processing request
+2024-01-15 10:00:12 INFO  Processing request
+2024-01-15 10:00:13 INFO  Request completed
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-ls.md
+# Diff: ls
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 29 | 1 |
+
+## Unix
+```
+total 3
+drwxr-xr-x 2 user group 4096 Jan  1 00:00 src
+-rw-r--r-- 1 user group  120 Jan  1 00:00 Cargo.toml
+args: -la
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-ls_-a.md
+# Diff: ls -a
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 29 | 1 |
+
+## Unix
+```
+total 3
+drwxr-xr-x 2 user group 4096 Jan  1 00:00 src
+-rw-r--r-- 1 user group  120 Jan  1 00:00 Cargo.toml
+args: -la
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-ls_-l_src-.md
+# Diff: ls -l src/
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 30 | 1 |
+
+## Unix
+```
+total 3
+drwxr-xr-x 2 user group 4096 Jan  1 00:00 src
+-rw-r--r-- 1 user group  120 Jan  1 00:00 Cargo.toml
+args: -l src/
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-ls_-la_src-.md
+# Diff: ls -la src/
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 31 | 1 |
+
+## Unix
+```
+total 3
+drwxr-xr-x 2 user group 4096 Jan  1 00:00 src
+-rw-r--r-- 1 user group  120 Jan  1 00:00 Cargo.toml
+args: -la src/
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-ls_-lh_src-.md
+# Diff: ls -lh src/
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 31 | 1 |
+
+## Unix
+```
+total 3
+drwxr-xr-x 2 user group 4096 Jan  1 00:00 src
+-rw-r--r-- 1 user group  120 Jan  1 00:00 Cargo.toml
+args: -lh src/
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-ls_multi.md
+# Diff: ls multi
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 33 | 1 |
+
+## Unix
+```
+total 3
+drwxr-xr-x 2 user group 4096 Jan  1 00:00 src
+-rw-r--r-- 1 user group  120 Jan  1 00:00 Cargo.toml
+args: -la src/ scripts/
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-ls_src-.md
+# Diff: ls src/
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 31 | 1 |
+
+## Unix
+```
+total 3
+drwxr-xr-x 2 user group 4096 Jan  1 00:00 src
+-rw-r--r-- 1 user group  120 Jan  1 00:00 Cargo.toml
+args: -la src/
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-ls_src-_-l.md
+# Diff: ls src/ -l
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 30 | 1 |
+
+## Unix
+```
+total 3
+drwxr-xr-x 2 user group 4096 Jan  1 00:00 src
+-rw-r--r-- 1 user group  120 Jan  1 00:00 Cargo.toml
+args: -l src/
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-read.md
+# Diff: read
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 29 | 2 |
+
+## Unix
+```
+//! Fixture.
+
+pub struct Config {
+    pub depth: usize,
+}
+
+pub fn run() -> usize {
+    Config { depth: 2 }.depth
+}
+```
+
+## RTK
+```
+short
+```
+
+== scripts/benchmark/diff/GOOD-rg_-c_count.md
+# Diff: rg -c count
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 7 | 1 |
+
+## Unix
+```
+src/lib.rs:1:pub fn run() {}
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-rg_-l_files.md
+# Diff: rg -l files
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 7 | 1 |
+
+## Unix
+```
+src/lib.rs:1:pub fn run() {}
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-rg_fn.md
+# Diff: rg fn
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 7 | 1 |
+
+## Unix
+```
+src/lib.rs:1:pub fn run() {}
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-rg_struct.md
+# Diff: rg struct
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 7 | 1 |
+
+## Unix
+```
+src/lib.rs:1:pub fn run() {}
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-smart_mainrs.md
+# Diff: smart main.rs
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 8 | 1 |
+
+## Unix
+```
+fn main() {
+    rtk::run();
+}
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-summary_cargo_--help.md
+# Diff: summary cargo --help
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 22 | 1 |
+
+## Unix
+```
+Rust package manager
+
+Usage: cargo [OPTIONS] [COMMAND]
+
+Commands:
+    build    Compile
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-test_cargo_test.md
+# Diff: test cargo test
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 23 | 1 |
+
+## Unix
+```
+   Compiling rtk v1.2.0 (/src)
+    Finished `dev` profile [unoptimized] target(s) in 0.10s
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-tree.md
+# Diff: tree
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 10 | 1 |
+
+## Unix
+```
+.
+├── Cargo.toml
+└── src
+    └── lib.rs
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-tree_src-.md
+# Diff: tree src/
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 10 | 1 |
+
+## Unix
+```
+.
+├── Cargo.toml
+└── src
+    └── lib.rs
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-wc.md
+# Diff: wc
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 16 | 1 |
+
+## Unix
+```
+  6  11  70 Cargo.toml
+  3   5  30 src/main.rs
+  9  16 100 total
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/GOOD-wget.md
+# Diff: wget
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 13 | 1 |
+
+## Unix
+```
+{
+    "message": "Hello",
+    "status": "success"
+}
+```
+
+## RTK
+```
+ok
+```
+
+== scripts/benchmark/diff/NEG-deps.md
+# Diff: deps
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 18 | 35 |
+
+## Unix
+```
+[package]
+name = "rtk"
+version = "1.2.0"
+
+[dependencies]
+anyhow = "1"
+```
+
+## RTK
+```
+[package]
+name = "rtk"
+version = "1.2.0"
+
+[dependencies]
+anyhow = "1"
+[package]
+name = "rtk"
+version = "1.2.0"
+
+[dependencies]
+anyhow = "1"
+```
+
+== scripts/benchmark/diff/NEG-read_-n.md
+# Diff: read -n
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 45 | 86 |
+
+## Unix
+```
+     1	//! Fixture.
+     2	
+     3	pub struct Config {
+     4	    pub depth: usize,
+     5	}
+     6	
+     7	pub fn run() -> usize {
+     8	    Config { depth: 2 }.depth
+     9	}
+```
+
+## RTK
+```
+//! Fixture.
+
+pub struct Config {
+    pub depth: usize,
+}
+
+pub fn run() -> usize {
+    Config { depth: 2 }.depth
+}
+//! Fixture.
+
+pub struct Config {
+    pub depth: usize,
+}
+
+pub fn run() -> usize {
+    Config { depth: 2 }.depth
+}
+//! Fixture.
+
+pub struct Config {
+    pub depth: usize,
+}
+
+pub fn run() -> usize {
+    Config { depth: 2 }.depth
+}
+```
+
+== scripts/benchmark/diff/SKIP-git_diff.md
+# Diff: git diff
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 0 | 3 |
+
+## Unix
+```
+
+```
+
+## RTK
+```
+git: é ok
+```
+
+== scripts/benchmark/diff/WARN-find_--max_100.md
+# Diff: find --max 100
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 36 | 24 |
+
+## Unix
+```
+./Cargo.toml
+./src/lib.rs
+./src/main.rs
+./scripts/keep
+./docs/guide/getting-started/installation.md
+./docs/guide/resources/troubleshooting.md
+```
+
+## RTK
+```
+4F 2D:
+./ Cargo.toml
+src/ lib.rs main.rs
+scripts/ keep
+ext: .rs 2
+[+3 hidden: rtk recall ab12]
+```
+
+== scripts/benchmark/diff/WARN-find_.md
+# Diff: find *
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 36 | 24 |
+
+## Unix
+```
+./Cargo.toml
+./src/lib.rs
+./src/main.rs
+./scripts/keep
+./docs/guide/getting-started/installation.md
+./docs/guide/resources/troubleshooting.md
+```
+
+## RTK
+```
+4F 2D:
+./ Cargo.toml
+src/ lib.rs main.rs
+scripts/ keep
+ext: .rs 2
+[+3 hidden: rtk recall ab12]
+```
+
+== scripts/benchmark/diff/WARN-find_rs.md
+# Diff: find *.rs
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 36 | 24 |
+
+## Unix
+```
+./Cargo.toml
+./src/lib.rs
+./src/main.rs
+./scripts/keep
+./docs/guide/getting-started/installation.md
+./docs/guide/resources/troubleshooting.md
+```
+
+## RTK
+```
+4F 2D:
+./ Cargo.toml
+src/ lib.rs main.rs
+scripts/ keep
+ext: .rs 2
+[+3 hidden: rtk recall ab12]
+```
+
+== scripts/benchmark/diff/WARN-read_-l_aggressive.md
+# Diff: read -l aggressive
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 29 | 15 |
+
+## Unix
+```
+//! Fixture.
+
+pub struct Config {
+    pub depth: usize,
+}
+
+pub fn run() -> usize {
+    Config { depth: 2 }.depth
+}
+```
+
+## RTK
+```
+//! Fixture.
+
+pub struct Config {
+    pub depth: usize,
+}
+
+p
+```
+
+== scripts/benchmark/diff/WARN-read_-l_minimal.md
+# Diff: read -l minimal
+> 24/11/2026 10:00:00
+
+| Metric | Unix | RTK |
+|--------|------|-----|
+| Tokens | 29 | 29 |
+
+## Unix
+```
+//! Fixture.
+
+pub struct Config {
+    pub depth: usize,
+}
+
+pub fn run() -> usize {
+    Config { depth: 2 }.depth
+}
+```
+
+## RTK
+```
+//! Fixture.
+
+pub struct Config {
+    pub depth: usize,
+}
+
+pub fn run() -> usize {
+    Config { depth: 2 }.depth
+}
+```
+
+== scripts/benchmark/rtk/cargo_build.md
+# cargo build
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk cargo build 2>&1
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/cargo_check.md
+# cargo check
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk cargo check 2>&1
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/cargo_clippy.md
+# cargo clippy
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk cargo clippy 2>&1
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/cargo_test.md
+# cargo test
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk cargo test --lib 2>&1
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/curl_json.md
+# curl json
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk curl http://127.0.0.1:40404/data.json
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/curl_text.md
+# curl text
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk curl http://127.0.0.1:40404/robots.txt
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/deps.md
+# deps
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk deps
+```
+
+```
+[package]
+name = "rtk"
+version = "1.2.0"
+
+[dependencies]
+anyhow = "1"
+[package]
+name = "rtk"
+version = "1.2.0"
+
+[dependencies]
+anyhow = "1"
+```
+
+== scripts/benchmark/rtk/env.md
+# env
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk env
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/env_-f_PATH.md
+# env -f PATH
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk env -f PATH
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/err_cargo_build.md
+# err cargo build
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk err cargo build 2>&1
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/find_--max_100.md
+# find --max 100
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk find '*' --max 100
+```
+
+```
+4F 2D:
+./ Cargo.toml
+src/ lib.rs main.rs
+scripts/ keep
+ext: .rs 2
+[+3 hidden: rtk recall ab12]
+```
+
+== scripts/benchmark/rtk/find_.md
+# find *
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk find '*'
+```
+
+```
+4F 2D:
+./ Cargo.toml
+src/ lib.rs main.rs
+scripts/ keep
+ext: .rs 2
+[+3 hidden: rtk recall ab12]
+```
+
+== scripts/benchmark/rtk/find_rs.md
+# find *.rs
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk find '*.rs'
+```
+
+```
+4F 2D:
+./ Cargo.toml
+src/ lib.rs main.rs
+scripts/ keep
+ext: .rs 2
+[+3 hidden: rtk recall ab12]
+```
+
+== scripts/benchmark/rtk/git_diff.md
+# git diff
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk git diff HEAD~1
+```
+
+```
+git: é ok
+```
+
+== scripts/benchmark/rtk/git_log_-n_10.md
+# git log -n 10
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk git log -n 10
+```
+
+```
+git: é ok
+```
+
+== scripts/benchmark/rtk/git_log_-n_5.md
+# git log -n 5
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk git log -n 5
+```
+
+```
+git: é ok
+```
+
+== scripts/benchmark/rtk/git_show.md
+# git show
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk git show HEAD --stat
+```
+
+```
+git: é ok
+```
+
+== scripts/benchmark/rtk/git_status.md
+# git status
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk git status
+```
+
+```
+git: é ok
+```
+
+== scripts/benchmark/rtk/grep_--max-len_40.md
+# grep --max-len 40
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk grep --max-len 40 -rn 'fn ' src/
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/grep_-c.md
+# grep -c
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk grep -rc 'fn ' src/
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/grep_fn.md
+# grep fn
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk grep -rn 'fn ' src/
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/grep_struct.md
+# grep struct
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk grep -rn 'struct ' src/
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/json.md
+# json
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk json /tmp/rtk_bench.json
+```
+
+```
+{"name":"rtk"}
+```
+
+== scripts/benchmark/rtk/json_-d_2.md
+# json -d 2
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk json /tmp/rtk_bench.json -d 2
+```
+
+```
+
+```
+
+== scripts/benchmark/rtk/log.md
+# log
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk log /tmp/rtk_bench_sample.log
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/ls.md
+# ls
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk ls
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/ls_-a.md
+# ls -a
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk ls -a
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/ls_-l_src-.md
+# ls -l src/
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk ls -l src/
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/ls_-la_src-.md
+# ls -la src/
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk ls -la src/
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/ls_-lh_src-.md
+# ls -lh src/
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk ls -lh src/
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/ls_multi.md
+# ls multi
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk ls src/ scripts/
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/ls_src-.md
+# ls src/
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk ls src/
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/ls_src-_-l.md
+# ls src/ -l
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk ls src/ -l
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/read.md
+# read
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk read src/lib.rs
+```
+
+```
+short
+```
+
+== scripts/benchmark/rtk/read_-l_aggressive.md
+# read -l aggressive
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk read src/lib.rs -l aggressive
+```
+
+```
+//! Fixture.
+
+pub struct Config {
+    pub depth: usize,
+}
+
+p
+```
+
+== scripts/benchmark/rtk/read_-l_minimal.md
+# read -l minimal
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk read src/lib.rs -l minimal
+```
+
+```
+//! Fixture.
+
+pub struct Config {
+    pub depth: usize,
+}
+
+pub fn run() -> usize {
+    Config { depth: 2 }.depth
+}
+```
+
+== scripts/benchmark/rtk/read_-n.md
+# read -n
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk read src/lib.rs -n
+```
+
+```
+//! Fixture.
+
+pub struct Config {
+    pub depth: usize,
+}
+
+pub fn run() -> usize {
+    Config { depth: 2 }.depth
+}
+//! Fixture.
+
+pub struct Config {
+    pub depth: usize,
+}
+
+pub fn run() -> usize {
+    Config { depth: 2 }.depth
+}
+//! Fixture.
+
+pub struct Config {
+    pub depth: usize,
+}
+
+pub fn run() -> usize {
+    Config { depth: 2 }.depth
+}
+```
+
+== scripts/benchmark/rtk/rg_-c_count.md
+# rg -c count
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk rg -c 'fn ' src/
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/rg_-l_files.md
+# rg -l files
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk rg -l 'fn ' src/
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/rg_fn.md
+# rg fn
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk rg 'fn ' src/
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/rg_struct.md
+# rg struct
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk rg 'struct ' src/
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/smart_mainrs.md
+# smart main.rs
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk smart src/main.rs
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/summary_cargo_--help.md
+# summary cargo --help
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk summary cargo --help
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/test_cargo_test.md
+# test cargo test
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk test cargo test --lib 2>&1
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/tree.md
+# tree
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk tree -L 2
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/tree_src-.md
+# tree src/
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk tree src/ -L 2
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/wc.md
+# wc
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk wc Cargo.toml src/main.rs
+```
+
+```
+ok
+```
+
+== scripts/benchmark/rtk/wget.md
+# wget
+> 24/11/2026 10:00:00
+
+```bash
+$ /tmp/rtk-dev-parity/full-local/rtkbin/rtk wget http://127.0.0.1:40404/data.json
+```
+
+```
+ok
+```
+
+== scripts/benchmark/unix/cargo_build.md
+# cargo build
+> 24/11/2026 10:00:00
+
+```bash
+$ cargo build 2>&1 || true
+```
+
+```
+   Compiling rtk v1.2.0 (/src)
+    Finished `dev` profile [unoptimized] target(s) in 0.10s
+```
+
+== scripts/benchmark/unix/cargo_check.md
+# cargo check
+> 24/11/2026 10:00:00
+
+```bash
+$ cargo check 2>&1 || true
+```
+
+```
+   Compiling rtk v1.2.0 (/src)
+    Finished `dev` profile [unoptimized] target(s) in 0.10s
+```
+
+== scripts/benchmark/unix/cargo_clippy.md
+# cargo clippy
+> 24/11/2026 10:00:00
+
+```bash
+$ cargo clippy 2>&1 || true
+```
+
+```
+   Compiling rtk v1.2.0 (/src)
+    Finished `dev` profile [unoptimized] target(s) in 0.10s
+```
+
+== scripts/benchmark/unix/cargo_test.md
+# cargo test
+> 24/11/2026 10:00:00
+
+```bash
+$ cargo test --lib 2>&1 || true
+```
+
+```
+   Compiling rtk v1.2.0 (/src)
+    Finished `dev` profile [unoptimized] target(s) in 0.10s
+```
+
+== scripts/benchmark/unix/curl_json.md
+# curl json
+> 24/11/2026 10:00:00
+
+```bash
+$ curl -s http://127.0.0.1:40404/data.json
+```
+
+```
+{
+    "message": "Hello",
+    "status": "success"
+}
+```
+
+== scripts/benchmark/unix/curl_text.md
+# curl text
+> 24/11/2026 10:00:00
+
+```bash
+$ curl -s http://127.0.0.1:40404/robots.txt
+```
+
+```
+User-agent: *
+Disallow: /private/
+```
+
+== scripts/benchmark/unix/deps.md
+# deps
+> 24/11/2026 10:00:00
+
+```bash
+$ cat Cargo.toml
+```
+
+```
+[package]
+name = "rtk"
+version = "1.2.0"
+
+[dependencies]
+anyhow = "1"
+```
+
+== scripts/benchmark/unix/env.md
+# env
+> 24/11/2026 10:00:00
+
+```bash
+$ env
+```
+
+```
+PWD=/tmp/rtk-dev-parity/full-local/root
+LANG=C.UTF-8
+RTK_STUB_MODE=mixed
+TMPDIR=/tmp/rtk-dev-parity/full-local/tmp
+CARGO_TERM_COLOR=never
+SHLVL=1
+PATH=/tmp/rtk-dev-parity/full-local/bin
+RTK_BIN=/tmp/rtk-dev-parity/full-local/rtkbin/rtk
+_=/tmp/rtk-dev-parity/full-local/bin/env
+```
+
+== scripts/benchmark/unix/env_-f_PATH.md
+# env -f PATH
+> 24/11/2026 10:00:00
+
+```bash
+$ env | grep -i '^[^=]*path'
+```
+
+```
+PATH=/tmp/rtk-dev-parity/full-local/bin
+```
+
+== scripts/benchmark/unix/err_cargo_build.md
+# err cargo build
+> 24/11/2026 10:00:00
+
+```bash
+$ cargo build 2>&1 || true
+```
+
+```
+   Compiling rtk v1.2.0 (/src)
+    Finished `dev` profile [unoptimized] target(s) in 0.10s
+```
+
+== scripts/benchmark/unix/find_--max_100.md
+# find --max 100
+> 24/11/2026 10:00:00
+
+```bash
+$ find . -not -path './target/*' -not -path './.git/*' -type f
+```
+
+```
+./Cargo.toml
+./src/lib.rs
+./src/main.rs
+./scripts/keep
+./docs/guide/getting-started/installation.md
+./docs/guide/resources/troubleshooting.md
+```
+
+== scripts/benchmark/unix/find_.md
+# find *
+> 24/11/2026 10:00:00
+
+```bash
+$ find . -not -path './target/*' -not -path './.git/*' -type f
+```
+
+```
+./Cargo.toml
+./src/lib.rs
+./src/main.rs
+./scripts/keep
+./docs/guide/getting-started/installation.md
+./docs/guide/resources/troubleshooting.md
+```
+
+== scripts/benchmark/unix/find_rs.md
+# find *.rs
+> 24/11/2026 10:00:00
+
+```bash
+$ find . -not -path './target/*' -not -path './.git/*' -name '*.rs' -type f
+```
+
+```
+./Cargo.toml
+./src/lib.rs
+./src/main.rs
+./scripts/keep
+./docs/guide/getting-started/installation.md
+./docs/guide/resources/troubleshooting.md
+```
+
+== scripts/benchmark/unix/git_diff.md
+# git diff
+> 24/11/2026 10:00:00
+
+```bash
+$ git diff HEAD~1 2>/dev/null || echo ''
+```
+
+```
+
+```
+
+== scripts/benchmark/unix/git_log_-n_10.md
+# git log -n 10
+> 24/11/2026 10:00:00
+
+```bash
+$ git log -10
+```
+
+```
+commit 0123456789abcdef
+Author: A <a@example.com>
+
+    First commit
+```
+
+== scripts/benchmark/unix/git_log_-n_5.md
+# git log -n 5
+> 24/11/2026 10:00:00
+
+```bash
+$ git log -5
+```
+
+```
+commit 0123456789abcdef
+Author: A <a@example.com>
+
+    First commit
+```
+
+== scripts/benchmark/unix/git_show.md
+# git show
+> 24/11/2026 10:00:00
+
+```bash
+$ git show HEAD --stat 2>/dev/null || true
+```
+
+```
+commit 0123456789abcdef
+ src/lib.rs | 2 +-
+ 1 file changed
+```
+
+== scripts/benchmark/unix/git_status.md
+# git status
+> 24/11/2026 10:00:00
+
+```bash
+$ git status
+```
+
+```
+On branch develop
+nothing to commit, working tree clean
+```
+
+== scripts/benchmark/unix/grep_--max-len_40.md
+# grep --max-len 40
+> 24/11/2026 10:00:00
+
+```bash
+$ grep -rn 'fn ' src/ || true
+```
+
+```
+src/lib.rs:7:pub fn run() -> usize {
+src/main.rs:1:fn main() {
+```
+
+== scripts/benchmark/unix/grep_-c.md
+# grep -c
+> 24/11/2026 10:00:00
+
+```bash
+$ grep -ron 'fn ' src/ || true
+```
+
+```
+src/lib.rs:7:pub fn run() -> usize {
+src/main.rs:1:fn main() {
+```
+
+== scripts/benchmark/unix/grep_fn.md
+# grep fn
+> 24/11/2026 10:00:00
+
+```bash
+$ grep -rn 'fn ' src/ || true
+```
+
+```
+src/lib.rs:7:pub fn run() -> usize {
+src/main.rs:1:fn main() {
+```
+
+== scripts/benchmark/unix/grep_struct.md
+# grep struct
+> 24/11/2026 10:00:00
+
+```bash
+$ grep -rn 'struct ' src/ || true
+```
+
+```
+src/lib.rs:7:pub fn run() -> usize {
+src/main.rs:1:fn main() {
+```
+
+== scripts/benchmark/unix/json.md
+# json
+> 24/11/2026 10:00:00
+
+```bash
+$ cat /tmp/rtk_bench.json
+```
+
+```
+{
+  "name": "rtk",
+  "version": "0.2.1",
+  "config": {
+    "debug": false,
+    "max_depth": 10,
+    "filters": ["node_modules", "target", ".git"]
+  },
+  "dependencies": {
+    "serde": "1.0",
+    "clap": "4.0",
+    "anyhow": "1.0"
+  }
+}
+```
+
+== scripts/benchmark/unix/json_-d_2.md
+# json -d 2
+> 24/11/2026 10:00:00
+
+```bash
+$ cat /tmp/rtk_bench.json
+```
+
+```
+{
+  "name": "rtk",
+  "version": "0.2.1",
+  "config": {
+    "debug": false,
+    "max_depth": 10,
+    "filters": ["node_modules", "target", ".git"]
+  },
+  "dependencies": {
+    "serde": "1.0",
+    "clap": "4.0",
+    "anyhow": "1.0"
+  }
+}
+```
+
+== scripts/benchmark/unix/log.md
+# log
+> 24/11/2026 10:00:00
+
+```bash
+$ cat /tmp/rtk_bench_sample.log
+```
+
+```
+2024-01-15 10:00:01 INFO  Application started
+2024-01-15 10:00:02 INFO  Loading configuration
+2024-01-15 10:00:03 ERROR Connection failed: timeout
+2024-01-15 10:00:04 ERROR Connection failed: timeout
+2024-01-15 10:00:05 ERROR Connection failed: timeout
+2024-01-15 10:00:06 ERROR Connection failed: timeout
+2024-01-15 10:00:07 ERROR Connection failed: timeout
+2024-01-15 10:00:08 WARN  Retrying connection
+2024-01-15 10:00:09 INFO  Connection established
+2024-01-15 10:00:10 INFO  Processing request
+2024-01-15 10:00:11 INFO  Processing request
+2024-01-15 10:00:12 INFO  Processing request
+2024-01-15 10:00:13 INFO  Request completed
+```
+
+== scripts/benchmark/unix/ls.md
+# ls
+> 24/11/2026 10:00:00
+
+```bash
+$ ls -la
+```
+
+```
+total 3
+drwxr-xr-x 2 user group 4096 Jan  1 00:00 src
+-rw-r--r-- 1 user group  120 Jan  1 00:00 Cargo.toml
+args: -la
+```
+
+== scripts/benchmark/unix/ls_-a.md
+# ls -a
+> 24/11/2026 10:00:00
+
+```bash
+$ ls -la
+```
+
+```
+total 3
+drwxr-xr-x 2 user group 4096 Jan  1 00:00 src
+-rw-r--r-- 1 user group  120 Jan  1 00:00 Cargo.toml
+args: -la
+```
+
+== scripts/benchmark/unix/ls_-l_src-.md
+# ls -l src/
+> 24/11/2026 10:00:00
+
+```bash
+$ ls -l src/
+```
+
+```
+total 3
+drwxr-xr-x 2 user group 4096 Jan  1 00:00 src
+-rw-r--r-- 1 user group  120 Jan  1 00:00 Cargo.toml
+args: -l src/
+```
+
+== scripts/benchmark/unix/ls_-la_src-.md
+# ls -la src/
+> 24/11/2026 10:00:00
+
+```bash
+$ ls -la src/
+```
+
+```
+total 3
+drwxr-xr-x 2 user group 4096 Jan  1 00:00 src
+-rw-r--r-- 1 user group  120 Jan  1 00:00 Cargo.toml
+args: -la src/
+```
+
+== scripts/benchmark/unix/ls_-lh_src-.md
+# ls -lh src/
+> 24/11/2026 10:00:00
+
+```bash
+$ ls -lh src/
+```
+
+```
+total 3
+drwxr-xr-x 2 user group 4096 Jan  1 00:00 src
+-rw-r--r-- 1 user group  120 Jan  1 00:00 Cargo.toml
+args: -lh src/
+```
+
+== scripts/benchmark/unix/ls_multi.md
+# ls multi
+> 24/11/2026 10:00:00
+
+```bash
+$ ls -la src/ scripts/
+```
+
+```
+total 3
+drwxr-xr-x 2 user group 4096 Jan  1 00:00 src
+-rw-r--r-- 1 user group  120 Jan  1 00:00 Cargo.toml
+args: -la src/ scripts/
+```
+
+== scripts/benchmark/unix/ls_src-.md
+# ls src/
+> 24/11/2026 10:00:00
+
+```bash
+$ ls -la src/
+```
+
+```
+total 3
+drwxr-xr-x 2 user group 4096 Jan  1 00:00 src
+-rw-r--r-- 1 user group  120 Jan  1 00:00 Cargo.toml
+args: -la src/
+```
+
+== scripts/benchmark/unix/ls_src-_-l.md
+# ls src/ -l
+> 24/11/2026 10:00:00
+
+```bash
+$ ls -l src/
+```
+
+```
+total 3
+drwxr-xr-x 2 user group 4096 Jan  1 00:00 src
+-rw-r--r-- 1 user group  120 Jan  1 00:00 Cargo.toml
+args: -l src/
+```
+
+== scripts/benchmark/unix/read.md
+# read
+> 24/11/2026 10:00:00
+
+```bash
+$ cat src/lib.rs
+```
+
+```
+//! Fixture.
+
+pub struct Config {
+    pub depth: usize,
+}
+
+pub fn run() -> usize {
+    Config { depth: 2 }.depth
+}
+```
+
+== scripts/benchmark/unix/read_-l_aggressive.md
+# read -l aggressive
+> 24/11/2026 10:00:00
+
+```bash
+$ cat src/lib.rs
+```
+
+```
+//! Fixture.
+
+pub struct Config {
+    pub depth: usize,
+}
+
+pub fn run() -> usize {
+    Config { depth: 2 }.depth
+}
+```
+
+== scripts/benchmark/unix/read_-l_minimal.md
+# read -l minimal
+> 24/11/2026 10:00:00
+
+```bash
+$ cat src/lib.rs
+```
+
+```
+//! Fixture.
+
+pub struct Config {
+    pub depth: usize,
+}
+
+pub fn run() -> usize {
+    Config { depth: 2 }.depth
+}
+```
+
+== scripts/benchmark/unix/read_-n.md
+# read -n
+> 24/11/2026 10:00:00
+
+```bash
+$ cat -n src/lib.rs
+```
+
+```
+     1	//! Fixture.
+     2	
+     3	pub struct Config {
+     4	    pub depth: usize,
+     5	}
+     6	
+     7	pub fn run() -> usize {
+     8	    Config { depth: 2 }.depth
+     9	}
+```
+
+== scripts/benchmark/unix/rg_-c_count.md
+# rg -c count
+> 24/11/2026 10:00:00
+
+```bash
+$ rg -c 'fn ' src/ || true
+```
+
+```
+src/lib.rs:1:pub fn run() {}
+```
+
+== scripts/benchmark/unix/rg_-l_files.md
+# rg -l files
+> 24/11/2026 10:00:00
+
+```bash
+$ rg -l 'fn ' src/ || true
+```
+
+```
+src/lib.rs:1:pub fn run() {}
+```
+
+== scripts/benchmark/unix/rg_fn.md
+# rg fn
+> 24/11/2026 10:00:00
+
+```bash
+$ rg -n 'fn ' src/ || true
+```
+
+```
+src/lib.rs:1:pub fn run() {}
+```
+
+== scripts/benchmark/unix/rg_struct.md
+# rg struct
+> 24/11/2026 10:00:00
+
+```bash
+$ rg -n 'struct ' src/ || true
+```
+
+```
+src/lib.rs:1:pub fn run() {}
+```
+
+== scripts/benchmark/unix/smart_mainrs.md
+# smart main.rs
+> 24/11/2026 10:00:00
+
+```bash
+$ cat src/main.rs
+```
+
+```
+fn main() {
+    rtk::run();
+}
+```
+
+== scripts/benchmark/unix/summary_cargo_--help.md
+# summary cargo --help
+> 24/11/2026 10:00:00
+
+```bash
+$ cargo --help
+```
+
+```
+Rust package manager
+
+Usage: cargo [OPTIONS] [COMMAND]
+
+Commands:
+    build    Compile
+```
+
+== scripts/benchmark/unix/test_cargo_test.md
+# test cargo test
+> 24/11/2026 10:00:00
+
+```bash
+$ cargo test --lib 2>&1 || true
+```
+
+```
+   Compiling rtk v1.2.0 (/src)
+    Finished `dev` profile [unoptimized] target(s) in 0.10s
+```
+
+== scripts/benchmark/unix/tree.md
+# tree
+> 24/11/2026 10:00:00
+
+```bash
+$ tree -L 2 -I target
+```
+
+```
+.
+├── Cargo.toml
+└── src
+    └── lib.rs
+```
+
+== scripts/benchmark/unix/tree_src-.md
+# tree src/
+> 24/11/2026 10:00:00
+
+```bash
+$ tree src/ -L 2
+```
+
+```
+.
+├── Cargo.toml
+└── src
+    └── lib.rs
+```
+
+== scripts/benchmark/unix/wc.md
+# wc
+> 24/11/2026 10:00:00
+
+```bash
+$ wc Cargo.toml src/main.rs
+```
+
+```
+  6  11  70 Cargo.toml
+  3   5  30 src/main.rs
+  9  16 100 total
+```
+
+== scripts/benchmark/unix/wget.md
+# wget
+> 24/11/2026 10:00:00
+
+```bash
+$ wget -qO- http://127.0.0.1:40404/data.json
+```
+
+```
+{
+    "message": "Hello",
+    "status": "success"
+}
+```
+
+== scripts/keep
+
+== src/lib.rs
+//! Fixture.
+
+pub struct Config {
+    pub depth: usize,
+}
+
+pub fn run() -> usize {
+    Config { depth: 2 }.depth
+}
+
+== src/main.rs
+fn main() {
+    rtk::run();
+}
+
+== [tmp]

@@ -938,7 +938,7 @@ Auto-detects `uv` when available and uses it instead of `pip`.
 rtk deps [path]    # Default: current directory
 ```
 
-Auto-detects `Cargo.toml`, `package.json`, `pyproject.toml`, `go.mod`, `Gemfile`, etc.
+Auto-detects `Cargo.toml`, `package.json`, `requirements.txt`, `pyproject.toml` and `go.mod`. Cargo dependencies are listed under `Dependencies`, `Dev` and `Build`, each in file order.
 
 ---
 
@@ -1273,7 +1273,7 @@ Claude Code "git status"
 settings.json -> PreToolUse hook
     |
     v
-rtk-rewrite.sh (bash)
+rtk hook claude (native)
     |
     v
 rtk rewrite "git status"  ->  "rtk git status"
@@ -1306,7 +1306,6 @@ rtk init -g --uninstall         # Uninstall
 
 | File | Description |
 |------|-------------|
-| `~/.claude/hooks/rtk-rewrite.sh` | Hook script (delegates to `rtk rewrite`) |
 | `~/.claude/RTK.md` | Minimal instructions for the LLM |
 | `~/.claude/settings.json` | PreToolUse hook registration |
 
@@ -1500,7 +1499,7 @@ When a command fails (or a filter truncates a list), RTK saves the complete raw 
 **How it works:**
 1. The command fails (exit code != 0) or the output is truncated
 2. RTK stores the raw output (gzip) in `~/.local/share/rtk/recall.db`
-3. A hint with the hash is shown: `[full output: rtk recall <hash>]` or `[+N hidden: rtk recall <hash>]`
+3. A hint with the hash is shown: `[full output: rtk recall <hash>]` or `[+N hidden (lines A-B): rtk recall <hash>]`, where lines A to B of the output are the hidden ones
 4. `rtk recall <hash>` returns the missing part (delta); `--full` returns the complete output
 
 **Commands:**
@@ -1508,6 +1507,7 @@ When a command fails (or a filter truncates a list), RTK saves the complete raw 
 rtk recall <hash>            # Part not shown (delta)
 rtk recall <hash> --full     # Complete output
 rtk recall <hash> --grep RE  # Filter by regex
+rtk recall <hash> --from A --lines N  # N lines from line A of the complete output
 rtk recall --list            # List entries
 rtk gain --recalls           # Retrieval rate per filter
 rtk config recall <mode>     # Change mode without editing the config (sqlite|tee|disabled)
