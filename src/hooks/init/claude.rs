@@ -5,7 +5,7 @@ use super::*;
 use crate::core::user_dirs;
 use crate::hooks::constants::{
     CLAUDE_DIR, CLAUDE_HOOK_COMMAND, CURSOR_DIR, HOOKS_SUBDIR, POST_TOOL_USE_KEY, PRE_TOOL_USE_KEY,
-    REWRITE_HOOK_FILE, SESSION_START_KEY, SETTINGS_JSON,
+    PRE_COMPACT_KEY, REWRITE_HOOK_FILE, SESSION_START_KEY, SETTINGS_JSON,
 };
 
 /// Legacy mode (--claude-md): inject the full RTK_INSTRUCTIONS block into CLAUDE.md.
@@ -1042,6 +1042,7 @@ mod tests {
             vec![
                 (PRE_TOOL_USE_KEY, all.to_string()),
                 (POST_TOOL_USE_KEY, format!("{all}|mcp__.*")),
+                (PRE_COMPACT_KEY, "manual|auto".to_string()),
             ]
         );
         let mut none = Vec::new();
@@ -1051,7 +1052,29 @@ mod tests {
             vec![
                 (PRE_TOOL_USE_KEY, all.to_string()),
                 (POST_TOOL_USE_KEY, all.to_string()),
+                (PRE_COMPACT_KEY, "manual|auto".to_string()),
             ]
+        );
+    }
+
+    /// Compaction keeps the session but summarises away the outputs a
+    /// pointer or hunks refer to, so the option also registers PreCompact,
+    /// where the records are forgotten. Uninstall takes it back.
+    #[cfg(feature = "engine")]
+    #[test]
+    fn test_add_repeat_tools_forgets_at_compaction_and_uninstalls() {
+        let mut events = Vec::new();
+        add_repeat_tools(&mut events);
+        let mut root = serde_json::json!({});
+        for (key, matcher) in &events {
+            insert_hook_entry(&mut root, key, matcher, CLAUDE_HOOK_COMMAND).unwrap();
+        }
+        assert!(hook_already_present(&root, PRE_COMPACT_KEY, CLAUDE_HOOK_COMMAND));
+        assert!(hook_gaps(&root, &events).is_empty(), "{root}");
+        assert!(remove_hook_from_json(&mut root));
+        assert!(
+            !hook_already_present(&root, PRE_COMPACT_KEY, CLAUDE_HOOK_COMMAND),
+            "{root}"
         );
     }
 
