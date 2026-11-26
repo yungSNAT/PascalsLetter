@@ -231,7 +231,7 @@ fn status_and_uninstall_report_unreadable_codex_files_in_context() {
 #[cfg(unix)]
 #[test]
 fn codex_status_distinguishes_references_legacy_blocks_and_user_notes() {
-    if !test_isolation::rtk_binary_or_skip() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
 

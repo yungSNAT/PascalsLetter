@@ -172,7 +172,7 @@ fn vibe_io_errors_leave_unreadable_registry_and_blocked_prompt_in_place() {
 #[cfg(unix)]
 #[test]
 fn vibe_cli_treats_end_of_input_as_declining_the_patch() {
-    if !test_isolation::rtk_binary_or_skip() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
 
