@@ -1123,8 +1123,8 @@ const REPEAT_SESSION_MAX_AGE: std::time::Duration = std::time::Duration::from_se
 const TAKEN_MARK_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(3600);
 
 /// Removes other sessions' folders untouched for `REPEAT_SESSION_MAX_AGE`
-/// and taken marks older than `TAKEN_MARK_MAX_AGE`. `live` (the session
-/// being started or used) is never removed. Old folders are renamed to a
+/// and taken marks and leftover tombstones older than `TAKEN_MARK_MAX_AGE`.
+/// `live` (the session being started or used) is never removed. Old folders are renamed to a
 /// tombstone before deletion so a resuming session starts clean instead of
 /// reading a half-deleted folder, and a failed rename leaves the folder alone.
 fn is_pruning_tombstone(name: &std::ffi::OsStr) -> bool {
@@ -1157,7 +1157,10 @@ fn prune_repeats_with(
         if path == live {
             prune_taken_marks(&path, now);
         } else if is_pruning_tombstone(&entry.file_name()) {
-            if older_than(&path, now, REPEAT_SESSION_MAX_AGE) {
+            // No session reads a tombstone, so only a delete in progress needs
+            // waiting out; a partial delete refreshes its time, and a week's
+            // gate would defer the retry by another week.
+            if older_than(&path, now, TAKEN_MARK_MAX_AGE) {
                 remove_dir(&path);
             }
         } else if older_than(&path, now, REPEAT_SESSION_MAX_AGE) {
@@ -2739,6 +2742,32 @@ mod tests {
         assert!(!taken.exists(), "stale taken mark in non-live folder goes");
         assert!(idle_files.mark().exists() && idle_files.record().exists());
         assert!(other.exists(), "only taken marks are removed");
+    }
+
+    /// A tombstone a partial delete left behind (its time refreshed by the
+    /// entries already removed) is retried after an hour, not another week.
+    #[test]
+    fn test_prune_repeats_retries_a_leftover_tombstone_after_an_hour() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let live = session_dir(&config, "live");
+        std::fs::create_dir_all(&live).unwrap();
+        let mut name = session_dir(&config, "old").into_os_string();
+        name.push(".pruning.4242");
+        let tombstone = std::path::PathBuf::from(name);
+        std::fs::create_dir_all(&tombstone).unwrap();
+        std::fs::write(tombstone.join("left"), "x").unwrap();
+        let now = std::time::SystemTime::now();
+
+        prune_repeats(&live, now + std::time::Duration::from_secs(1800));
+        assert!(
+            tombstone.exists(),
+            "a tombstone under an hour old may be mid-delete"
+        );
+
+        prune_repeats(&live, now + std::time::Duration::from_secs(2 * 3600));
+        assert!(!tombstone.exists(), "an hour-old tombstone is deleted");
+        assert!(live.exists(), "the live session survives");
     }
 
     /// When another process holds a file open on Windows without delete share,
