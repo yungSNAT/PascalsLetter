@@ -3,7 +3,7 @@
 use crate::core::utils::format_tokens;
 use crate::discover::is_already_rtk;
 use crate::discover::provider::{
-    ClaudeProvider, ExtractedCommand, SessionProvider, ToolOutputBytes,
+    ClaudeProvider, ExtractedCommand, SessionProvider, TokenUsage, ToolOutputBytes,
 };
 use crate::discover::registry::{Classification, classify_command, split_command_chain};
 use anyhow::{Context, Result};
@@ -103,6 +103,21 @@ fn tool_output_report(output: &ToolOutputBytes, logs_read: usize, logs_total: us
         ));
     }
     report
+}
+
+/// Total API usage in `paths`, with how many of the logs could be read.
+fn sum_token_usage(paths: &[PathBuf]) -> (TokenUsage, usize) {
+    let _ = paths;
+    let mut total = TokenUsage::default();
+    total.add(TokenUsage::default());
+    (total, 0)
+}
+
+/// Where the billed tokens went, by kind. RTK shrinks tool results, which
+/// reach the model as input, so this is the denominator its savings sit in.
+fn token_usage_report(usage: &TokenUsage, logs_read: usize, logs_total: usize) -> String {
+    let _ = (usage, logs_read, logs_total);
+    String::new()
 }
 
 /// Sort `paths` newest first, calling `mtime` once per file. A file it can't date counts as the
@@ -321,6 +336,47 @@ mod tests {
             report.starts_with("Bash share of tool output: 25% (1 of 4 bytes, 9 of 10 sessions)")
         );
         assert!(report.ends_with("Log lines that could not be read, so are not counted: 2"));
+    }
+
+    #[test]
+    fn test_token_usage_report_splits_by_kind() {
+        let usage = TokenUsage {
+            input: 20_000,
+            cache_write: 80_000,
+            cache_read: 1_860_000,
+            output: 40_000,
+        };
+        let report = token_usage_report(&usage, 9, 10);
+        assert_eq!(
+            report,
+            "Where the tokens go (2.0M from API usage, 9 of 10 sessions):\n  \
+             Cache reads       1.9M   93%\n  \
+             Cache writes     80.0K    4%\n  \
+             Fresh input      20.0K    1%\n  \
+             Output           40.0K    2%\n  \
+             Token counts, not cost: each kind bills at its own rate. Tool results reach \
+             the model as input, are written to the cache once and read back on each later \
+             turn. Subagent logs are not counted."
+        );
+    }
+
+    #[test]
+    fn test_token_usage_report_without_usage() {
+        let report = token_usage_report(&TokenUsage::default(), 2, 3);
+        assert_eq!(report, "No API usage logged in these sessions (2 of 3 read).");
+    }
+
+    #[test]
+    fn test_sum_token_usage_adds_the_logs_it_can_read() {
+        let mut log = NamedTempFile::new().expect("create tempfile");
+        let line = r#"{"type":"assistant","message":{"id":"m","usage":{"input_tokens":2,"cache_creation_input_tokens":3,"cache_read_input_tokens":5,"output_tokens":7}}}"#;
+        writeln!(log, "{line}").expect("write line");
+        let missing = log.path().with_extension("missing");
+
+        let (usage, logs_read) = sum_token_usage(&[log.path().to_path_buf(), missing]);
+
+        assert_eq!(usage.total(), 17);
+        assert_eq!(logs_read, 1);
     }
 
     #[test]

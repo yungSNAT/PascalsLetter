@@ -40,6 +40,35 @@ pub struct ToolOutputBytes {
     pub unparsed_lines: usize,
 }
 
+/// Tokens the API billed for a session's assistant messages, by kind.
+#[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
+pub struct TokenUsage {
+    /// Input read fresh, outside the prompt cache.
+    pub input: usize,
+    /// Input written to the prompt cache.
+    pub cache_write: usize,
+    /// Input read from the prompt cache.
+    pub cache_read: usize,
+    /// Tokens the model wrote.
+    pub output: usize,
+}
+
+impl TokenUsage {
+    pub fn total(&self) -> usize {
+        self.input
+            .saturating_add(self.cache_write)
+            .saturating_add(self.cache_read)
+            .saturating_add(self.output)
+    }
+
+    pub fn add(&mut self, other: Self) {
+        self.input = self.input.saturating_add(other.input);
+        self.cache_write = self.cache_write.saturating_add(other.cache_write);
+        self.cache_read = self.cache_read.saturating_add(other.cache_read);
+        self.output = self.output.saturating_add(other.output);
+    }
+}
+
 /// Trait for session providers (Claude Code, OpenCode, etc.).
 ///
 /// Note: Cursor Agent transcripts use a text-only format without structured
@@ -56,6 +85,14 @@ pub trait SessionProvider {
 }
 
 pub struct ClaudeProvider;
+
+impl ClaudeProvider {
+    /// API usage of the assistant messages in a session log.
+    pub fn token_usage(&self, path: &Path) -> Result<TokenUsage> {
+        fs::File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
+        Ok(TokenUsage::default())
+    }
+}
 
 /// Text bytes of a `tool_result` block. `content` is a string for most tools and
 /// an array of blocks for others, such as MCP servers and subagents; a block with
@@ -704,6 +741,42 @@ mod tests {
         assert_eq!(cmds[0].command, "first");
         assert_eq!(cmds[1].command, "second");
         assert_eq!(cmds[2].command, "third");
+    }
+
+    fn usage_line(id: Option<&str>, input: u64, write: u64, read: u64, output: u64) -> String {
+        let id = id.map_or(String::new(), |id| format!(r#""id":"{id}","#));
+        format!(
+            r#"{{"type":"assistant","message":{{{id}"role":"assistant","content":[{{"type":"text","text":"x"}}],"usage":{{"input_tokens":{input},"cache_creation_input_tokens":{write},"cache_read_input_tokens":{read},"output_tokens":{output}}}}}}}"#
+        )
+    }
+
+    /// Claude Code writes one line per content block of a message, each with
+    /// the message's usage: a message counts once, at its largest figures. A
+    /// line with no id counts alone; user lines and unreadable lines count
+    /// for nothing.
+    #[test]
+    fn test_token_usage_counts_each_message_once() {
+        let jsonl = make_jsonl(&[
+            &usage_line(Some("msg_1"), 3, 100, 1000, 2),
+            &usage_line(Some("msg_1"), 3, 100, 1000, 40),
+            &usage_line(Some("msg_2"), 1, 0, 1100, 7),
+            &usage_line(None, 5, 0, 0, 1),
+            &usage_line(None, 5, 0, 0, 1),
+            r#"{"type":"user","message":{"role":"user","content":"hi","usage":{"input_tokens":999}}}"#,
+            r#"{"type":"assistant","message":{"id":"msg_3","usage":{"input_tok"#,
+        ]);
+
+        let usage = ClaudeProvider.token_usage(jsonl.path()).unwrap();
+        assert_eq!(
+            usage,
+            TokenUsage {
+                input: 14,
+                cache_write: 100,
+                cache_read: 2100,
+                output: 49,
+            }
+        );
+        assert_eq!(usage.total(), 2263);
     }
 
     #[test]
