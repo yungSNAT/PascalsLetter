@@ -38,6 +38,22 @@ const READ_CONVERSION_NOTE: &str = "RTK compressed this Read output (format conv
      e.g. json->toon, lockfile summary). The on-disk file is unchanged; re-read with rtk \
      disabled or check the recall file before constructing Edit old_string values.";
 
+/// [`READ_CONVERSION_NOTE`], plus the lines a cut Read covered: a summary of
+/// part of a file (`Cargo.lock: 400 packages`) otherwise reads as the whole.
+fn conversion_note(event: &Value) -> String {
+    let file = event.pointer("/tool_response/file");
+    let count = |key: &str| file.and_then(|f| f.get(key)).and_then(Value::as_u64);
+    let start = count("startLine").unwrap_or(1);
+    match (count("numLines"), count("totalLines")) {
+        (Some(lines), Some(total)) if lines > 0 && (start > 1 || lines < total) => format!(
+            "{READ_CONVERSION_NOTE} This Read covered lines {start}-{} of {total} only; \
+             the converted output describes those lines, not the whole file.",
+            start + lines - 1
+        ),
+        _ => READ_CONVERSION_NOTE.to_string(),
+    }
+}
+
 fn apply_terminal(
     text: String,
     ctx: &MethodCtx,
@@ -165,7 +181,7 @@ fn filter_tool_output(event: &Value, config: &Config, pipeline: &Resolved) -> Op
         "updatedToolOutput": updated,
     });
     if converted {
-        hook_output["additionalContext"] = json!(READ_CONVERSION_NOTE);
+        hook_output["additionalContext"] = json!(conversion_note(event));
     }
 
     track(
