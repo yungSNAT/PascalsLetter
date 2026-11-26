@@ -3205,3 +3205,11 @@ mod tests {
         assert_eq!(basename_of("https://docs.rs/toon-format"), "docs.rs");
     }
 }
+
+#[cfg(test)]
+#[path = "posthook_coverage_gen.rs"]
+mod coverage_gen_src_hooks_posthook;
+
+#[cfg(test)]
+#[path = "posthook_coverage_gen1.rs"]
+mod coverage_gen1_src_hooks_posthook;
