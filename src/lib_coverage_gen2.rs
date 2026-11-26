@@ -203,7 +203,8 @@ fn language_tool_wrappers_dispatch_to_their_tools() {
         let (out, log) = env.run(args);
         assert!(out.status.code().is_some(), "{args:?}: {out:?}");
         assert!(
-            log.lines().any(|line| line.split(' ').next() == Some(*tool)),
+            log.lines()
+                .any(|line| line.split(' ').next() == Some(*tool)),
             "`rtk {}` never reached {tool}; log: {log}; stderr: {}",
             args.join(" "),
             String::from_utf8_lossy(&out.stderr)

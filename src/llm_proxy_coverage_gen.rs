@@ -93,6 +93,7 @@ fn pipeline_row_savings_by_method_drops_zeroes() {
         saved_normalize: 4,
         saved_ingest_filter: 0,
         saved_pixel_compress: 9,
+        saved_rules: 0,
         cache_read: 0,
         cache_created: 0,
     };

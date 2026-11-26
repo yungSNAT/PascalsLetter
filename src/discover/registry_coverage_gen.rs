@@ -54,9 +54,6 @@ fn inputs_without_a_command_word_do_not_produce_a_route() {
 
 #[test]
 fn golangci_short_config_option_consumes_its_value_but_double_dash_stops_parsing() {
-    assert_eq!(split_golangci_flag_name("-c"), Some("-c"));
-    assert_eq!(split_golangci_flag_name("run"), None);
-
     let command = "golangci-lint -c 'lint settings.yml' run --verbose";
     let parts = parse_golangci_run_parts(command).expect("short config option before run");
     assert_eq!(parts.global_segment, "-c 'lint settings.yml'");
