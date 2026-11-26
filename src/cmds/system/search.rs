@@ -1213,16 +1213,10 @@ fn clean_line(
         return trimmed.to_string();
     }
 
-    // Place the window on the engine's actual match, not a literal search for the pattern
-    // text, which misses every real regex (`fn\s+run`) and so cut away the very match the
-    // agent searched for. The match offset is taken on the line itself: lowercasing first
-    // can change its length and pushed the window past the end of the line.
-    // No trustworthy position (PCRE, `-w`, a mid-pattern BRE `^`), or a match too long for
-    // the window: a clip could cut away the match, so the line stays whole. Past a few
-    // windows (minified code, data) a whole line would swamp the agent's output cap, so it
-    // is cut at the head and says the match may lie past the cut.
-    // The match is found on the line as the engine saw it: trimmed first, `^foo` would match
-    // a line that starts with spaces. A match reaching into the trimmed ends counts as none.
+    // Centre the window on the engine's match, located on the untrimmed line as the engine
+    // saw it (a match reaching into the trimmed ends counts as none). With no trustworthy
+    // match, or one longer than the window, the line stays whole up to a few windows, else
+    // it is cut at the head and says the match may lie past the cut.
     let lead = line.chars().count() - line.trim_start().chars().count();
     let Some((match_start, match_end)) = locate
         .and_then(|re| re.find_chars(line))

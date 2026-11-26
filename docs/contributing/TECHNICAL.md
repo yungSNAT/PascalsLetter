@@ -72,8 +72,8 @@ This is the full lifecycle of a command through RTK, from LLM agent to filtered 
 
 The user runs `rtk init` to set up hooks for their LLM agent. This:
 
-1. Writes a thin shell hook script (e.g., `~/.claude/hooks/rtk-rewrite.sh`)
-2. Stores its SHA-256 hash for integrity verification
+1. Registers a native hook command (e.g., `rtk hook claude`); a legacy `~/.claude/hooks/rtk-rewrite.sh` script is removed
+2. For a hook that is a script file (e.g., Gemini's), stores its SHA-256 hash for integrity verification
 3. Patches the agent's settings file (e.g., `settings.json`) to register the hook
 4. Writes RTK awareness instructions (e.g., `RTK.md`) for prompt-level guidance
 
@@ -109,9 +109,9 @@ Traced step by step for `cargo fmt --all && cargo test 2>&1 | tail -20`:
 ```
 LLM Agent: "cargo fmt --all && cargo test 2>&1 | tail -20"
   |
-  |  Hook shell (hooks/claude/rtk-rewrite.sh)
-  |  Reads JSON from agent, extracts command, calls `rtk rewrite "$CMD"`
-  |  On failure (jq missing, rtk missing, old version): exit 0 (passthrough)
+  |  Hook (rtk hook claude, src/hooks/hook_cmd.rs)
+  |  Reads JSON from agent, extracts command, rewrites it in process
+  |  On failure: exit 0 (passthrough)
   |
   v
 rewrite_cmd::run(cmd)                              [src/hooks/rewrite_cmd.rs]
@@ -299,7 +299,7 @@ Analytics commands (`rtk gain`, `rtk cc-economics`, `rtk session`) query this da
 On command failure (non-zero exit code) — or when a filter truncates a long list:
 
 1. Raw unfiltered output is stored in a content-addressed sqlite database (`~/.local/share/rtk/recall.db`, gzip, byte-faithful)
-2. A hint line is printed: `[full output: rtk recall 3f9c2a81d4e7b05a]` (failures) or `[+N hidden: rtk recall <hash>]` (truncated lists)
+2. A hint line is printed: `[full output: rtk recall 3f9c2a81d4e7b05a]` (failures) or `[+N hidden (lines A-B): rtk recall <hash>]` (truncated lists)
 3. LLM agents run `rtk recall <hash>` to get back exactly what was elided instead of re-running the command
 
 The mode is selectable via `rtk config recall <sqlite|tee|disabled>` — `tee` keeps the legacy per-file behavior (`~/.local/share/rtk/tee/{epoch}_{slug}.log`). Recovery never affects command output or exit code. `rtk gain --recalls` reports how often elided output is actually consulted, per filter.
@@ -331,9 +331,9 @@ Start here, then drill down into each README for file-level details.
 | Directory | Agent | What you'll find in its README |
 |-----------|-------|-------------------------------|
 | [`hooks/`](../../hooks/README.md) | _(parent)_ | **All JSON formats**, rewrite registry overview, exit code contract, override controls |
-| [`claude/`](../../hooks/claude/README.md) | Claude Code | Shell hook mechanism, `PreToolUse` JSON, test script |
+| [`claude/`](../../hooks/claude/README.md) | Claude Code | Native `rtk hook claude`, `PreToolUse` JSON |
 | [`copilot/`](../../hooks/copilot/README.md) | GitHub Copilot | Rust binary hook, single `PreToolUse` schema shared by VS Code Chat and Copilot CLI |
-| [`cursor/`](../../hooks/cursor/README.md) | Cursor IDE | Shell hook, empty JSON response requirement |
+| [`cursor/`](../../hooks/cursor/README.md) | Cursor IDE | Native `rtk hook cursor`, empty JSON response requirement |
 | [`cline/`](../../hooks/cline/README.md) | Cline / Roo Code | Rules file (prompt-level, no programmatic hook) |
 | [`windsurf/`](../../hooks/windsurf/README.md) | Windsurf / Cascade | Rules file (workspace-scoped) |
 | [`codex/`](../../hooks/codex/README.md) | OpenAI Codex CLI | Native `PreToolUse` processor, hooks.json registration, AGENTS.md awareness |

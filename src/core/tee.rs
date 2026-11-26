@@ -113,12 +113,22 @@ fn force_tee_tail_hint_with(
         }
         RecoveryMode::Sqlite => {
             match retriever::store(cfg, content.as_bytes(), command_slug, None, line_offset) {
-                Stored::Saved(s) if s.hidden_lines > 0 => Some(format!(
-                    "[+{} hidden{}: rtk recall {}]",
-                    s.hidden_lines,
-                    if s.truncated { " (storage limit)" } else { "" },
-                    s.hash
+                // Over the cap the store keeps only the hidden tail, renumbered
+                // from 1, so the original line numbers would not read back.
+                Stored::Saved(s) if s.hidden_lines > 0 && s.truncated => Some(format!(
+                    "[+{} hidden (storage limit): rtk recall {}]",
+                    s.hidden_lines, s.hash
                 )),
+                Stored::Saved(s) if s.hidden_lines > 0 => {
+                    let first = line_offset.max(1);
+                    Some(format!(
+                        "[+{} hidden (lines {}-{}): rtk recall {}]",
+                        s.hidden_lines,
+                        first,
+                        first + s.hidden_lines - 1,
+                        s.hash
+                    ))
+                }
                 Stored::Saved(_) | Stored::Unavailable | Stored::Empty => None,
             }
         }
@@ -410,7 +420,7 @@ mod tests {
         let content = "shown\nhidden1\nhidden2\nhidden3\n";
         for (cap, prefix) in [
             (16, "[+2 hidden (storage limit): rtk recall "),
-            (content.len(), "[+3 hidden: rtk recall "),
+            (content.len(), "[+3 hidden (lines 2-4): rtk recall "),
         ] {
             let cfg = RetrieverConfig {
                 database_path: Some(dir.path().join(format!("recall-{cap}.db"))),
@@ -421,6 +431,36 @@ mod tests {
                 .expect("hidden lines are retained");
             assert!(hint.starts_with(prefix), "{hint}");
         }
+    }
+
+    /// The range in a tail hint is the range `--from A --lines N` reads back.
+    #[test]
+    fn test_sqlite_tail_hint_range_is_what_recall_returns() {
+        let dir = tempfile::tempdir().expect("temporary recovery directory");
+        let cfg = RetrieverConfig {
+            database_path: Some(dir.path().join("recall.db")),
+            ..RetrieverConfig::default()
+        };
+        let content: String = (1..=40).map(|i| format!("line {i}\n")).collect();
+        let hint = force_tee_tail_hint_with(RecoveryMode::Sqlite, &cfg, &content, "cmd", 31)
+            .expect("hidden lines are retained");
+        let (range, hash) = hint
+            .strip_prefix("[+10 hidden (lines ")
+            .and_then(|rest| rest.strip_suffix(']'))
+            .and_then(|rest| rest.split_once("): rtk recall "))
+            .unwrap_or_else(|| panic!("unexpected hint: {hint}"));
+        assert_eq!(range, "31-40");
+        let conn = retriever::open_existing(&cfg).unwrap().unwrap();
+        let row = retriever::load_by_hash(&conn, hash).unwrap().unwrap();
+        let full = retriever::decode(&row).unwrap();
+        assert_eq!(
+            retriever::select_lines(&full, row.shown_upto, false, Some(31), Some(10)),
+            retriever::select_lines(&full, row.shown_upto, false, None, None),
+        );
+        // Nothing hidden: no hint, as before. (Last: the same bytes share a row.)
+        assert!(
+            force_tee_tail_hint_with(RecoveryMode::Sqlite, &cfg, &content, "cmd", 41).is_none()
+        );
     }
 
     #[test]
