@@ -19,11 +19,11 @@ fn long_terminal_response_stays_intact_when_tee_is_disabled() {
 #[cfg(unix)]
 #[test]
 fn curl_cli_reports_failures_and_preserves_binary_output() {
-    use crate::core::test_isolation::{rtk_binary_is_built, rtk_command, tempdir};
+    use crate::core::test_isolation::{rtk_binary_or_skip, rtk_command, tempdir};
     use std::os::unix::fs::PermissionsExt;
     use std::process::Stdio;
 
-    if !rtk_binary_is_built() {
+    if !rtk_binary_or_skip() {
         return;
     }
 

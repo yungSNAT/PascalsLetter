@@ -160,7 +160,7 @@ mod cli {
 
     #[test]
     fn docker_compose_filters_output_and_docker_passthrough_preserves_arguments() {
-        if !test_isolation::rtk_binary_is_built() {
+        if !test_isolation::rtk_binary_or_skip() {
             return;
         }
         let tools = fake_tools(&[(
@@ -249,7 +249,7 @@ esac
 
     #[test]
     fn kubectl_and_oc_route_get_aliases_logs_and_passthrough() {
-        if !test_isolation::rtk_binary_is_built() {
+        if !test_isolation::rtk_binary_or_skip() {
             return;
         }
         let script = r#"
@@ -291,7 +291,11 @@ esac
 
         let (stdout, _) = invoke(tools.path(), &["kubectl", "logs", "worker"]);
         assert!(stdout.starts_with("Logs for worker:\n"), "{stdout}");
-        assert!(stdout.contains("fixture worker disconnected"), "{stdout}");
+        assert_eq!(
+            stdout.matches("fixture worker disconnected").count(),
+            1,
+            "{stdout}"
+        );
 
         for tool in ["kubectl", "oc"] {
             let (stdout, _) = invoke(tools.path(), &[tool, "version"]);

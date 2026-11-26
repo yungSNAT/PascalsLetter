@@ -36,7 +36,7 @@ fn structured_operation_detection_covers_all_branches() {
 
 #[cfg(unix)]
 mod via_binary {
-    use crate::core::test_isolation::{rtk_binary_is_built, rtk_command, tempdir};
+    use crate::core::test_isolation::{rtk_binary_or_skip, rtk_command, tempdir};
     use std::ffi::OsString;
     use std::os::unix::fs::PermissionsExt;
     use std::path::Path;
@@ -139,7 +139,7 @@ secretsmanager get-secret-value\t{\"Name\":\"my-secret\",\"SecretString\":\"plai
 
     #[test]
     fn specialised_routes_filter_fake_aws_output() {
-        if !rtk_binary_is_built() {
+        if !rtk_binary_or_skip() {
             return;
         }
         let dir = tempdir();
@@ -184,7 +184,7 @@ secretsmanager get-secret-value\t{\"Name\":\"my-secret\",\"SecretString\":\"plai
 
     #[test]
     fn generic_route_propagates_failure_and_passes_plain_text() {
-        if !rtk_binary_is_built() {
+        if !rtk_binary_or_skip() {
             return;
         }
         let dir = tempdir();
