@@ -833,12 +833,17 @@ fn nextest_test_name(block: &str) -> &str {
 /// Filter cargo nextest output - show failures + compact summary
 fn filter_cargo_nextest(output: &str) -> String {
     // nextest annotates `passed` in place, e.g. `2 passed (1 slow), 1 failed`
-    let summary_re = regex::Regex::new(
-        r"Summary \[\s*([\d.]+)s\]\s+(\d+) tests? run:\s+(\d+) passed(?:\s+\([^)]*\))?(?:,\s+(\d+) failed)?(?:,\s+(\d+) exec failed)?(?:,\s+(\d+) timed out)?(?:,\s+(\d+) skipped)?"
-    ).expect("invalid nextest summary regex");
-
-    let starting_re = regex::Regex::new(r"Starting \d+ tests? across (\d+) binar(?:y|ies)")
-        .expect("invalid nextest starting regex");
+    static SUMMARY_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(
+            r"Summary \[\s*([\d.]+)s\]\s+(\d+) tests? run:\s+(\d+) passed(?:\s+\([^)]*\))?(?:,\s+(\d+) failed)?(?:,\s+(\d+) exec failed)?(?:,\s+(\d+) timed out)?(?:,\s+(\d+) skipped)?"
+        ).expect("invalid nextest summary regex")
+    });
+    static STARTING_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"Starting \d+ tests? across (\d+) binar(?:y|ies)")
+            .expect("invalid nextest starting regex")
+    });
+    let summary_re = &*SUMMARY_RE;
+    let starting_re = &*STARTING_RE;
 
     let mut failures: Vec<String> = Vec::new();
     let mut in_failure_block = false;
