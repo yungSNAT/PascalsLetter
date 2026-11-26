@@ -50,7 +50,7 @@ else
 fi
 echo ""
 
-if [ "$CORRECT_RTK" = false ]; then
+if [[ "$CORRECT_RTK" = false ]]; then
     echo "═══════════════════════════════════════════════════════════"
     echo -e "${RED}INSTALLATION CHECK FAILED${NC}"
     echo "═══════════════════════════════════════════════════════════"
@@ -94,7 +94,7 @@ echo "5. Checking Claude Code integration..."
 GLOBAL_INIT=false
 LOCAL_INIT=false
 
-if [ -f "$HOME/.claude/CLAUDE.md" ] && grep -q "rtk" "$HOME/.claude/CLAUDE.md"; then
+if [[ -f "$HOME/.claude/CLAUDE.md" ]] && grep -q "rtk" "$HOME/.claude/CLAUDE.md"; then
     echo -e "   ${GREEN}✅${NC} Global CLAUDE.md initialized (~/.claude/CLAUDE.md)"
     GLOBAL_INIT=true
 else
@@ -102,7 +102,7 @@ else
     echo "      Run: rtk init --global"
 fi
 
-if [ -f "./CLAUDE.md" ] && grep -q "rtk" "./CLAUDE.md"; then
+if [[ -f "./CLAUDE.md" ]] && grep -q "rtk" "./CLAUDE.md"; then
     echo -e "   ${GREEN}✅${NC} Local CLAUDE.md initialized (./CLAUDE.md)"
     LOCAL_INIT=true
 else
@@ -113,9 +113,9 @@ echo ""
 
 # Check 6: Auto-rewrite hook
 echo "6. Checking auto-rewrite hook (optional but recommended)..."
-if [ -f "$HOME/.claude/settings.json" ] && grep -q "rtk hook claude" "$HOME/.claude/settings.json"; then
+if [[ -f "$HOME/.claude/settings.json" ]] && grep -q "rtk hook claude" "$HOME/.claude/settings.json"; then
     echo -e "   ${GREEN}✅${NC} Hook registered in settings.json (rtk hook claude)"
-elif [ -f "$HOME/.claude/hooks/rtk-rewrite.sh" ]; then
+elif [[ -f "$HOME/.claude/hooks/rtk-rewrite.sh" ]]; then
     echo -e "   ${YELLOW}⚠️${NC}  Legacy rtk-rewrite.sh hook found"
     echo "      Upgrade: rtk init -g"
 else
@@ -129,7 +129,7 @@ echo "════════════════════════�
 echo "                    SUMMARY"
 echo "═══════════════════════════════════════════════════════════"
 
-if [ ${#MISSING_FEATURES[@]} -gt 0 ]; then
+if [[ ${#MISSING_FEATURES[@]} -gt 0 ]]; then
     echo -e "${YELLOW}⚠️  You have a basic RTK installation${NC}"
     echo ""
     echo "Missing features:"
@@ -146,12 +146,12 @@ fi
 
 echo ""
 
-if [ "$GLOBAL_INIT" = false ] && [ "$LOCAL_INIT" = false ]; then
+if [[ "$GLOBAL_INIT" = false ]] && [[ "$LOCAL_INIT" = false ]]; then
     echo -e "${YELLOW}⚠️  RTK not initialized for Claude Code${NC}"
     echo "   Run: rtk init --global (for all projects)"
     echo "   Or:  rtk init (for this project only)"
 fi
 
 echo ""
-echo "Need help? See docs/TROUBLESHOOTING.md"
+echo "Need help? See docs/guide/resources/troubleshooting.md"
 echo "═══════════════════════════════════════════════════════════"

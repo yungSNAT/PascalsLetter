@@ -34,9 +34,10 @@ function isBashToolCallEvent(event: ToolCallEvent): event is BashToolCallEvent {
 
 // Parse "X.Y.Z" semver, return [major, minor, patch] or null.
 function parseSemver(raw: string): [number, number, number] | null {
-  const m = raw.trim().match(/(\d+)\.(\d+)\.(\d+)/)
+  // Bounded repeats: an unbounded `\d+` before each dot backtracks on a long run of digits.
+  const m = raw.trim().match(/(\d{1,10})\.(\d{1,10})\.(\d{1,10})/)
   if (!m) return null
-  return [parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3], 10)]
+  return [Number.parseInt(m[1], 10), Number.parseInt(m[2], 10), Number.parseInt(m[3], 10)]
 }
 
 // The rtk in the first absolute PATH entry that holds one, or null. Not a bare
