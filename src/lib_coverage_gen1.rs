@@ -330,7 +330,6 @@ mod spawned {
             return;
         }
         let sb = Sandbox::new();
-        std::fs::write(sb.work.join("sample.txt"), "line one\nline two\n").expect("write sample");
 
         let out = sb.run(&["methods", "list"]);
         assert!(out.status.success(), "{}", stderr_of(&out));
