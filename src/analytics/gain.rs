@@ -1359,9 +1359,13 @@ const PANEL_RULES: usize = 5;
 /// `rtk recall` pointers: how many, and the tokens they stood in for.
 #[cfg(feature = "engine")]
 fn repeat_kpi(calls: i64, tokens_in: i64, tokens_out: i64) -> String {
-    let outputs = if calls == 1 { "output" } else { "outputs" };
+    let sent = if calls == 1 {
+        "output sent as a pointer"
+    } else {
+        "outputs sent as pointers"
+    };
     format!(
-        "{calls} repeated {outputs} sent as pointers: {} → {} tokens   est.",
+        "{calls} repeated {sent}: {} → {} tokens   est.",
         format_tokens(tokens_in.max(0) as usize),
         format_tokens(tokens_out.max(0) as usize),
     )
@@ -2059,7 +2063,7 @@ mod tests {
             repeat_kpi(3, 12_000, 60),
             "3 repeated outputs sent as pointers: 12.0K → 60 tokens   est."
         );
-        assert!(repeat_kpi(1, 400, 20).starts_with("1 repeated output sent"));
+        assert!(repeat_kpi(1, 400, 20).starts_with("1 repeated output sent as a pointer:"));
     }
 
     /// A panel whose only hook figure is a repeat still prints, with its line.
@@ -2075,7 +2079,7 @@ mod tests {
         assert!(hook.any());
         assert_eq!(
             hook.repeat_line().as_deref(),
-            Some("1 repeated output sent as pointers: 4.0K → 20 tokens   est.")
+            Some("1 repeated output sent as a pointer: 4.0K → 20 tokens   est.")
         );
     }
 
