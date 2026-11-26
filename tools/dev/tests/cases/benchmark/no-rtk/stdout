@@ -1,0 +1,1 @@
+Error: rtk not found. Run 'cargo build --release', install rtk, or set RTK_BIN.

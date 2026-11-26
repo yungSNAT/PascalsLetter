@@ -1,0 +1,6 @@
+check-test-presence: checking 2 filter module(s)...
+
+  PASS  src/cmds/git/new_cmd.rs
+  PASS  src/cmds/git/old_cmd.rs
+
+check-test-presence: all filter modules have tests — OK

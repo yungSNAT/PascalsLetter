@@ -1,0 +1,5 @@
+[1mRTK Smoke Test Suite[0m
+Binary: /tmp/rtk-dev-parity/smoke/not-a-repo/rtkbin/rtk
+Version: rtk 1.2.0-stub
+Date: -
+Must run from inside a git repository.

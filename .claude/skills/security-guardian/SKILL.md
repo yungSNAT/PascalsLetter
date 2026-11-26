@@ -18,7 +18,7 @@ Comprehensive security analysis for RTK CLI tool, focusing on **command injectio
 RTK faces unique security challenges as a CLI proxy that:
 1. **Executes shell commands** based on user input
 2. **Parses untrusted command output** (git, cargo, gh, etc.)
-3. **Integrates with Claude Code hooks** (rtk-rewrite.sh, rtk-suggest.sh)
+3. **Integrates with Claude Code hooks** (`rtk hook claude`)
 4. **Routes commands transparently** (command injection vectors)
 
 ### Threat Categories
