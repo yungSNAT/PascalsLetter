@@ -31,6 +31,7 @@ static TSC_GLOBAL_ERROR: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^(error|warning)\s+(TS\d+):\s+(.+)$").unwrap());
 
 struct Diagnostic<'a> {
+    warning: bool,
     file: Option<&'a str>,
     line: Option<&'a str>,
     code: &'a str,
@@ -41,6 +42,7 @@ struct Diagnostic<'a> {
 fn parse_diagnostic(line: &str) -> Option<Diagnostic<'_>> {
     if let Some(caps) = TSC_ERROR.captures(line) {
         return Some(Diagnostic {
+            warning: &caps[4] == "warning",
             file: caps.get(1).map(|value| value.as_str()),
             line: caps.get(2).map(|value| value.as_str()),
             code: caps.get(5)?.as_str(),
@@ -49,6 +51,7 @@ fn parse_diagnostic(line: &str) -> Option<Diagnostic<'_>> {
     }
     if let Some(caps) = TSC_PRETTY_ERROR.captures(line) {
         return Some(Diagnostic {
+            warning: &caps[4] == "warning",
             file: caps.get(1).map(|value| value.as_str()),
             line: caps.get(2).map(|value| value.as_str()),
             code: caps.get(5)?.as_str(),
@@ -57,11 +60,25 @@ fn parse_diagnostic(line: &str) -> Option<Diagnostic<'_>> {
     }
     let caps = TSC_GLOBAL_ERROR.captures(line)?;
     Some(Diagnostic {
+        warning: &caps[1] == "warning",
         file: None,
         line: None,
         code: caps.get(2)?.as_str(),
         message: caps.get(3)?.as_str(),
     })
+}
+
+/// `TypeScript: N errors[, M warnings][ in K files]`; warnings are named only when present.
+fn headline(errors: usize, warnings: usize, files: usize) -> String {
+    let mut out = format!("TypeScript: {errors} errors");
+    if warnings > 0 {
+        out.push_str(&format!(", {warnings} warnings"));
+    }
+    if files > 0 {
+        out.push_str(&format!(" in {files} files"));
+    }
+    out.push('\n');
+    out
 }
 
 fn push_dump_line(summary: &mut String, line: &str) {
@@ -110,6 +127,7 @@ pub fn run(runner: Option<&str>, args: &[String], verbose: u8) -> Result<i32> {
 
 struct TscHandler {
     error_count: usize,
+    warning_count: usize,
     files: HashSet<String>,
     code_counts: HashMap<String, usize>,
 }
@@ -118,6 +136,7 @@ impl TscHandler {
     fn new() -> Self {
         Self {
             error_count: 0,
+            warning_count: 0,
             files: HashSet::new(),
             code_counts: HashMap::new(),
         }
@@ -137,7 +156,11 @@ impl BlockHandler for TscHandler {
 
     fn is_block_start(&mut self, line: &str) -> bool {
         if let Some(diagnostic) = parse_diagnostic(line) {
-            self.error_count += 1;
+            if diagnostic.warning {
+                self.warning_count += 1;
+            } else {
+                self.error_count += 1;
+            }
             if let Some(file) = diagnostic.file {
                 self.files.insert(file.to_string());
             }
@@ -156,7 +179,7 @@ impl BlockHandler for TscHandler {
     }
 
     fn format_summary(&self, exit_code: i32, raw: &str) -> Option<String> {
-        if self.error_count == 0 {
+        if self.error_count + self.warning_count == 0 {
             if exit_code == 0 {
                 return Some("TypeScript: No errors found\n".to_string());
             }
@@ -217,15 +240,7 @@ impl BlockHandler for TscHandler {
             return Some(summary);
         }
 
-        let mut result = if self.files.is_empty() {
-            format!("TypeScript: {} errors\n", self.error_count)
-        } else {
-            format!(
-                "TypeScript: {} errors in {} files\n",
-                self.error_count,
-                self.files.len()
-            )
-        };
+        let mut result = headline(self.error_count, self.warning_count, self.files.len());
 
         if self.code_counts.len() > 1 {
             let mut counts: Vec<_> = self.code_counts.iter().collect();
@@ -246,6 +261,7 @@ pub(crate) fn filter_tsc_output(output: &str) -> String {
     struct TsError {
         file: Option<String>,
         line: Option<usize>,
+        warning: bool,
         code: String,
         message: String,
         context_lines: Vec<String>,
@@ -262,6 +278,7 @@ pub(crate) fn filter_tsc_output(output: &str) -> String {
             let mut err = TsError {
                 file: diagnostic.file.map(str::to_string),
                 line: diagnostic.line.and_then(|value| value.parse().ok()),
+                warning: diagnostic.warning,
                 code: diagnostic.code.to_string(),
                 message: diagnostic.message.to_string(),
                 context_lines: Vec::new(),
@@ -311,15 +328,8 @@ pub(crate) fn filter_tsc_output(output: &str) -> String {
         *by_code.entry(err.code.clone()).or_insert(0) += 1;
     }
 
-    let mut result = if by_file.is_empty() {
-        format!("TypeScript: {} errors\n", errors.len())
-    } else {
-        format!(
-            "TypeScript: {} errors in {} files\n",
-            errors.len(),
-            by_file.len()
-        )
-    };
+    let warnings = errors.iter().filter(|err| err.warning).count();
+    let mut result = headline(errors.len() - warnings, warnings, by_file.len());
 
     // Top error codes summary (compact, one line)
     let mut code_counts: Vec<_> = by_code.iter().collect();
@@ -506,6 +516,37 @@ Found 3 errors in 2 files.
         assert!(result.contains("TS2345"), "got: {}", result);
         assert!(result.contains("3 errors in 2 files"), "got: {}", result);
         assert!(!result.contains("Found 3"), "got: {}", result);
+    }
+
+    const WARNING_AND_ERROR: &str = "\
+src/a.ts(1,7): warning TS6133: 'x' is declared but its value is never read.
+src/b.ts(2,5): error TS2322: Type 'string' is not assignable to type 'number'.
+";
+
+    #[test]
+    fn test_tsc_stream_counts_warnings_apart_from_errors() {
+        let mut f = BlockStreamFilter::new(TscHandler::new());
+        let result = run_block_filter(&mut f, WARNING_AND_ERROR, 1);
+        assert!(
+            result.contains("TypeScript: 1 errors, 1 warnings in 2 files"),
+            "got: {result}"
+        );
+
+        let mut f = BlockStreamFilter::new(TscHandler::new());
+        let result = run_block_filter(&mut f, WARNING_AND_ERROR.lines().next().unwrap(), 0);
+        assert!(
+            result.contains("TypeScript: 0 errors, 1 warnings in 1 files"),
+            "got: {result}"
+        );
+    }
+
+    #[test]
+    fn test_filter_tsc_output_counts_warnings_apart_from_errors() {
+        let result = filter_tsc_output(WARNING_AND_ERROR);
+        assert!(
+            result.contains("TypeScript: 1 errors, 1 warnings in 2 files"),
+            "got: {result}"
+        );
     }
 
     #[test]
