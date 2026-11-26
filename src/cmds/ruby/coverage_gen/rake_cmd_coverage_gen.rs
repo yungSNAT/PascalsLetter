@@ -17,23 +17,27 @@ fn adjacent_failure_blocks_are_kept_up_to_the_display_limit() {
          {failures} runs, {failures} assertions, {failures} failures, 0 errors, 0 skips"
     );
 
-    let visible_blocks = (1..=MAX_RAKE_FAILURES)
-        .map(|n| {
-            format!(
-                "{n}. {n}) Failure:\n   WidgetTest#test_case_{n}\n   Expected: 1\n   Actual: 2\n   Assertion message"
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n\n");
-
-    // The omission count includes the final block, which has no trailing blank line.
-    assert_eq!(
-        filter_minitest_output(&input),
-        format!(
-            "rake test: {failures} runs, {failures} failures, 0 errors\n\n\
-             {visible_blocks}\n\n... +2 more failures"
-        )
+    // Each block's header line is left unpinned: it is numbered twice today
+    // ("1. 1) Failure:").
+    let output = filter_minitest_output(&input);
+    assert!(
+        output.starts_with(&format!(
+            "rake test: {failures} runs, {failures} failures, 0 errors\n\n"
+        )),
+        "{output}"
     );
+    for n in 1..=MAX_RAKE_FAILURES {
+        let details = format!(
+            "\n   WidgetTest#test_case_{n}\n   Expected: 1\n   Actual: 2\n   Assertion message"
+        );
+        assert!(output.contains(&details), "{output}");
+    }
+    for n in MAX_RAKE_FAILURES + 1..=failures {
+        assert!(!output.contains(&format!("test_case_{n}\n")), "{output}");
+    }
+    assert!(!output.contains("Backtrace frame"), "{output}");
+    // The omission count includes the final block, which has no trailing blank line.
+    assert!(output.ends_with("\n\n... +2 more failures"), "{output}");
 }
 
 #[test]
@@ -52,11 +56,11 @@ Finished in 0.02s
 #[cfg(unix)]
 #[test]
 fn verbose_rake_forwards_a_positional_file_to_rails_and_filters_output() {
-    use crate::core::test_isolation::{rtk_binary_is_built, rtk_command, tempdir};
+    use crate::core::test_isolation::{rtk_binary_ready, rtk_command, tempdir};
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
 
-    if !rtk_binary_is_built() {
+    if !rtk_binary_ready() {
         return;
     }
 

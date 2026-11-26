@@ -336,7 +336,7 @@ fn combined_output(out: &std::process::Output) -> String {
 #[cfg(unix)]
 #[test]
 fn test_rtk_cargo_runners_filter_fake_cargo_output() {
-    if !crate::core::test_isolation::rtk_binary_is_built() {
+    if !crate::core::test_isolation::rtk_binary_ready() {
         return;
     }
     let tools = tempfile::tempdir().expect("tool dir");
@@ -354,7 +354,8 @@ fn test_rtk_cargo_runners_filter_fake_cargo_output() {
         .output()
         .expect("run rtk cargo install");
     let text = combined_output(&out);
-    assert!(text.contains("3 deps compiled"), "got: {text}");
+    // The deps count is left out: it includes the installed crate's own build.
+    assert!(text.contains("cargo install (demo v1.0.0, "), "got: {text}");
     assert!(out.status.success(), "got: {text}");
 
     let out = rtk_with_fake_cargo(tools.path())

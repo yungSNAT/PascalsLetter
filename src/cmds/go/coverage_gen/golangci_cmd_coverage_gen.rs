@@ -122,7 +122,7 @@ mod cli {
 
     #[test]
     fn cli_reads_v2_version_from_stderr_and_filters_only_the_json_line() {
-        if !test_isolation::rtk_binary_is_built() {
+        if !test_isolation::rtk_binary_ready() {
             return;
         }
 
@@ -161,6 +161,9 @@ exit 99
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
 
+        // golangci-lint exits 1 when it found issues; rtk reports them and
+        // returns 0 (see `lint_issues_are_summarised_and_exit_zero` in
+        // tests/stderr_only_failure_test.rs). Exit 2 and above pass through.
         assert_eq!(output.status.code(), Some(0), "{stderr}");
         assert!(
             stderr
@@ -178,7 +181,7 @@ exit 99
 
     #[test]
     fn cli_falls_back_to_v1_arguments_when_the_version_probe_cannot_spawn() {
-        if !test_isolation::rtk_binary_is_built() {
+        if !test_isolation::rtk_binary_ready() {
             return;
         }
 
@@ -192,18 +195,21 @@ exit 99
             .unwrap();
         let stderr = String::from_utf8_lossy(&output.stderr);
 
-        assert!(!output.status.success(), "{stderr}");
+        // The failed spawn is rtk's own error (exit 1), not a linter exit 1
+        // remapped to success.
+        assert_eq!(output.status.code(), Some(1), "{stderr}");
         assert!(
             stderr
                 .lines()
                 .any(|line| line == "Running: golangci-lint run --out-format=json sample"),
             "{stderr}"
         );
+        assert!(stderr.contains("Failed to run golangci-lint"), "{stderr}");
     }
 
     #[test]
     fn cli_passes_through_non_run_arguments_output_and_exit_code() {
-        if !test_isolation::rtk_binary_is_built() {
+        if !test_isolation::rtk_binary_ready() {
             return;
         }
 

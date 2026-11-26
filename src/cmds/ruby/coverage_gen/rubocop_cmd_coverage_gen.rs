@@ -33,7 +33,7 @@ fn json_uses_reported_correctable_count_and_sorts_unknown_severity_last() {
 
 #[test]
 fn json_file_overflow_keeps_ten_files_inline_and_reports_two_hidden() {
-    use crate::core::{tee, test_isolation, user_env};
+    use crate::core::{test_isolation, user_env};
 
     let scratch = test_isolation::tempdir();
     let _working_dir = test_isolation::enter(scratch.path());
@@ -57,25 +57,22 @@ fn json_file_overflow_keeps_ten_files_inline_and_reports_two_hidden() {
         "files": files,
         "summary": {"offense_count": 12, "target_file_count": 12, "inspected_file_count": 12}
     });
-    let full_list = names.join("\n");
     let tee_dir = scratch.path().join("tee");
 
     test_isolation::with_root(scratch.path(), || {
         user_env::with_path("RTK_TEE_DIR", Some(&tee_dir), || {
-            let result = filter_rubocop_json(&input.to_string());
-            let mut lines = result.lines();
-            assert_eq!(lines.next(), Some("rubocop: 12 offenses (12 files)"));
-            for name in &names[..10] {
+            user_env::with_vars(&[("RTK_TEE", Some("1"))], || {
+                let result = filter_rubocop_json(&input.to_string());
+                let mut lines = result.lines();
+                assert_eq!(lines.next(), Some("rubocop: 12 offenses (12 files)"));
+                for name in &names[..10] {
+                    assert_eq!(lines.next(), Some(""));
+                    assert_eq!(lines.next(), Some(name.as_str()));
+                    assert_eq!(lines.next(), Some("  :1 Example/Warning — Example finding"));
+                }
                 assert_eq!(lines.next(), Some(""));
-                assert_eq!(lines.next(), Some(name.as_str()));
-                assert_eq!(lines.next(), Some("  :1 Example/Warning — Example finding"));
-            }
-            assert_eq!(lines.next(), Some(""));
-            assert_eq!(lines.next(), Some("… +2 more files"));
+                assert_eq!(lines.next(), Some("… +2 more files"));
 
-            // Probe separately so a missing hint is only accepted when tee
-            // itself is unavailable in this test configuration.
-            if tee::force_tee_tail_hint(&full_list, "rubocop-coverage-probe", 11).is_some() {
                 let hint = lines
                     .next()
                     .expect("expected a recall hint for the hidden files");
@@ -87,8 +84,8 @@ fn json_file_overflow_keeps_ten_files_inline_and_reports_two_hidden() {
                     !recall_id.is_empty() && recall_id.bytes().all(|byte| byte.is_ascii_hexdigit()),
                     "invalid recall ID in hint: {hint}"
                 );
-            }
-            assert_eq!(lines.next(), None, "{result}");
+                assert_eq!(lines.next(), None, "{result}");
+            });
         });
     });
 }

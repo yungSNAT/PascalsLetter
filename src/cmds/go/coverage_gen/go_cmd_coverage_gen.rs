@@ -197,7 +197,7 @@ mod cli {
 
     #[test]
     fn go_wrappers_select_the_filter_and_forward_arguments() {
-        if !test_isolation::rtk_binary_is_built() {
+        if !test_isolation::rtk_binary_ready() {
             return;
         }
 
@@ -273,7 +273,7 @@ esac
 
     #[test]
     fn go_tool_golangci_uses_the_detected_version_and_respects_explicit_format() {
-        if !test_isolation::rtk_binary_is_built() {
+        if !test_isolation::rtk_binary_ready() {
             return;
         }
 

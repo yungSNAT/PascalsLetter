@@ -103,7 +103,7 @@ fn cargo_passthrough_preserves_arguments_and_child_output() {
     use std::os::unix::fs::PermissionsExt;
     use std::process::Stdio;
 
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
 
