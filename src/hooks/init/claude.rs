@@ -478,7 +478,11 @@ pub(super) fn required_claude_events_scoped(
 ) -> Vec<(&'static str, String)> {
     match scope {
         HookInstallScope::UserGlobal => {
-            claude_events_of(&crate::core::pipeline_config::load_user_scope())
+            let mut events = claude_events_of(&crate::core::pipeline_config::load_user_scope());
+            if crate::core::config::Config::load().is_ok_and(|c| c.hooks.dedup_repeats) {
+                add_repeat_tools(&mut events);
+            }
+            events
         }
         HookInstallScope::ProjectExtra => {
             let user = claude_events_of(&crate::core::pipeline_config::load_user_scope());
@@ -486,6 +490,22 @@ pub(super) fn required_claude_events_scoped(
                 .into_iter()
                 .filter(|(key, _)| !user.iter().any(|(u, _)| u == key))
                 .collect()
+        }
+    }
+}
+
+#[cfg(feature = "engine")]
+/// With `[hooks] dedup_repeats`, both tool events fire for each tool a
+/// repeat pointer can replace: PreToolUse marks the call in flight and
+/// PostToolUse delivers it.
+pub(super) fn add_repeat_tools(events: &mut Vec<(&'static str, String)>) {
+    const REPEAT_TOOLS: &[&str] = &["Bash", "Read", "Grep", "Glob"];
+    for key in [PRE_TOOL_USE_KEY, POST_TOOL_USE_KEY] {
+        match events.iter_mut().find(|(k, _)| *k == key) {
+            Some((_, matcher)) => {
+                *matcher = crate::hooks::constants::claude_matcher_with(matcher, REPEAT_TOOLS);
+            }
+            None => events.push((key, REPEAT_TOOLS.join("|"))),
         }
     }
 }
@@ -1008,6 +1028,33 @@ mod tests {
     use super::*;
     use crate::core::test_isolation;
 
+    #[cfg(feature = "engine")]
+    #[test]
+    fn test_add_repeat_tools_registers_both_tool_events() {
+        let all = "Bash|Read|Grep|Glob";
+        let mut events = vec![
+            (PRE_TOOL_USE_KEY, "Bash".to_string()),
+            (POST_TOOL_USE_KEY, "Read|Grep|mcp__.*".to_string()),
+        ];
+        add_repeat_tools(&mut events);
+        assert_eq!(
+            events,
+            vec![
+                (PRE_TOOL_USE_KEY, all.to_string()),
+                (POST_TOOL_USE_KEY, format!("{all}|mcp__.*")),
+            ]
+        );
+        let mut none = Vec::new();
+        add_repeat_tools(&mut none);
+        assert_eq!(
+            none,
+            vec![
+                (PRE_TOOL_USE_KEY, all.to_string()),
+                (POST_TOOL_USE_KEY, all.to_string()),
+            ]
+        );
+    }
+
     #[test]
     fn test_hook_already_present_exact_match() {
         let json_content = serde_json::json!({
@@ -1190,6 +1237,195 @@ mod tests {
             PRE_TOOL_USE_KEY,
             hook_command
         ));
+    }
+
+    #[test]
+    fn compound_shell_commands_are_not_rtk_hooks() {
+        for command in [
+            "my-audit;/usr/local/bin/rtk hook claude",
+            "my-audit&&/usr/local/bin/rtk hook claude",
+            "my-audit||/usr/local/bin/rtk hook claude",
+            "my-audit|/usr/local/bin/rtk hook claude",
+            "my-audit&/usr/local/bin/rtk hook claude",
+            "my-audit>/usr/local/bin/rtk hook claude",
+            "/usr/local/bin/rtk hook claude > /tmp/audit.log",
+            "/usr/local/bin/rtk\nhook claude",
+            "/usr/local/bin/rtk hook claude\nmy-audit",
+            "/usr/local/bin/rtk hook claude\r\n",
+            "/usr/local/bin/rtk hook claude\r",
+            "/usr/local/bin/rtk hook claude\\ ",
+            "/usr/local/bin/rtk hook \"claude\n",
+            "/usr/local/bin/rtk hook 'claude\n",
+            " \t/usr/local/bin/rtk hook claude\r\n\t ",
+            " \t/usr/local/bin/rtk hook claude\r\t ",
+        ] {
+            assert!(
+                !crate::hooks::is_claude_hook_command(command),
+                "user command was claimed as RTK-owned: {command:?}"
+            );
+        }
+
+        for command in [
+            "/usr/local/bin/rtk hook claude\n",
+            "\n/usr/local/bin/rtk hook claude",
+            " \n/usr/local/bin/rtk hook claude\n ",
+            "\t\n/usr/local/bin/rtk hook claude\n\t",
+            "${HOME}/.local/bin/rtk hook claude",
+        ] {
+            assert!(
+                crate::hooks::is_claude_hook_command(command),
+                "RTK hook command was not recognised: {command:?}"
+            );
+        }
+
+        for command in [
+            "\"/usr/local/my;bin/rtk\" hook claude",
+            "/usr/local/my\\;bin/rtk hook claude",
+            "\"/usr/local/my&&bin/rtk\" hook claude",
+        ] {
+            assert!(
+                crate::hooks::is_claude_hook_command(command),
+                "literal operator character changed RTK path: {command:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn install_and_uninstall_preserve_compound_user_hook() {
+        let tmp = test_isolation::tempdir();
+        with_claude_dir_override(&tmp, |dir| {
+            let path = dir.join(SETTINGS_JSON);
+            let compound = serde_json::json!({
+                "type": "command",
+                "command": "my-audit;/usr/local/bin/rtk hook claude",
+                "timeout": 9,
+                "metadata": { "owner": "user", "labels": ["keep"] }
+            });
+            fs::write(
+                &path,
+                serde_json::json!({
+                    "hooks": {
+                        (PRE_TOOL_USE_KEY): [{
+                            "matcher": "Bash|Read",
+                            "hooks": [compound.clone()]
+                        }]
+                    },
+                    "permissions": { "allow": ["Bash(ls)"] }
+                })
+                .to_string(),
+            )
+            .unwrap();
+
+            assert_eq!(
+                patch_settings_json_command(
+                    CLAUDE_HOOK_COMMAND,
+                    PatchMode::Auto,
+                    false,
+                    InitContext::default(),
+                    HookInstallScope::UserGlobal,
+                )
+                .unwrap(),
+                PatchResult::Patched
+            );
+            let installed = read_json_file(&path).unwrap().unwrap();
+            let entries = installed["hooks"][PRE_TOOL_USE_KEY].as_array().unwrap();
+            assert_eq!(entries.len(), 2);
+            assert!(entries.iter().any(|entry| {
+                entry["hooks"]
+                    .as_array()
+                    .is_some_and(|hooks| hooks.iter().any(|hook| hook == &compound))
+            }));
+            assert!(entries.iter().any(|entry| {
+                entry["hooks"].as_array().is_some_and(|hooks| {
+                    hooks
+                        .iter()
+                        .any(|hook| hook["command"].as_str() == Some(CLAUDE_HOOK_COMMAND))
+                })
+            }));
+
+            assert_eq!(
+                remove_settings_entries(InitContext::default()).unwrap(),
+                SettingsRemoval {
+                    hook: true,
+                    proxy_base_url: false
+                }
+            );
+            let after = read_json_file(&path).unwrap().unwrap();
+            assert_eq!(
+                after["hooks"][PRE_TOOL_USE_KEY][0]["hooks"][0], compound,
+                "uninstall must preserve the complete compound user hook"
+            );
+            assert_eq!(after["permissions"]["allow"][0], "Bash(ls)");
+        });
+    }
+
+    #[test]
+    fn boundary_newline_hook_is_idempotent_and_uninstall_is_selective() {
+        let tmp = test_isolation::tempdir();
+        with_claude_dir_override(&tmp, |dir| {
+            let path = dir.join(SETTINGS_JSON);
+            let boundary_hook = format!("{CLAUDE_HOOK_COMMAND}\n");
+            let user_hook = serde_json::json!({
+                "type": "command",
+                "command": "my-audit;/usr/local/bin/rtk hook claude",
+                "timeout": 9,
+                "metadata": { "owner": "user", "labels": ["keep"] }
+            });
+            let rtk_hook = serde_json::json!({
+                "type": "command",
+                "command": boundary_hook,
+                "timeout": 5
+            });
+            fs::write(
+                &path,
+                serde_json::json!({
+                    "hooks": {
+                        (PRE_TOOL_USE_KEY): [{
+                            "matcher": "Bash",
+                            "hooks": [user_hook.clone(), rtk_hook]
+                        }]
+                    },
+                    "permissions": { "allow": ["Bash(ls)"] }
+                })
+                .to_string(),
+            )
+            .expect("write settings fixture");
+            let before = fs::read_to_string(&path).expect("read settings fixture");
+
+            assert_eq!(
+                patch_settings_json_command(
+                    CLAUDE_HOOK_COMMAND,
+                    PatchMode::Auto,
+                    false,
+                    InitContext::default(),
+                    HookInstallScope::UserGlobal,
+                )
+                .expect("boundary newline hook install"),
+                PatchResult::AlreadyPresent
+            );
+            assert_eq!(
+                fs::read_to_string(&path).expect("read unchanged settings"),
+                before,
+                "recognising a boundary-newline hook must not add a duplicate"
+            );
+
+            assert_eq!(
+                remove_settings_entries(InitContext::default())
+                    .expect("selective boundary-newline uninstall"),
+                SettingsRemoval {
+                    hook: true,
+                    proxy_base_url: false
+                }
+            );
+            let after = read_json_file(&path)
+                .expect("read uninstalled settings")
+                .expect("settings remain after uninstall");
+            let remaining = &after["hooks"][PRE_TOOL_USE_KEY][0]["hooks"];
+            assert_eq!(
+                remaining.as_array().expect("remaining hooks").as_slice(),
+                &[user_hook]
+            );
+        });
     }
 
     #[test]

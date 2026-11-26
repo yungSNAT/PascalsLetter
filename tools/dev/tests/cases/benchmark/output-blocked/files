@@ -1,0 +1,29 @@
+== Cargo.toml
+[package]
+name = "rtk"
+version = "1.2.0"
+
+[dependencies]
+anyhow = "1"
+
+== scripts/benchmark
+
+== scripts/keep
+
+== src/lib.rs
+//! Fixture.
+
+pub struct Config {
+    pub depth: usize,
+}
+
+pub fn run() -> usize {
+    Config { depth: 2 }.depth
+}
+
+== src/main.rs
+fn main() {
+    rtk::run();
+}
+
+== [tmp]

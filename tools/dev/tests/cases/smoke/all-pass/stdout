@@ -1,0 +1,235 @@
+[1mRTK Smoke Test Suite[0m
+Binary: /tmp/rtk-dev-parity/smoke/all-pass/rtkbin/rtk
+Version: rtk 1.2.0-stub
+Date: -
+
+[1m[0;36m── Version & Help ──[0m
+  [0;32mPASS[0m  rtk --version
+  [0;32mPASS[0m  rtk --help
+
+[1m[0;36m── Ls ──[0m
+  [0;32mPASS[0m  rtk ls .
+  [0;32mPASS[0m  rtk ls -la .
+  [0;32mPASS[0m  rtk ls -lh .
+  [0;32mPASS[0m  rtk ls -l src/
+  [0;32mPASS[0m  rtk ls src/ -l (flag after)
+  [0;32mPASS[0m  rtk ls multi paths
+  [0;32mPASS[0m  rtk ls -a shows hidden
+  [0;32mPASS[0m  rtk ls shows sizes
+  [0;32mPASS[0m  rtk ls shows dirs with /
+
+[1m[0;36m── Tree ──[0m
+  [0;32mPASS[0m  rtk tree .
+  [0;32mPASS[0m  rtk tree -L 2 .
+  [0;32mPASS[0m  rtk tree -d -L 1 .
+  [0;32mPASS[0m  rtk tree shows src/
+
+[1m[0;36m── Read ──[0m
+  [0;32mPASS[0m  rtk read Cargo.toml
+  [0;32mPASS[0m  rtk read --level none Cargo.toml
+  [0;32mPASS[0m  rtk read --level aggressive Cargo.toml
+  [0;32mPASS[0m  rtk read -n Cargo.toml
+  [0;32mPASS[0m  rtk read --max-lines 5 Cargo.toml
+
+[1m[0;36m── Read (stdin support) ──[0m
+  [0;32mPASS[0m  rtk read stdin pipe
+
+[1m[0;36m── Git (existing) ──[0m
+  [0;32mPASS[0m  rtk git status
+  [0;32mPASS[0m  rtk git status --short
+  [0;32mPASS[0m  rtk git status -s
+  [0;32mPASS[0m  rtk git status --porcelain
+  [0;32mPASS[0m  rtk git log
+  [0;32mPASS[0m  rtk git log -5
+  [0;32mPASS[0m  rtk git diff
+  [0;32mPASS[0m  rtk git diff --stat
+
+[1m[0;36m── Git (new: branch, fetch, stash, worktree) ──[0m
+  [0;32mPASS[0m  rtk git branch
+  [0;32mPASS[0m  rtk git fetch
+  [0;32mPASS[0m  rtk git stash list
+  [0;32mPASS[0m  rtk git worktree
+
+[1m[0;36m── Git (passthrough: unsupported subcommands) ──[0m
+  [0;32mPASS[0m  rtk git tag --list
+  [0;32mPASS[0m  rtk git remote -v
+  [0;32mPASS[0m  rtk git rev-parse HEAD
+
+[1m[0;36m── GitHub CLI ──[0m
+  [0;32mPASS[0m  rtk gh pr list
+  [0;32mPASS[0m  rtk gh run list
+  [0;32mPASS[0m  rtk gh issue list
+  [0;32mPASS[0m  rtk gh --help
+
+[1m[0;36m── Cargo (new) ──[0m
+  [0;32mPASS[0m  rtk cargo build
+  [0;32mPASS[0m  rtk cargo clippy
+  [0;32mPASS[0m  rtk cargo test
+  [0;32mPASS[0m  rtk cargo --help
+
+[1m[0;36m── Curl (new) ──[0m
+  [0;32mPASS[0m  rtk curl JSON detect
+  [0;32mPASS[0m  rtk curl plain text
+  [0;32mPASS[0m  rtk curl --help
+
+[1m[0;36m── Npm / Npx (new) ──[0m
+  [0;32mPASS[0m  rtk npm --help
+  [0;32mPASS[0m  rtk npx --help
+
+[1m[0;36m── Pnpm ──[0m
+  [0;32mPASS[0m  rtk pnpm --help
+  [0;32mPASS[0m  rtk pnpm build --help
+  [0;32mPASS[0m  rtk pnpm typecheck --help
+  [0;32mPASS[0m  rtk pnpm help
+
+[1m[0;36m── Grep ──[0m
+  [0;32mPASS[0m  rtk grep pattern
+  [0;32mPASS[0m  rtk grep finds results
+  [0;32mPASS[0m  rtk grep -t rejected by grep
+  [0;32mPASS[0m  rtk rg with file type
+
+[1m[0;36m── Grep (extra args passthrough) ──[0m
+  [0;32mPASS[0m  rtk grep -i case insensitive
+  [0;32mPASS[0m  rtk grep -A context lines
+
+[1m[0;36m── Find ──[0m
+  [0;32mPASS[0m  rtk find *.rs
+  [0;32mPASS[0m  rtk find shows files
+
+[1m[0;36m── Json ──[0m
+  [0;32mPASS[0m  rtk json file
+  [0;32mPASS[0m  rtk json shows schema
+
+[1m[0;36m── Deps ──[0m
+  [0;32mPASS[0m  rtk deps .
+  [0;32mPASS[0m  rtk deps shows Cargo
+
+[1m[0;36m── Env ──[0m
+  [0;32mPASS[0m  rtk env
+  [0;32mPASS[0m  rtk env --filter PATH
+
+[1m[0;36m── Log ──[0m
+  [0;32mPASS[0m  rtk log file
+
+[1m[0;36m── Summary ──[0m
+  [0;32mPASS[0m  rtk summary echo hello
+
+[1m[0;36m── Err ──[0m
+  [0;32mPASS[0m  rtk err echo ok
+
+[1m[0;36m── Test runner ──[0m
+  [0;32mPASS[0m  rtk test echo ok
+
+[1m[0;36m── Gain ──[0m
+  [0;32mPASS[0m  rtk gain
+  [0;32mPASS[0m  rtk gain --history
+
+[1m[0;36m── Config & Init ──[0m
+  [0;32mPASS[0m  rtk config
+  [0;32mPASS[0m  rtk init --show
+
+[1m[0;36m── Wget ──[0m
+  [0;32mPASS[0m  rtk wget stdout
+
+[1m[0;36m── JS Tooling (help only, no project context) ──[0m
+  [0;32mPASS[0m  rtk tsc --help
+  [0;32mPASS[0m  rtk lint --help
+  [0;32mPASS[0m  rtk prettier --help
+  [0;32mPASS[0m  rtk next --help
+  [0;32mPASS[0m  rtk playwright --help
+
+[1m[0;36m── Prisma (help only) ──[0m
+  [0;32mPASS[0m  rtk prisma --help
+
+[1m[0;36m── Vitest (help only) ──[0m
+  [0;32mPASS[0m  rtk vitest --help
+
+[1m[0;36m── Docker / Kubectl (help only) ──[0m
+  [0;32mPASS[0m  rtk docker --help
+  [0;32mPASS[0m  rtk kubectl --help
+
+[1m[0;36m── Python (conditional) ──[0m
+  [0;32mPASS[0m  rtk pytest --help
+  [0;32mPASS[0m  rtk ruff --help
+  [0;32mPASS[0m  rtk pip --help
+
+[1m[0;36m── Go (conditional) ──[0m
+  [0;32mPASS[0m  rtk go --help
+  [0;32mPASS[0m  rtk go test --help
+  [0;32mPASS[0m  rtk go build --help
+  [0;32mPASS[0m  rtk go vet --help
+  [0;32mPASS[0m  rtk golangci-lint --help
+
+[1m[0;36m── Graphite (conditional) ──[0m
+  [0;32mPASS[0m  rtk gt --help
+  [0;32mPASS[0m  rtk gt log short
+
+[1m[0;36m── Ruby (conditional) ──[0m
+  [0;32mPASS[0m  rtk rspec --help
+  [0;32mPASS[0m  rtk rubocop --help
+  [0;32mPASS[0m  rtk rake --help
+
+[1m[0;36m── Global flags ──[0m
+  [0;32mPASS[0m  rtk -u ls .
+  [0;32mPASS[0m  rtk --skip-env npm --help
+
+[1m[0;36m── CcEconomics ──[0m
+  [0;32mPASS[0m  rtk cc-economics
+
+[1m[0;36m── Learn ──[0m
+  [0;32mPASS[0m  rtk learn --help
+  [0;32mPASS[0m  rtk learn (no sessions)
+
+[1m[0;36m── Rewrite ──[0m
+  [0;32mPASS[0m  rewrite git status
+  [0;32mPASS[0m  rewrite cargo test
+  [0;32mPASS[0m  rewrite compound &&
+  [0;32mPASS[0m  rewrite pipe preserves
+
+[1m[0;36m── Rewrite (#345: RTK_DISABLED skip) ──[0m
+  [0;32mPASS[0m  rewrite RTK_DISABLED=1 skip
+  [0;32mPASS[0m  rewrite env RTK_DISABLED skip
+
+[1m[0;36m── Rewrite (#346: 2>&1 preserved) ──[0m
+  [0;32mPASS[0m  rewrite 2>&1 preserved
+
+[1m[0;36m── Rewrite (#196: gh --json skip) ──[0m
+  [0;32mPASS[0m  rewrite gh --json skip
+  [0;32mPASS[0m  rewrite gh --jq skip
+  [0;32mPASS[0m  rewrite gh --template skip
+  [0;32mPASS[0m  rewrite gh normal works
+
+[1m[0;36m── Verify ──[0m
+  [0;32mPASS[0m  rtk verify
+
+[1m[0;36m── Proxy ──[0m
+  [0;32mPASS[0m  rtk bypass echo hello
+  [0;32mPASS[0m  rtk bypass passthrough
+
+[1m[0;36m── Discover ──[0m
+  [0;32mPASS[0m  rtk discover
+
+[1m[0;36m── Diff ──[0m
+  [0;32mPASS[0m  rtk diff identical files
+  [0;32mPASS[0m  rtk diff differing files
+  [0;32mPASS[0m  rtk diff shows classic changes
+
+[1m[0;36m── Wc ──[0m
+  [0;32mPASS[0m  rtk wc Cargo.toml
+
+[1m[0;36m── Smart ──[0m
+  [0;32mPASS[0m  rtk smart src/main.rs
+
+[1m[0;36m── Json (edge cases) ──[0m
+  [0;32mPASS[0m  rtk json on TOML (#347)
+
+[1m[0;36m── Docker (conditional) ──[0m
+  [0;32mPASS[0m  rtk docker ps
+  [0;32mPASS[0m  rtk docker images
+
+[1m[0;36m── Hook check (#344) ──[0m
+  [0;32mPASS[0m  rtk init --show hook version
+
+[1m══════════════════════════════════════[0m
+[1mResults: [0;32m127 passed[0m, [0;31m0 failed[0m, [0;33m0 skipped[0m
+[1m══════════════════════════════════════[0m
