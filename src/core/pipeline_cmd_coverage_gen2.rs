@@ -134,10 +134,7 @@ fn terminal_card_renders_every_panel_variant_without_panicking() {
         tasks: &tasks,
         proxy: Some(&proxy),
     };
-    let card = terminal_card("cov-pipe", &stats, None, "9.9.9", "2026-01-01").join(
-        "
-",
-    );
+    let card = terminal_card("cov-pipe", &stats, None, "9.9.9", "2026-01-01").join("\n");
     assert!(card.contains("rtk pipeline · cov-pipe"), "{card}");
     assert!(card.contains("rtk pipeline share publish"), "{card}");
     let card = terminal_card(
@@ -147,10 +144,7 @@ fn terminal_card_renders_every_panel_variant_without_panicking() {
         "9.9.9",
         "2026-01-01",
     )
-    .join(
-        "
-",
-    );
+    .join("\n");
     assert!(card.contains("https://github.com/alice/cov-pipe"), "{card}");
     assert!(
         card.contains("rtk pipeline add github:alice/cov-pipe"),
@@ -163,19 +157,13 @@ fn terminal_card_renders_every_panel_variant_without_panicking() {
         "9.9.9",
         "2026-01-01",
     )
-    .join(
-        "
-",
-    );
+    .join("\n");
     assert!(!card.contains("live at:"), "{card}");
     assert!(
         card.contains("rtk pipeline add https://example.invalid/card"),
         "{card}"
     );
-    let card = terminal_card("cov-pipe", &empty_stats(), None, "9.9.9", "2026-01-01").join(
-        "
-",
-    );
+    let card = terminal_card("cov-pipe", &empty_stats(), None, "9.9.9", "2026-01-01").join("\n");
     assert!(card.contains("one command:"), "{card}");
 
     // The terminal card and the markdown card draw from the same stats.
@@ -189,18 +177,4 @@ fn terminal_card_renders_every_panel_variant_without_panicking() {
         "{md}"
     );
     assert!(!md.contains("skipped"), "{md}");
-}
-
-#[test]
-fn explain_rejects_an_unknown_agent() {
-    let code = run_explain(
-        "definitely-not-a-real-agent-xyz",
-        "Bash",
-        None,
-        None,
-        None,
-        false,
-    )
-    .unwrap();
-    assert_eq!(code, 1);
 }

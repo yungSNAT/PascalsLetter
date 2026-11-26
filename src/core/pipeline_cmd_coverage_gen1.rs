@@ -128,7 +128,6 @@ fn terminal_and_markdown_cards_render_every_lever() {
         }),
         Some("github:alice/pipes"),
     );
-    full.print_terminal();
     let md = full.card_md();
     assert!(md.starts_with("# rtk pipeline · cov-card\n"), "{md}");
     assert!(
@@ -158,7 +157,6 @@ fn terminal_and_markdown_cards_render_every_lever() {
         None,
         None,
     );
-    hook_only.print_terminal();
     assert!(
         hook_only
             .card_md()
@@ -166,7 +164,6 @@ fn terminal_and_markdown_cards_render_every_lever() {
     );
 
     let empty = card(vec![], None, vec![], vec![], None, None);
-    empty.print_terminal();
     let md = empty.card_md();
     assert!(md.contains("No recorded activity yet"), "{md}");
     assert!(!md.contains("## What it does"), "{md}");
@@ -228,11 +225,7 @@ fn run_test_and_share_follow_the_installed_user_pipeline() {
         assert_eq!(run_share(Some("cov-mine"), true, false, false).unwrap(), 0);
 
         std::fs::write(dir.join("broken.toml"), "[pipeline\nname = ").unwrap();
-        let expected = if has_errors(&load_for_cli().diagnostics) {
-            1
-        } else {
-            0
-        };
-        assert_eq!(run_test().unwrap(), expected);
+        assert!(has_errors(&load_for_cli().diagnostics));
+        assert_eq!(run_test().unwrap(), 1);
     });
 }

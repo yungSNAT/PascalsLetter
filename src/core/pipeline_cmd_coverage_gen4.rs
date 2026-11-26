@@ -67,7 +67,7 @@ use = ["dedup"]
         }
     });
 
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_or_skip() {
         return;
     }
 
@@ -156,7 +156,7 @@ fn methods_list_reports_registry_metadata_and_expands_composites() {
     use rtk_engine::{directive::DIRECTIVES, method::MethodKind, registry};
 
     assert_eq!(run_methods_list().unwrap(), 0);
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_or_skip() {
         return;
     }
 

@@ -51,10 +51,7 @@ fn scaffold_pins_the_upstream_release_tag_and_preserves_existing_files() {
                 .split_once('+')
                 .map_or(version, |(release, _)| release);
             let tag = format!("v{release}");
-            assert_eq!(
-                dependency["git"].as_str(),
-                Some("https://github.com/rtk-ai/rtk")
-            );
+            assert_eq!(dependency["git"].as_str(), Some(GIT_URL));
             assert_eq!(dependency["tag"].as_str(), Some(tag.as_str()));
             assert!(dependency.get("path").is_none());
 
@@ -120,7 +117,7 @@ fn discovery_handles_absence_and_returns_only_visible_crates_in_order() {
 fn plugin_cli_lists_scaffolds_and_distinguishes_cargo_failures() {
     use std::os::unix::fs::PermissionsExt;
 
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_or_skip() {
         return;
     }
 

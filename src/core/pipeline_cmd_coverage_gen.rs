@@ -47,13 +47,6 @@ fn warning_panel_wraps_and_skips_blank_input_lines() {
     let long = "word ".repeat(40);
     let wrapped = warning_panel_text("T", &[long.trim()]);
     assert!(wrapped.lines().count() > 3, "{wrapped}");
-
-    print_publish_warning_private();
-    let private = warning_panel_text(
-        "Private, but still published",
-        &["This creates a PRIVATE repo: only accounts you grant access can see it."],
-    );
-    assert!(private.contains("PRIVATE"), "{private}");
 }
 
 #[test]

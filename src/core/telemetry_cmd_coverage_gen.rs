@@ -66,7 +66,7 @@ fn status_is_read_only_and_disable_preserves_local_data() {
 #[cfg(unix)]
 #[test]
 fn status_reports_unasked_consent_and_the_environment_override() {
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_or_skip() {
         return;
     }
 
@@ -89,10 +89,14 @@ fn status_reports_unasked_consent_and_the_environment_override() {
         "Telemetry status:",
         "  consent:       never asked",
         "  env override:  RTK_TELEMETRY_DISABLED=1 (blocked)",
-        "Data controller: RTK AI Labs, contact@rtk-ai.app",
     ] {
         assert!(stdout.lines().any(|line| line == expected), "{stdout}");
     }
+    // Only the label is pinned: the named controller is the upstream project's.
+    assert!(
+        stdout.lines().any(|line| line.starts_with("Data controller: ")),
+        "{stdout}"
+    );
     assert!(
         stdout.lines().any(|line| matches!(
             line,

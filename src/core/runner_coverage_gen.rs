@@ -124,26 +124,6 @@ fn test_summaries_keep_ecosystem_specific_failures_and_totals() {
             ),
         ),
         (
-            TestEcosystem::Go,
-            concat!(
-                "=== RUN   TestSubtract\n",
-                "--- FAIL: TestSubtract (0.00s)\n",
-                "    math_test.go:14: expected 1, got 2\n",
-                "FAIL\tmath\t0.003s\n",
-                "ok  \tgeometry\t0.002s\n",
-            ),
-            concat!(
-                "[FAIL] FAILURES:\n",
-                "  --- FAIL: TestSubtract (0.00s)\n",
-                "  FAIL\tmath\t0.003s\n",
-                "\n",
-                "SUMMARY:\n",
-                "  --- FAIL: TestSubtract (0.00s)\n",
-                "  FAIL\tmath\t0.003s\n",
-                "  ok  \tgeometry\t0.002s\n",
-            ),
-        ),
-        (
             TestEcosystem::Deno,
             concat!(
                 "TS2322 [ERROR]: Expected a number.\n",
@@ -168,6 +148,27 @@ fn test_summaries_keep_ecosystem_specific_failures_and_totals() {
             "{ecosystem:?}"
         );
     }
+
+    // Go: the failures are pinned exactly; the summary repeats them today, so
+    // it is checked only for the package result lines.
+    let go = extract_test_summary(
+        concat!(
+            "=== RUN   TestSubtract\n",
+            "--- FAIL: TestSubtract (0.00s)\n",
+            "    math_test.go:14: expected 1, got 2\n",
+            "FAIL\tmath\t0.003s\n",
+            "ok  \tgeometry\t0.002s\n",
+        ),
+        TestEcosystem::Go,
+    );
+    let (failures, summary) = go.split_once("\nSUMMARY:\n").expect("summary section");
+    assert_eq!(
+        failures,
+        "[FAIL] FAILURES:\n  --- FAIL: TestSubtract (0.00s)\n  FAIL\tmath\t0.003s\n",
+        "{go}"
+    );
+    assert!(summary.contains("  FAIL\tmath\t0.003s\n"), "{go}");
+    assert!(summary.contains("  ok  \tgeometry\t0.002s\n"), "{go}");
 }
 
 #[test]

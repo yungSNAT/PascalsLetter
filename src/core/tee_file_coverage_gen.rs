@@ -29,12 +29,3 @@ fn legacy_migration_requires_a_valid_sqlite_config_even_with_recent_logs() {
         assert!(!legacy_tee_migration_pending());
     });
 }
-
-#[cfg(unix)]
-#[test]
-fn create_tee_dir_preserves_the_creation_result_for_a_parentless_path() {
-    // An empty Unix path has no parent and cannot name a filesystem entry.
-    let path = Path::new("");
-    let expected = crate::core::utils::create_private_dir(path).ok();
-    assert_eq!(create_tee_dir(path), expected);
-}

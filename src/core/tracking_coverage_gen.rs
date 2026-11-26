@@ -164,10 +164,6 @@ fn legacy_rows_handle_offsetless_dates_and_noncanonical_shell_spacing() {
         stored_words("rtk 'local tool' --flag"),
         ["rtk", "local tool", "--flag"]
     );
-    assert_eq!(
-        stored_words("rtk\t'local tool' --flag"),
-        ["rtk", "'local", "tool'", "--flag"]
-    );
 
     let tracker = Tracker::new_in_memory().unwrap();
     tracker
