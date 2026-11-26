@@ -14,7 +14,8 @@ jobs:
     # Skip develop→master PRs (maintainer releases)
     if: >-
       github.event.pull_request.base.ref == 'master' &&
-      github.event.pull_request.head.ref != 'develop'
+      (github.event.pull_request.head.ref != 'develop' ||
+       github.event.pull_request.head.repo.full_name != github.repository)
     steps:
       - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         id: app-token

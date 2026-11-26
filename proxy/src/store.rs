@@ -6,7 +6,7 @@
 //! rusqlite is blocking, so every DB touch runs on `spawn_blocking`; a single
 //! `Mutex<Connection>` is plenty for a single-node local daemon.
 
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -186,6 +186,12 @@ impl Store {
         let conn = if path == ":memory:" {
             Connection::open_in_memory()?
         } else {
+            if let Some(parent) = std::path::Path::new(path)
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty() && path == crate::config::default_db_path())
+            {
+                std::fs::create_dir_all(parent)?;
+            }
             Connection::open(path)?
         };
         conn.execute_batch(SCHEMA)?;
@@ -195,6 +201,36 @@ impl Store {
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
         })
+    }
+
+    /// Validate the first registry before saving it. Concurrent starts share one seed.
+    pub(crate) fn model_registry(
+        &self,
+        seed: impl FnOnce() -> anyhow::Result<String>,
+    ) -> anyhow::Result<crate::models::Registry> {
+        let mut conn = self.conn.lock().expect("store mutex");
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let saved: Option<String> = tx
+            .query_row(
+                "SELECT value FROM app_settings WHERE key = 'models_toml'",
+                [],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let registry = match saved {
+            Some(text) => crate::models::Registry::parse(&text)?,
+            None => {
+                let text = seed()?;
+                let registry = crate::models::Registry::parse(&text)?;
+                tx.execute(
+                    "INSERT INTO app_settings (key, value) VALUES ('models_toml', ?1)",
+                    [&text],
+                )?;
+                registry
+            }
+        };
+        tx.commit()?;
+        Ok(registry)
     }
 
     /// All persisted runtime settings (`app_settings`), read synchronously — used
@@ -285,10 +321,11 @@ impl Store {
         }
     }
 
-    /// Totals across all recorded requests.
+    /// Totals across all recorded requests, plus the successful requests'
+    /// saved tokens priced as a modelled band (`crate::pricing::ModelledSavings`).
     pub async fn summary(&self) -> serde_json::Value {
         self.query(|c| {
-            c.query_row(
+            let mut totals = c.query_row(
                 "SELECT count(*), COALESCE(sum(tokens_in),0), COALESCE(sum(tokens_out),0),
                         COALESCE(sum(tokens_saved),0),
                         COALESCE(sum(CASE WHEN status < 400 THEN cost_usd ELSE 0 END),0),
@@ -305,7 +342,14 @@ impl Store {
                         "failed_requests": r.get::<_, i64>(5)?,
                     }))
                 },
-            )
+            )?;
+            let saved = saved_by_model(c)?;
+            let m = crate::pricing::modelled_savings(saved, crate::pricing::input_rate);
+            totals["saved_usd_low"] = m.usd_low.into();
+            totals["saved_usd_high"] = m.usd_high.into();
+            totals["saved_tokens_priced"] = m.priced_tokens.into();
+            totals["saved_tokens_unpriced"] = m.unpriced_tokens.into();
+            Ok(totals)
         })
         .await
     }
@@ -681,9 +725,82 @@ impl Store {
     }
 }
 
+/// Successful requests' saved tokens, per model.
+fn saved_by_model(c: &Connection) -> rusqlite::Result<Vec<(String, i64)>> {
+    let mut stmt = c.prepare(
+        "SELECT model, COALESCE(sum(MAX(tokens_saved, 0)),0) FROM usage_records
+         WHERE status < 400 GROUP BY model",
+    )?;
+    let rows = stmt
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect();
+    rows
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn model_registry_validates_the_seed_and_keeps_the_first_valid_prices() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("usage.sqlite");
+        let store = Store::open(db.to_str().unwrap()).unwrap();
+        for invalid in [
+            "[",
+            "[default]\ninput = -1.0",
+            "[default]\noutput = inf",
+            "[default]\ninput = 1e308\noutput = 2.0",
+            "[default]\ninput = 1e150\noutput = 2.0\ncache_read_mult = 1e150",
+            "[[model]]\npattern = 'x'\ncache_read_mult = nan\n[default]",
+        ] {
+            assert!(store.model_registry(|| Ok(invalid.to_owned())).is_err());
+        }
+        let registry = store
+            .model_registry(|| Ok("[default]\ninput = 1.0\noutput = 2.0".to_owned()))
+            .unwrap();
+        assert_eq!(registry.price("fixture"), Some((1.0, 2.0)));
+        drop(store);
+        let reopened = Store::open(db.to_str().unwrap()).unwrap();
+        let registry = reopened
+            .model_registry(|| panic!("an existing registry must win"))
+            .unwrap();
+        assert_eq!(registry.price("fixture"), Some((1.0, 2.0)));
+    }
+
+    #[tokio::test]
+    async fn malformed_stored_registry_is_rejected_without_reading_the_seed() {
+        let store = Store::open(":memory:").unwrap();
+        store.put_setting("models_toml", "[").await;
+        let error = store
+            .model_registry(|| panic!("a stored registry must take precedence"))
+            .unwrap_err();
+        assert_eq!(error.to_string(), "invalid model registry TOML");
+    }
+
+    /// The band covers successful requests only; a model no test prices puts
+    /// its tokens in `saved_tokens_unpriced` with no dollars.
+    #[tokio::test]
+    async fn summary_prices_only_successful_saved_tokens() {
+        let s = Store::open(":memory:").unwrap();
+        for (status, saved) in [(200, 300), (200, 50), (502, 1000)] {
+            s.record(UsageRow {
+                ts: "2026-01-01T00:00:00Z".into(),
+                provider: "anthropic".into(),
+                model: "no-price-in-any-test".into(),
+                status,
+                tokens_saved: saved,
+                ..Default::default()
+            })
+            .await;
+        }
+        let summary = s.summary().await;
+        assert_eq!(summary["tokens_saved"], 1350);
+        assert_eq!(summary["saved_tokens_unpriced"], 350);
+        assert_eq!(summary["saved_tokens_priced"], 0);
+        assert_eq!(summary["saved_usd_low"], 0.0);
+        assert_eq!(summary["saved_usd_high"], 0.0);
+    }
 
     async fn rec(s: &Store, session: &str, ts: &str, read: i64, created: i64) {
         s.record(UsageRow {

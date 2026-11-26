@@ -136,6 +136,65 @@ fn a_failed_migration_leaves_the_release_tracking_database_usable() {
     assert_eq!(integrity(&tracking), "ok");
 }
 
+/// The release with a step that cannot run, as above.
+fn stuck_release(dir: &Path) -> (PathBuf, PathBuf) {
+    let (tracking, recall) = copy_release_dbs(dir);
+    Connection::open(&tracking)
+        .expect("open should succeed")
+        .execute_batch(
+            "DROP INDEX idx_project_path_timestamp;
+             CREATE TABLE idx_project_path_timestamp (x);",
+        )
+        .expect("the database should be set up");
+    (tracking, recall)
+}
+
+/// A database stuck below the step that adds `invocation_id` and
+/// `recall_events` keeps recording commands, answers the history export
+/// without the parts it cannot read, and resets.
+#[test]
+fn a_release_database_stuck_below_recall_accounting_keeps_working() {
+    let dir = common::tempdir();
+    let (tracking, recall) = stuck_release(dir.path());
+
+    let before = count(&tracking, "commands");
+    let output = rtk(&tracking, &recall, &["ls", "."]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        count(&tracking, "commands"),
+        before + 1,
+        "the command is recorded"
+    );
+
+    let output = rtk(
+        &tracking,
+        &recall,
+        &["gain", "--history", "--format", "json"],
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{stderr}");
+    assert!(
+        stderr.contains("tracking database was not upgraded"),
+        "{stderr}"
+    );
+    let export: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("the export is JSON");
+    assert_eq!(export["summary"]["total_commands"], before + 1);
+    assert!(export.get("output_accounting").is_none(), "{export}");
+
+    let output = rtk(&tracking, &recall, &["gain", "--reset", "--yes"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(count(&tracking, "commands"), 0, "the reset clears it");
+}
+
 /// A step that fails at its last statement takes back what its earlier
 /// statements created: `idx_timestamp`, dropped here, stays absent.
 #[test]

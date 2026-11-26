@@ -1413,9 +1413,9 @@ struct Pointer {
 
 #[cfg(test)]
 thread_local! {
-    /// The last repeat [`record_repeat`] booked: (tool, tokens in, tokens out).
-    static LAST_REPEAT: std::cell::RefCell<Option<(String, usize, usize)>> =
-        const { std::cell::RefCell::new(None) };
+    /// The database [`record_repeat`] books into under test, kept per thread
+    /// so a test can read back what was booked.
+    static REPEAT_TRACKER: Tracker = Tracker::new_in_memory().expect("in-memory tracker");
 }
 
 /// Books a delivered pointer as its own `repeat` kind, per tool, so `rtk gain`
@@ -1427,10 +1427,14 @@ fn record_repeat(event: &Value, pointer: &Pointer) {
         .unwrap_or("unknown");
     let tokens_in = estimate_tokens_from_len(pointer.replaced);
     let tokens_out = estimate_tokens_from_len(pointer.line);
-    #[cfg(test)]
-    LAST_REPEAT.with(|last| *last.borrow_mut() = Some((tool.to_string(), tokens_in, tokens_out)));
-    if let Ok(tracker) = tracker() {
+    let book = |tracker: &Tracker| {
         let _ = tracker.record_attribution("hook", "repeat", tool, tokens_in, tokens_out);
+    };
+    #[cfg(test)]
+    REPEAT_TRACKER.with(book);
+    #[cfg(not(test))]
+    if let Ok(tracker) = tracker() {
+        book(&tracker);
     }
 }
 
@@ -1909,20 +1913,29 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let config = repeat_config(dir.path(), true);
         let output = lines(400);
-        let booked = || LAST_REPEAT.with(|last| last.borrow_mut().take());
-        booked();
+        let booked = || {
+            REPEAT_TRACKER.with(|tracker| {
+                tracker
+                    .attribution_site("hook", "repeat", 30)
+                    .expect("attribution")
+                    .into_iter()
+                    .map(|row| (row.name, row.calls, row.tokens_in, row.tokens_out))
+                    .collect::<Vec<_>>()
+            })
+        };
         let first = Call::new("b1", "make test", &output, None).run(&config);
         assert!(pointer_of(&first).is_none());
-        assert_eq!(booked(), None, "a whole delivery is not a repeat");
+        assert_eq!(booked(), vec![], "a whole delivery is not a repeat");
         let second = Call::new("b2", "make test", &output, None).run(&config);
         let pointer = pointer_of(&second).expect("a pointer");
         assert_eq!(
             booked(),
-            Some((
+            vec![(
                 "Bash".to_string(),
-                estimate_tokens(&output),
-                estimate_tokens(&pointer)
-            ))
+                1,
+                estimate_tokens(&output) as i64,
+                estimate_tokens(&pointer) as i64
+            )]
         );
     }
 
