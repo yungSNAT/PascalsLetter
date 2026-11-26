@@ -2465,10 +2465,13 @@ mod tests {
         let config = hunk_config(dir.path());
         // One line inserted at line 10: inside every window below.
         let old = lines(400);
-        let new = old.replace("line 9
-", "line 9
+        let new = old.replace(
+            "line 9
+",
+            "line 9
 line 9.5
-");
+",
+        );
         let read = |id: &str, path: &str, content: &str, edit: &dyn Fn(&mut Value)| {
             let mut call = Call::read(id, path, content);
             edit(&mut call.event);
@@ -2487,30 +2490,46 @@ line 9.5
         let truncated = |event: &mut Value| {
             event["tool_response"]["file"]["totalLines"] = serde_json::json!(2100);
         };
-        let cases: [(&str, &dyn Fn(&mut Value), &dyn Fn(&mut Value)); 6] = [
+        type Edit<'a> = &'a dyn Fn(&mut Value);
+        let cases: [(&str, Edit, Edit); 6] = [
             ("ranged", &ranged, &ranged),
             ("limit from line 1", &limited, &limited),
             ("truncated", &truncated, &truncated),
             ("whole, then truncated", &whole, &truncated),
             ("truncated, then whole", &truncated, &whole),
-            ("whole, then a line count that is not a number", &whole, &|event: &mut Value| {
-                event["tool_response"]["file"]["numLines"] = serde_json::json!("400");
-            }),
+            (
+                "whole, then a line count that is not a number",
+                &whole,
+                &|event: &mut Value| {
+                    event["tool_response"]["file"]["numLines"] = serde_json::json!("400");
+                },
+            ),
         ];
         for (n, (name, before, after)) in cases.into_iter().enumerate() {
             let path = format!("/repo/src/case{n}.rs");
-            assert!(hunks_of(&read("a", &path, &old, before)).is_none(), "{name}");
+            assert!(
+                hunks_of(&read("a", &path, &old, before)).is_none(),
+                "{name}"
+            );
             let out = read("b", &path, &new, after);
-            assert!(hunks_of(&out).is_none(), "{name}: hunks of a part of the file");
+            assert!(
+                hunks_of(&out).is_none(),
+                "{name}: hunks of a part of the file"
+            );
         }
         // The control: the same edit between whole Reads gets hunks.
         let path = "/repo/src/control.rs";
         read("a", path, &old, &whole);
         let shown = hunks_of(&read("b", path, &new, &whole)).expect("hunks");
-        assert!(shown.ends_with("
+        assert!(
+            shown.ends_with(
+                "
 10a11
 > line 9.5
-"), "{shown}");
+"
+            ),
+            "{shown}"
+        );
     }
 
     /// A record whose kept text no longer matches its digest, or a record from

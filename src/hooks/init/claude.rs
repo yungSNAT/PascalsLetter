@@ -4,8 +4,8 @@
 use super::*;
 use crate::core::user_dirs;
 use crate::hooks::constants::{
-    CLAUDE_DIR, CLAUDE_HOOK_COMMAND, CURSOR_DIR, HOOKS_SUBDIR, POST_TOOL_USE_KEY, PRE_TOOL_USE_KEY,
-    PRE_COMPACT_KEY, REWRITE_HOOK_FILE, SESSION_START_KEY, SETTINGS_JSON,
+    CLAUDE_DIR, CLAUDE_HOOK_COMMAND, CURSOR_DIR, HOOKS_SUBDIR, POST_TOOL_USE_KEY, PRE_COMPACT_KEY,
+    PRE_TOOL_USE_KEY, REWRITE_HOOK_FILE, SESSION_START_KEY, SETTINGS_JSON,
 };
 
 /// Legacy mode (--claude-md): inject the full RTK_INSTRUCTIONS block into CLAUDE.md.
@@ -1080,7 +1080,11 @@ mod tests {
         for (key, matcher) in &events {
             insert_hook_entry(&mut root, key, matcher, CLAUDE_HOOK_COMMAND).unwrap();
         }
-        assert!(hook_already_present(&root, PRE_COMPACT_KEY, CLAUDE_HOOK_COMMAND));
+        assert!(hook_already_present(
+            &root,
+            PRE_COMPACT_KEY,
+            CLAUDE_HOOK_COMMAND
+        ));
         assert!(hook_gaps(&root, &events).is_empty(), "{root}");
         assert!(remove_hook_from_json(&mut root));
         assert!(
