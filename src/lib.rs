@@ -6232,3 +6232,15 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "lib_coverage_gen.rs"]
+mod coverage_gen_src_lib;
+
+#[cfg(test)]
+#[path = "lib_coverage_gen1.rs"]
+mod coverage_gen1_src_lib;
+
+#[cfg(test)]
+#[path = "lib_coverage_gen2.rs"]
+mod coverage_gen2_src_lib;

@@ -1627,3 +1627,7 @@ pub fn approx_usd(v: f64) -> String {
         format!("~${v:.2}")
     }
 }
+
+#[cfg(test)]
+#[path = "llm_proxy_coverage_gen.rs"]
+mod coverage_gen_src_llm_proxy;

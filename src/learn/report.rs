@@ -184,3 +184,7 @@ mod tests {
         assert!(content.contains("(seen 3x)"));
     }
 }
+
+#[cfg(test)]
+#[path = "report_coverage_gen.rs"]
+mod coverage_gen_src_learn_report;

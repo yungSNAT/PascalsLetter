@@ -633,3 +633,7 @@ mod tests {
         assert_eq!(rules[1].occurrences, 1);
     }
 }
+
+#[cfg(test)]
+#[path = "detector_coverage_gen.rs"]
+mod coverage_gen_src_learn_detector;

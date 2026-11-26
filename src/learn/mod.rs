@@ -120,3 +120,7 @@ pub fn run(
 
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "mod_coverage_gen.rs"]
+mod coverage_gen_src_learn_mod;
