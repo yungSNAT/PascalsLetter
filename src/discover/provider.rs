@@ -91,12 +91,29 @@ impl ClaudeProvider {
     /// writes one line per content block of a message, each carrying the
     /// message's usage, so a message counts once by `message.id`, at its
     /// largest figures in case an earlier line was written mid-stream. A line
-    /// with no id counts alone.
-    pub fn token_usage(&self, path: &Path) -> Result<TokenUsage> {
-        let file =
-            fs::File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
+    /// with no id counts alone. A resumed or forked session copies messages
+    /// into a new log, so the ids are shared across `paths`. Returns the total
+    /// and how many of the logs could be read.
+    pub fn token_usage(&self, paths: &[PathBuf]) -> (TokenUsage, usize) {
         let mut by_id: HashMap<String, TokenUsage> = HashMap::new();
         let mut total = TokenUsage::default();
+        let logs_read = paths
+            .iter()
+            .filter(|path| Self::fold_token_usage(path, &mut by_id, &mut total).is_ok())
+            .count();
+        for usage in by_id.into_values() {
+            total.add(usage);
+        }
+        (total, logs_read)
+    }
+
+    fn fold_token_usage(
+        path: &Path,
+        by_id: &mut HashMap<String, TokenUsage>,
+        total: &mut TokenUsage,
+    ) -> Result<()> {
+        let file =
+            fs::File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
         for line in BufReader::new(file).split(b'\n') {
             // A failed read would fail again, so stop there and keep what was counted.
             let Ok(line) = line else { break };
@@ -109,7 +126,10 @@ impl ClaudeProvider {
             let Ok(entry) = serde_json::from_str::<serde_json::Value>(&line) else {
                 continue;
             };
-            if entry.get("type").and_then(|t| t.as_str()) != Some("assistant") {
+            // Subagent turns kept inline in older logs are not the session's own.
+            if entry.get("type").and_then(|t| t.as_str()) != Some("assistant")
+                || entry.get("isSidechain") == Some(&serde_json::Value::Bool(true))
+            {
                 continue;
             }
             let Some(usage) = entry.pointer("/message/usage") else {
@@ -141,10 +161,7 @@ impl ClaudeProvider {
                 None => total.add(usage),
             }
         }
-        for usage in by_id.into_values() {
-            total.add(usage);
-        }
-        Ok(total)
+        Ok(())
     }
 }
 
@@ -820,7 +837,8 @@ mod tests {
             r#"{"type":"assistant","message":{"id":"msg_3","usage":{"input_tok"#,
         ]);
 
-        let usage = ClaudeProvider.token_usage(jsonl.path()).unwrap();
+        let (usage, logs_read) = ClaudeProvider.token_usage(&[jsonl.path().to_path_buf()]);
+        assert_eq!(logs_read, 1);
         assert_eq!(
             usage,
             TokenUsage {

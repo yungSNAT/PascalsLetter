@@ -107,15 +107,7 @@ fn tool_output_report(output: &ToolOutputBytes, logs_read: usize, logs_total: us
 
 /// Total API usage in `paths`, with how many of the logs could be read.
 fn sum_token_usage(paths: &[PathBuf]) -> (TokenUsage, usize) {
-    let mut total = TokenUsage::default();
-    let mut logs_read = 0;
-    for path in paths {
-        if let Ok(usage) = ClaudeProvider.token_usage(path) {
-            total.add(usage);
-            logs_read += 1;
-        }
-    }
-    (total, logs_read)
+    ClaudeProvider.token_usage(paths)
 }
 
 /// Where the billed tokens went, by kind. RTK shrinks tool results, which
