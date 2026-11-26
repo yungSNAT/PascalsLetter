@@ -30,12 +30,49 @@ fn is_rtk_binary(binary: &str) -> bool {
 }
 
 fn is_rtk_hook_command(command: &str, agent: &str) -> bool {
-    let parts = crate::discover::lexer::shell_split(command);
+    let Some(parts) = simple_command_words(command) else {
+        return false;
+    };
     let [parsed_binary, hook, target] = parts.as_slice() else {
         return false;
     };
 
     is_rtk_binary(parsed_binary) && hook == "hook" && target == agent
+}
+
+/// The words of `command` when it is one simple command: no operator, pipe,
+/// redirect or background `&`.
+fn simple_command_words(command: &str) -> Option<Vec<String>> {
+    let mut tokens = crate::discover::lexer::tokenize_with_newlines(command);
+    // Ignore only literal LF operator tokens at the command's boundaries.
+    // The lexer also reports the CR of a CRLF pair as an LF operator; checking
+    // the source byte leaves that token for the guard below, and the word check
+    // after shell_split would reject the CR anyway.
+    while tokens.first().is_some_and(|token| {
+        matches!(token.kind, crate::discover::lexer::TokenKind::Operator)
+            && token.value == "\n"
+            && command.as_bytes().get(token.offset) == Some(&b'\n')
+    }) {
+        tokens.remove(0);
+    }
+    while tokens.last().is_some_and(|token| {
+        matches!(token.kind, crate::discover::lexer::TokenKind::Operator)
+            && token.value == "\n"
+            && command.as_bytes().get(token.offset) == Some(&b'\n')
+    }) {
+        tokens.pop();
+    }
+    if tokens.iter().any(|token| match token.kind {
+        crate::discover::lexer::TokenKind::Operator
+        | crate::discover::lexer::TokenKind::Pipe(_)
+        | crate::discover::lexer::TokenKind::Redirect => true,
+        crate::discover::lexer::TokenKind::Shellism => token.value == "&",
+        _ => false,
+    }) {
+        return None;
+    }
+
+    Some(crate::discover::lexer::shell_split(command))
 }
 
 pub fn is_claude_hook_command(command: &str) -> bool {

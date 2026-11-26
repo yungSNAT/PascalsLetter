@@ -709,8 +709,9 @@ enum Commands {
 
     /// Cargo commands with compact output
     Cargo {
-        #[command(subcommand)]
-        command: CargoCommands,
+        /// Cargo arguments, including toolchain selectors and global options
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<OsString>,
     },
 
     /// npm run with filtered output (strip boilerplate)
@@ -846,8 +847,8 @@ enum Commands {
         /// Start from this 1-based line of the full output
         #[arg(long)]
         from: Option<usize>,
-        /// Return only the first N lines of the full output
-        #[arg(long, conflicts_with = "from")]
+        /// Return only N lines: the first N of the full output, or N from --from
+        #[arg(long)]
         lines: Option<usize>,
         /// Filter recalled lines by regex
         #[arg(long)]
@@ -1102,7 +1103,7 @@ enum Commands {
     ///
     /// Exit 3 is still a rewrite, so `REWRITTEN=$(rtk rewrite "$CMD") || exit 0` drops it.
     ///
-    /// See hooks/claude/rtk-rewrite.sh in the RTK repository for reference handling.
+    /// See `rtk hook claude` (src/hooks/hook_cmd.rs) for reference handling.
     Rewrite {
         /// Raw command to rewrite (e.g. "git status", "cargo test && git push")
         /// Accepts multiple args: `rtk rewrite ls -al` is equivalent to `rtk rewrite "ls -al"`
@@ -1626,49 +1627,6 @@ enum PrismaMigrateCommands {
 }
 
 #[derive(Debug, Subcommand)]
-enum CargoCommands {
-    /// Build with compact output (strip Compiling lines, keep errors)
-    Build {
-        /// Additional cargo build arguments
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        args: Vec<String>,
-    },
-    /// Test with failures-only output
-    Test {
-        /// Additional cargo test arguments
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        args: Vec<String>,
-    },
-    /// Clippy with warnings grouped by lint rule
-    Clippy {
-        /// Additional cargo clippy arguments
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        args: Vec<String>,
-    },
-    /// Check with compact output (strip Checking lines, keep errors)
-    Check {
-        /// Additional cargo check arguments
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        args: Vec<String>,
-    },
-    /// Install with compact output (strip dep compilation, keep installed/errors)
-    Install {
-        /// Additional cargo install arguments
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        args: Vec<String>,
-    },
-    /// Nextest with failures-only output
-    Nextest {
-        /// Additional cargo nextest arguments (e.g., run, list, --lib)
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        args: Vec<String>,
-    },
-    /// Passthrough: runs any unsupported cargo subcommand directly
-    #[command(external_subcommand)]
-    Other(Vec<OsString>),
-}
-
-#[derive(Debug, Subcommand)]
 enum DotnetCommands {
     /// Build with compact output
     Build {
@@ -1922,8 +1880,18 @@ where
     I: IntoIterator<Item = T>,
     T: Into<std::ffi::OsString> + Clone,
 {
-    let matches = rtk_command().try_get_matches_from(args)?;
-    <Cli as clap::FromArgMatches>::from_arg_matches(&matches)
+    let raw_args: Vec<OsString> = args.into_iter().map(Into::into).collect();
+    let matches = rtk_command().try_get_matches_from(&raw_args)?;
+    let mut cli = <Cli as clap::FromArgMatches>::from_arg_matches(&matches)?;
+    if let Commands::Cargo { args } = &mut cli.command {
+        // A flat trailing-args field preserves -- after its first argument, but clap
+        // consumes a leading --. Restore that separator from the raw OS argv suffix.
+        let start = raw_args.len() - args.len();
+        if start > 0 && raw_args[start - 1] == "--" {
+            args.insert(0, OsString::from("--"));
+        }
+    }
+    Ok(cli)
 }
 
 fn run_fallback(parse_error: clap::Error) -> Result<i32> {
@@ -3494,27 +3462,7 @@ fn run_cli() -> Result<i32> {
 
         Commands::Playwright { args } => playwright_cmd::run(&args, cli.verbose)?,
 
-        Commands::Cargo { command } => match command {
-            CargoCommands::Build { args } => {
-                cargo_cmd::run(cargo_cmd::CargoCommand::Build, &args, cli.verbose)?
-            }
-            CargoCommands::Test { args } => {
-                cargo_cmd::run(cargo_cmd::CargoCommand::Test, &args, cli.verbose)?
-            }
-            CargoCommands::Clippy { args } => {
-                cargo_cmd::run(cargo_cmd::CargoCommand::Clippy, &args, cli.verbose)?
-            }
-            CargoCommands::Check { args } => {
-                cargo_cmd::run(cargo_cmd::CargoCommand::Check, &args, cli.verbose)?
-            }
-            CargoCommands::Install { args } => {
-                cargo_cmd::run(cargo_cmd::CargoCommand::Install, &args, cli.verbose)?
-            }
-            CargoCommands::Nextest { args } => {
-                cargo_cmd::run(cargo_cmd::CargoCommand::Nextest, &args, cli.verbose)?
-            }
-            CargoCommands::Other(args) => cargo_cmd::run_passthrough(&args, cli.verbose)?,
-        },
+        Commands::Cargo { args } => cargo_cmd::run(&args, cli.verbose)?,
 
         Commands::Bun { command } => match command {
             BunCommands::Install { args } => bun_cmd::run_pkg("install", &args, cli.verbose)?,
@@ -4127,16 +4075,6 @@ fn run_cli() -> Result<i32> {
     Ok(code)
 }
 
-/// Returns true for commands that are invoked via the hook pipeline
-/// (i.e., commands that process rewritten shell commands).
-/// Meta commands (init, gain, verify, etc.) are excluded because
-/// they are run directly by the user, not through the hook.
-/// Returns true for commands that go through the hook pipeline
-/// and therefore require integrity verification.
-///
-/// SECURITY: whitelist pattern — new commands are NOT integrity-checked
-/// until explicitly added here. A forgotten command fails open (no check)
-/// rather than creating false confidence about what's protected.
 /// True when `cmd` runs the program it is named after with the user's arguments as typed,
 /// so `rtk <cmd> <args>` without rtk is `<cmd> <args>`. Left out: rtk's own views (`read`,
 /// `json`, `test`...), commands that rewrite their arguments or find their program another
@@ -4212,6 +4150,13 @@ fn native_command(skip_env: bool) -> Option<(String, Vec<std::ffi::OsString>)> {
     Some((lossy[start].clone(), args))
 }
 
+/// Returns true for commands that go through the hook pipeline
+/// and therefore require integrity verification. Meta commands (init, gain,
+/// verify, etc.) are excluded: the user runs them directly, not through the hook.
+///
+/// SECURITY: whitelist pattern — new commands are NOT integrity-checked
+/// until explicitly added here. A forgotten command fails open (no check)
+/// rather than creating false confidence about what's protected.
 fn is_operational_command(cmd: &Commands) -> bool {
     matches!(
         cmd,
@@ -4323,6 +4268,33 @@ mod tests {
         assert!(namesake(&["rtk", "oc", "logs", "p", "-c", "c"]));
         assert!(!namesake(&["rtk", "kubectl", "pods"]));
         assert!(!namesake(&["rtk", "oc", "services"]));
+    }
+
+    #[test]
+    fn test_cargo_cli_preserves_global_options_and_separators() {
+        for args in [
+            vec!["+stable", "--locked", "check"],
+            vec!["--config", "check", "test", "--", "--nocapture"],
+            vec![
+                "+nightly",
+                "-Z",
+                "unstable-options",
+                "-C",
+                "some path",
+                "check",
+            ],
+            vec!["+stable", "--help"],
+            vec!["--", "check"],
+            vec!["--", "--", "check"],
+            vec!["check", "--", "--nocapture"],
+        ] {
+            let cli = try_parse_cli_from(["rtk", "cargo"].into_iter().chain(args.iter().copied()))
+                .unwrap();
+            let Commands::Cargo { args: parsed } = cli.command else {
+                panic!("expected cargo")
+            };
+            assert_eq!(parsed, args.iter().map(OsString::from).collect::<Vec<_>>());
+        }
     }
 
     #[test]
