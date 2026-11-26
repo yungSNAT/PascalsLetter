@@ -184,6 +184,16 @@ if ($failures.Count -gt 0) {
     Write-Host "$($failures.Count) failure(s); logs in $work" -ForegroundColor Red
     exit 1
 }
-Remove-Item -LiteralPath $work -Recurse -Force
+# The proxies' child processes can hold a log open for a moment after the
+# tree is killed, so the removal is retried before it counts as a failure.
+for ($try = 1; ; $try++) {
+    try {
+        Remove-Item -LiteralPath $work -Recurse -Force
+        break
+    } catch {
+        if ($try -ge 20) { throw }
+        Start-Sleep -Milliseconds 500
+    }
+}
 Write-Host "install.ps1: installed through an inspecting and an authenticating proxy ($($PSVersionTable.PSEdition) $($PSVersionTable.PSVersion))" -ForegroundColor Green
 exit 0
