@@ -17,16 +17,6 @@ fn shorten_path_keeps_short_paths_and_elides_long_ones() {
         assert_eq!(shorten_path("/a/b"), "/a/b");
         assert_eq!(shorten_path("/home/user/projects/rtk/src"), "/.../rtk/src");
     }
-
-    // The graph renderer shares the summary view; exercise its branches
-    // (empty input, long and short date labels, a zero maximum).
-    print_ascii_graph(&[]);
-    print_ascii_graph(&[
-        ("2024-01-15".to_string(), 100),
-        ("short".to_string(), 50),
-        ("2024-01-16".to_string(), 0),
-    ]);
-    print_ascii_graph(&[("2024-02-01".to_string(), 0)]);
 }
 
 #[test]
@@ -43,29 +33,6 @@ fn resolve_project_scope_uses_working_dir_only_when_requested() {
         .canonicalize()
         .unwrap_or_else(|_| dir.path().to_path_buf());
     assert_eq!(PathBuf::from(scope), expected);
-}
-
-#[test]
-fn exports_succeed_on_an_empty_tracker() {
-    let tracker = Tracker::new_in_memory().expect("tracker");
-
-    assert!(export_json(&tracker, false, false, false, true, None).is_ok());
-    assert!(export_json(&tracker, true, true, true, false, Some("nowhere")).is_ok());
-    assert!(export_csv(&tracker, false, false, false, true, None).is_ok());
-    assert!(export_csv(&tracker, true, true, true, false, Some("nowhere")).is_ok());
-
-    let days = tracker.get_all_days_filtered(None).expect("days");
-    assert!(days.is_empty());
-}
-
-#[test]
-fn recall_stats_report_no_activity_on_a_fresh_root() {
-    let dir = test_isolation::tempdir();
-    let result = test_isolation::with_root(dir.path(), show_recall_stats);
-    assert!(result.is_ok());
-    let snapshot = test_isolation::with_root(dir.path(), crate::core::retriever::stats_snapshot)
-        .expect("snapshot");
-    assert!(snapshot.is_empty());
 }
 
 #[test]

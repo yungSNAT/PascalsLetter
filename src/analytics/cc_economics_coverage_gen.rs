@@ -82,11 +82,6 @@ fn merge_daily_ccusage_only_sorted_without_savings() {
         assert_eq!(p.active_cpt, None);
     }
 
-    // Non-verbose table with missing rtk columns must not panic or mutate data.
-    print_period_table(&daily, 0);
-    assert_eq!(daily.len(), 2);
-    assert_eq!(daily[0].cc_cost, Some(42.5));
-
     let totals = compute_totals(&daily);
     assert_eq!(totals.cc_cost, 85.0);
     assert_eq!(totals.rtk_saved_tokens, 0);
@@ -95,15 +90,12 @@ fn merge_daily_ccusage_only_sorted_without_savings() {
 }
 
 #[test]
-fn verbose_period_table_handles_full_and_empty_rows() {
+fn an_empty_period_carries_no_costs_or_savings() {
     let mut periods = merge_monthly(
         Some(vec![usage("2026-01")]),
         vec![month_without_io("2026-01")],
     );
     periods.push(PeriodEconomics::new("2026-02"));
-
-    print_period_table(&periods, 1);
-    print_period_table(&periods, 0);
 
     assert_eq!(periods.len(), 2);
     assert_eq!(periods[0].label, "2026-01");

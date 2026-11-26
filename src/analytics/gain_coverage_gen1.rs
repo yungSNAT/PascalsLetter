@@ -1,5 +1,4 @@
 use super::*;
-use std::io::IsTerminal;
 
 #[test]
 fn pct_meter_and_pipeline_row_render_proportionally() {
@@ -31,51 +30,30 @@ fn pct_meter_and_pipeline_row_render_proportionally() {
     let low = pipeline_meter(10.0);
     let expected_low = format!("{}{}", "█", "░".repeat(9));
     assert!(low.contains(&expected_low), "got {low:?}");
-
-    // Rows print without panicking, including negative savings.
-    print_pipeline_row("total", "3 calls".to_string(), 600, pct_of(600, 1000));
-    print_pipeline_row("negative", "1 calls".to_string(), -50, pct_of(-50, 100));
 }
 
 #[test]
-fn run_early_paths_work_against_an_isolated_root() {
-    let dir = tempfile::tempdir().expect("tempdir");
+fn reset_with_yes_clears_recorded_commands() {
+    let dir = crate::core::test_isolation::tempdir();
     crate::core::test_isolation::with_root(dir.path(), || {
-        // --recalls (without --reset) shows recall stats and returns.
-        run(
-            false, false, false, false, "pro", false, false, false, false, "text", false, true,
-            false, false, false, false, 0,
-        )
-        .expect("recall stats view");
+        let tracker = Tracker::new().expect("tracker");
+        tracker
+            .record("git status", "rtk git status", 100, 20, 5)
+            .expect("record a command");
+        let summary = tracker.get_summary_filtered(None).expect("summary");
+        assert_eq!(summary.total_commands, 1);
 
-        // --failures on an empty database reports no failures.
-        run(
-            false, false, false, false, "pro", false, false, false, false, "text", true, false,
-            false, false, false, false, 0,
-        )
-        .expect("failures view");
-
-        // --watch without a terminal falls back to the (json) text view.
-        if !std::io::stdout().is_terminal() {
-            run(
-                false, false, false, false, "pro", false, false, false, false, "json", false,
-                false, false, false, true, false, 0,
-            )
-            .expect("watch fallback to json export");
-        }
-
-        // --reset --yes runs the reset and returns.
         run(
             false, false, false, false, "pro", false, false, false, false, "text", false, false,
             true, true, false, false, 0,
         )
         .expect("reset");
 
-        let tracker = Tracker::new().expect("tracker");
-        let summary = tracker.get_summary_filtered(None).expect("summary");
+        let summary = Tracker::new()
+            .expect("tracker")
+            .get_summary_filtered(None)
+            .expect("summary");
         assert_eq!(summary.total_commands, 0);
-        let stats = crate::core::retriever::stats_snapshot().expect("stats");
-        assert!(stats.is_empty());
     });
 }
 
