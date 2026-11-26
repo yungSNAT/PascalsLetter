@@ -11,6 +11,8 @@ sidebar:
 
 Precedence: **CLI flag > environment variable > config file > default**. Every key mirrors its environment variable one to one.
 
+The daemon looks for `rtk-proxy.toml` in the user's `rtk/llm-proxy` configuration directory, then in `/etc/rtk-proxy/` on Unix. Relative database names in these files resolve beside the file. To use a project configuration deliberately, set `RTK_PROXY_CONFIG` to its path. An explicit file retains its existing working-directory semantics for relative database names.
+
 | Key | Env | Default | What it does |
 |---|---|---|---|
 | `bind` | `RTK_PROXY_BIND` | `127.0.0.1:8080` | Listen address |
