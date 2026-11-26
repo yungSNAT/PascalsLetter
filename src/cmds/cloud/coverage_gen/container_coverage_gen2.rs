@@ -3,10 +3,14 @@ use crate::core::{test_isolation, user_env};
 use std::fmt::Write as _;
 
 fn assert_overflow_recall_hint(hint: &str) {
-    let id = hint
-        .strip_prefix("[+8 hidden: rtk recall ")
+    let (lines, id) = hint
+        .strip_prefix("[+8 hidden (lines ")
         .and_then(|rest| rest.strip_suffix(']'))
+        .and_then(|rest| rest.split_once("): rtk recall "))
         .expect("overflow hint should give a recall command for the eight hidden rows");
+    let (first, last) = lines.split_once('-').expect("hidden line range");
+    let (first, last): (usize, usize) = (first.parse().unwrap(), last.parse().unwrap());
+    assert_eq!(last + 1 - first, 8, "hidden range in {hint:?}");
     assert!(
         !id.is_empty() && id.bytes().all(|byte| byte.is_ascii_hexdigit()),
         "invalid recall ID in {hint:?}"
