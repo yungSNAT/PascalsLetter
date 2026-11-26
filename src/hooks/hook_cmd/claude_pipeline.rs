@@ -1,6 +1,8 @@
 use super::{STDIN_CAP, audit_log, pre_tool_use_rewrite_output};
 use crate::core::pipeline_config::{self, ShellHookDecision};
-use crate::hooks::constants::{POST_TOOL_USE_KEY, PRE_TOOL_USE_KEY, SESSION_START_KEY};
+use crate::hooks::constants::{
+    POST_TOOL_USE_KEY, PRE_COMPACT_KEY, PRE_TOOL_USE_KEY, SESSION_START_KEY,
+};
 use crate::hooks::decision::{self, HookDecision};
 use crate::hooks::permissions;
 use anyhow::{Context, Result};
@@ -39,6 +41,11 @@ pub(super) fn handle(v: &Value, raw_len: usize) -> Result<bool> {
         Some(SESSION_START_KEY) => {
             crate::hooks::posthook::forget_repeats(v);
             crate::hooks::session_start::run();
+            return Ok(true);
+        }
+        // Prints nothing: PreCompact's stdout becomes compaction instructions.
+        Some(PRE_COMPACT_KEY) => {
+            crate::hooks::posthook::forget_repeats(v);
             return Ok(true);
         }
         Some(PRE_TOOL_USE_KEY) | None => {

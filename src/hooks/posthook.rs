@@ -1269,6 +1269,7 @@ fn deliver_native(config: &Config, event: &Value, emitted: Option<String>) -> Op
     let baseline = text.as_deref().filter(|text| {
         config.hooks.dedup_hunks
             && event.get("tool_name").and_then(Value::as_str) == Some("Read")
+            && response.as_ref().is_some_and(|r| whole_read(event, r))
             && hunkable(text)
     });
     deliver_seen(config, event, seen, baseline, emitted, |previous| {
@@ -1528,7 +1529,10 @@ fn native_pointer(
             )
         }
         Some(previous) => {
-            let hunks = read_hunks(previous, text, read_first_line(event, &response)?)?;
+            if !whole_read(event, &response) {
+                return None;
+            }
+            let hunks = read_hunks(previous, text)?;
             let path = event
                 .pointer("/tool_input/file_path")
                 .and_then(Value::as_str)
@@ -1572,30 +1576,32 @@ fn native_pointer(
     })
 }
 
-/// The file line a Read's text starts at, as the agent sees it numbered: the
-/// response's `startLine`, or line 1 for a Read of the whole file. `None` for
-/// a ranged Read whose response does not say, so its hunks are not sent.
-fn read_first_line(event: &Value, response: &Value) -> Option<usize> {
-    if let Some(start) = response.pointer("/file/startLine") {
-        return start
-            .as_u64()
-            .and_then(|n| usize::try_from(n).ok())
-            .filter(|&n| n > 0);
-    }
+/// A Read that gave the agent the whole file: no `offset` or `limit`, and a
+/// response from line 1 whose `numLines` is its `totalLines`. Text cut to a
+/// window slides when a line is added or removed outside it, and hunks
+/// between 2 windows would report the lines that slid as added or deleted.
+fn whole_read(event: &Value, response: &Value) -> bool {
     let input = event.get("tool_input");
     let ranged = ["offset", "limit"]
         .iter()
         .any(|key| input.and_then(|i| i.get(key)).is_some_and(|v| !v.is_null()));
-    (!ranged).then_some(1)
+    let file = response.get("file");
+    let count = |key: &str| file.and_then(|f| f.get(key)).and_then(Value::as_u64);
+    !ranged
+        && file
+            .and_then(|f| f.get("startLine"))
+            .is_none_or(|start| start.as_u64() == Some(1))
+        && count("numLines").is_some()
+        && count("numLines") == count("totalLines")
 }
 
-/// `previous` to `current` as classic `diff` hunks numbered from file line
-/// `first`, when their lines rebuild `current` exactly.
-fn read_hunks(previous: &str, current: &str, first: usize) -> Option<String> {
+/// `previous` to `current` as classic `diff` hunks, when their lines rebuild
+/// `current` exactly.
+fn read_hunks(previous: &str, current: &str) -> Option<String> {
     if !hunkable(current) || previous.ends_with('\n') != current.ends_with('\n') {
         return None;
     }
-    crate::cmds::git::diff_cmd::classic_hunks(previous, current, first)
+    crate::cmds::git::diff_cmd::classic_hunks(previous, current)
 }
 
 /// Path or URL the tracking rows and `when` facts key on.

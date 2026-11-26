@@ -128,7 +128,12 @@ fn patch_claude_md(path: &Path, ctx: InitContext) -> Result<bool> {
 
 pub(super) fn remove_hook_from_json(root: &mut serde_json::Value) -> bool {
     let mut modified = false;
-    for event_key in [PRE_TOOL_USE_KEY, POST_TOOL_USE_KEY, SESSION_START_KEY] {
+    for event_key in [
+        PRE_TOOL_USE_KEY,
+        POST_TOOL_USE_KEY,
+        SESSION_START_KEY,
+        PRE_COMPACT_KEY,
+    ] {
         if !remove_hook_entries(root, event_key, HookEntries::Grouped, |hook| {
             is_claude_hook_entry(hook) || is_command_hook(hook, is_legacy_rewrite_hook)
         }) {
@@ -497,7 +502,10 @@ pub(super) fn required_claude_events_scoped(
 #[cfg(feature = "engine")]
 /// With `[hooks] dedup_repeats`, both tool events fire for each tool a
 /// repeat pointer can replace: PreToolUse marks the call in flight and
-/// PostToolUse delivers it.
+/// PostToolUse delivers it. PreCompact forgets the session's records, as
+/// compaction keeps the session but summarises away the outputs they name.
+/// Not SessionStart: its handler also starts the proxy for a loopback
+/// `ANTHROPIC_BASE_URL`, which this option must not switch on.
 pub(super) fn add_repeat_tools(events: &mut Vec<(&'static str, String)>) {
     const REPEAT_TOOLS: &[&str] = &["Bash", "Read", "Grep", "Glob"];
     for key in [PRE_TOOL_USE_KEY, POST_TOOL_USE_KEY] {
@@ -507,6 +515,9 @@ pub(super) fn add_repeat_tools(events: &mut Vec<(&'static str, String)>) {
             }
             None => events.push((key, REPEAT_TOOLS.join("|"))),
         }
+    }
+    if !events.iter().any(|(k, _)| *k == PRE_COMPACT_KEY) {
+        events.push((PRE_COMPACT_KEY, "manual|auto".to_string()));
     }
 }
 
