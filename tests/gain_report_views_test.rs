@@ -108,54 +108,12 @@ impl Home {
 
     /// Attribution rows for today: `(site, kind, name, calls, in, out)`.
     fn attribution(&self, rows: &[(&str, &str, &str, i64, i64, i64)]) {
-        let conn = self.tracking();
-        for (site, kind, name, calls, tokens_in, tokens_out) in rows {
-            conn.execute(
-                "INSERT INTO engine_attribution (day, site, kind, name, calls, tokens_in, tokens_out)
-                 VALUES (date('now'), ?1, ?2, ?3, ?4, ?5, ?6)",
-                rusqlite::params![site, kind, name, calls, tokens_in, tokens_out],
-            )
-            .expect("record attribution");
-        }
+        common::seed::attribution(&self.path().join("rtk").join("history.db"), rows);
     }
 
     /// The proxy's usage database with the current schema, filled by `rows`.
     fn proxy(&self, rows: &str) {
-        let dir = self.config().join("llm-proxy");
-        std::fs::create_dir_all(&dir).expect("create proxy dir");
-        Connection::open(dir.join("rtk-proxy.db"))
-            .expect("open proxy db")
-            .execute_batch(&format!(
-                "CREATE TABLE usage_records (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    ts TEXT NOT NULL,
-                    tokens_in INTEGER NOT NULL DEFAULT 0,
-                    tokens_out INTEGER NOT NULL DEFAULT 0,
-                    tokens_saved INTEGER NOT NULL DEFAULT 0,
-                    cost_usd REAL NOT NULL DEFAULT 0,
-                    status INTEGER NOT NULL DEFAULT 200,
-                    cache_read_tokens INTEGER NOT NULL DEFAULT 0,
-                    cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
-                    ccr_retrieve_calls INTEGER NOT NULL DEFAULT 0,
-                    ctx_total INTEGER NOT NULL DEFAULT 0,
-                    ctx_tool_result INTEGER NOT NULL DEFAULT 0,
-                    ctx_tool_use INTEGER NOT NULL DEFAULT 0,
-                    ctx_duplicate INTEGER NOT NULL DEFAULT 0,
-                    ctx_image INTEGER NOT NULL DEFAULT 0,
-                    saved_ingest_filter INTEGER NOT NULL DEFAULT 0,
-                    saved_pixel_compress INTEGER NOT NULL DEFAULT 0,
-                    saved_ccr INTEGER NOT NULL DEFAULT 0,
-                    saved_normalize INTEGER NOT NULL DEFAULT 0,
-                    session TEXT,
-                    pipeline TEXT,
-                    routed_from TEXT,
-                    cost_without REAL NOT NULL DEFAULT 0,
-                    saved_engine_methods INTEGER NOT NULL DEFAULT 0,
-                    saved_rules TEXT
-                );
-                {rows}"
-            ))
-            .expect("seed proxy usage");
+        common::seed::proxy_usage(&self.config(), rows);
     }
 
     /// A Claude Code session log under `~/.claude/projects/<project>/`.
@@ -708,33 +666,11 @@ fn watch_off_a_terminal_falls_back_to_the_text_view() {
     assert!(run.stdout.contains("RTK Token Savings"), "{}", run.stdout);
 }
 
-/// A loopback server that answers `/health` as the rtk proxy does, for as long
-/// as the test runs.
-fn fake_proxy() -> String {
-    use std::io::{Read, Write};
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind loopback");
-    let addr = listener.local_addr().expect("address").to_string();
-    std::thread::spawn(move || {
-        for stream in listener.incoming() {
-            let Ok(mut stream) = stream else { continue };
-            let mut buf = [0u8; 1024];
-            let _ = stream.read(&mut buf);
-            let body = r#"{"service":"rtk-proxy"}"#;
-            let _ = write!(
-                stream,
-                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                body.len()
-            );
-        }
-    });
-    addr
-}
-
 #[test]
 fn an_empty_history_says_what_a_running_proxy_still_needs() {
     let home = Home::new();
     let mut cmd = home.command(&[]);
-    cmd.env("RTK_PROXY_BIND", fake_proxy());
+    cmd.env("RTK_PROXY_BIND", common::seed::fake_proxy());
     let run = Home::run(cmd);
     assert!(run.success, "{}", run.stderr);
     assert!(

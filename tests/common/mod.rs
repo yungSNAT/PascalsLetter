@@ -12,6 +12,8 @@
 mod scratch;
 
 #[cfg(target_os = "linux")]
+pub mod seed;
+#[cfg(target_os = "linux")]
 pub mod tty;
 
 use std::process::Command;
