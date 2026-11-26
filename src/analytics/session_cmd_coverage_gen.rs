@@ -20,7 +20,7 @@ fn run_session(home: &Path) -> Option<String> {
     run(0).expect("generate session report");
 
     #[cfg(unix)]
-    if test_isolation::rtk_binary_or_skip() {
+    if test_isolation::rtk_binary_ready() {
         let output = test_isolation::rtk_command()
             .env("HOME", home)
             .env("CLAUDE_CONFIG_DIR", home.join(".claude"))

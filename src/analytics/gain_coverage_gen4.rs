@@ -95,7 +95,7 @@ fn seed_parse_failures(db: &Connection, timestamp: &str, split_timestamp: &str) 
 
 #[cfg(unix)]
 fn failure_report_stdout(db_path: &std::path::Path) -> Option<String> {
-    if !test_isolation::rtk_binary_or_skip() {
+    if !test_isolation::rtk_binary_ready() {
         return None;
     }
     let output = test_isolation::rtk_command()
@@ -172,7 +172,7 @@ fn failure_report_handles_empty_data_utf8_timestamps_and_query_errors() {
 #[cfg(unix)]
 #[test]
 fn reset_without_a_terminal_declines_without_reading_input() {
-    if !test_isolation::rtk_binary_or_skip() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
     let output = test_isolation::rtk_command()
