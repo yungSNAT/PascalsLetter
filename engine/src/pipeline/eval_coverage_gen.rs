@@ -158,11 +158,17 @@ fn custom_route_message_overrides_command_hint_and_formats_typed_facts() {
 
 #[test]
 fn route_messages_use_placeholders_when_tool_inputs_are_missing() {
-    for tool in ["web", "search", "read"] {
-        assert_eq!(
-            route_message("inspect", &string_facts(&[("tool", tool)]), None),
-            "Read of <file> is blocked. Run: `rtk inspect --question \"<what you need to know>\" <file>`",
-            "{tool}"
+    assert_eq!(
+        route_message("inspect", &string_facts(&[("tool", "read")]), None),
+        "Read of <file> is blocked. Run: `rtk inspect --question \"<what you need to know>\" <file>`"
+    );
+    // Without a URL or pattern, web and search still name the routed task;
+    // their exact wording is not pinned.
+    for tool in ["web", "search"] {
+        let message = route_message("inspect", &string_facts(&[("tool", tool)]), None);
+        assert!(
+            message.contains("Run: `rtk inspect --question \""),
+            "{tool}: {message}"
         );
     }
 

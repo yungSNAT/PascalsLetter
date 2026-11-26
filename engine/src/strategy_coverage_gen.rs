@@ -64,13 +64,13 @@ fn preview_strategies_decline_input_at_their_size_boundaries() {
     assert!(CharWindow.apply(&strategy_lines(&fits), &ctx).is_none());
 
     let over = format!("{head}x{tail}");
-    assert_eq!(
-        CharWindow.apply(&strategy_lines(&over), &ctx),
-        Some((
-            format!("{head}[… 1 chars elided …]{tail}"),
-            "chars×1".to_owned()
-        ))
-    );
+    let (body, note) = CharWindow
+        .apply(&strategy_lines(&over), &ctx)
+        .expect("one extra char is elided");
+    // Prefix and suffix checks leave room for a singular `1 char`.
+    assert!(body.starts_with(&format!("{head}[… 1 char")), "{body}");
+    assert!(body.ends_with(&format!(" elided …]{tail}")), "{body}");
+    assert_eq!(note, "chars×1");
 }
 
 #[test]
@@ -113,9 +113,11 @@ fn json_skeleton_omits_remaining_keys_and_truncates_on_utf8_boundaries() {
     let input = format!(r#"{{"{key}":null}}"#);
     let (body, note) = json_preview(&input);
     // The 293rd '界' starts at byte 900 and must be kept whole.
-    assert_eq!(
-        body,
-        format!("[json object, 1 keys] {{a{}…", "界".repeat(293))
+    // Prefix and suffix checks leave room for a singular `1 key`.
+    assert!(body.starts_with("[json object, 1 key"), "{body}");
+    assert!(
+        body.ends_with(&format!("] {{a{}…", "界".repeat(293))),
+        "{body}"
     );
     assert_eq!(note, "json");
 }

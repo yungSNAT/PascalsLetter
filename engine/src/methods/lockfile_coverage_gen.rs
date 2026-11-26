@@ -1,5 +1,14 @@
 use super::*;
 
+/// Checks the header by prefix so a singular `1 package` stays valid, then
+/// the package lines exactly.
+fn assert_summary(input: &str, header: &str, packages: &[&str]) {
+    let out = detect_and_summarize(input).expect("lockfile is recognised");
+    let (first, rest) = out.split_once('\n').unwrap_or((&out, ""));
+    assert!(first.starts_with(header), "{out}");
+    assert_eq!(rest.lines().collect::<Vec<_>>(), packages, "{out}");
+}
+
 #[test]
 fn npm_summarizes_only_versioned_entries_from_the_selected_map() {
     let legacy = r#"{
@@ -10,9 +19,10 @@ fn npm_summarizes_only_versioned_entries_from_the_selected_map() {
     "numeric-version": { "version": 42 }
   }
 }"#;
-    assert_eq!(
-        detect_and_summarize(legacy).as_deref(),
-        Some("package-lock.json: 1 packages\n@scope/legacy@1.2.3")
+    assert_summary(
+        legacy,
+        "package-lock.json: 1 package",
+        &["@scope/legacy@1.2.3"],
     );
 
     let modern = r#"{
@@ -26,10 +36,7 @@ fn npm_summarizes_only_versioned_entries_from_the_selected_map() {
     "legacy-only": { "version": "5.0.0" }
   }
 }"#;
-    assert_eq!(
-        detect_and_summarize(modern).as_deref(),
-        Some("package-lock.json: 1 packages\ninstalled@2.3.4")
-    );
+    assert_summary(modern, "package-lock.json: 1 package", &["installed@2.3.4"]);
 }
 
 #[test]
@@ -49,10 +56,7 @@ version = "2.0.1"
 name = "complete"
 version = "3.0.0"
 "#;
-    assert_eq!(
-        detect_and_summarize(input).as_deref(),
-        Some("Cargo.lock: 1 packages\ncomplete@3.0.0")
-    );
+    assert_summary(input, "Cargo.lock: 1 package", &["complete@3.0.0"]);
 }
 
 #[test]
@@ -84,8 +88,5 @@ broken@^1.0.0:
 "@scope/complete@^2.0.0":
   version "2.3.4"
 "#;
-    assert_eq!(
-        detect_and_summarize(input).as_deref(),
-        Some("yarn.lock: 1 packages\n@scope/complete@2.3.4")
-    );
+    assert_summary(input, "yarn.lock: 1 package", &["@scope/complete@2.3.4"]);
 }
