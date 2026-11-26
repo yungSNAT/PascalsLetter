@@ -36,7 +36,7 @@ fn ecs_cli_forwards_arguments_and_filters_the_tool_output() {
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
 
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
 

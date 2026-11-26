@@ -11,13 +11,11 @@ fn a_subcommand_name_is_not_a_global_option() {
 }
 
 #[test]
-fn check_summary_caps_violations_and_appends_the_tail_hint_when_available() {
-    use crate::core::{tee, test_isolation, user_env};
+fn check_summary_caps_violations_and_appends_the_tail_hint_only_with_tee() {
+    use crate::core::{test_isolation, user_env};
 
-    let mut full = String::new();
     let diagnostics: Vec<_> = (1..=52)
         .map(|row| {
-            writeln!(full, "  sample.py:{row}:8 F401 Unused import").unwrap();
             serde_json::json!({
                 "code": "F401",
                 "message": "Unused import",
@@ -34,10 +32,7 @@ fn check_summary_caps_violations_and_appends_the_tail_hint_when_available() {
         test_isolation::with_root(root.path(), || {
             user_env::with_path("RTK_TEE_DIR", Some(root.path()), || {
                 user_env::with_vars(&[("RTK_TEE", Some(tee_setting))], || {
-                    // Use a distinct label so the probe cannot collide with Ruff's file.
-                    let hint_available =
-                        tee::force_tee_tail_hint(&full, "ruff-coverage-probe", 51).is_some();
-
+                    let hint_available = tee_setting == "1";
                     let output = filter_ruff_check_json(&input);
                     let (summary, details) = output.split_once("Violations:\n").unwrap();
                     assert_eq!(

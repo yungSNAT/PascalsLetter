@@ -33,11 +33,11 @@ fn generic_php_removes_ansi_and_reports_ok_for_blank_output() {
 #[cfg(unix)]
 #[test]
 fn php_cli_forwards_arguments_and_selects_the_output_filter() {
-    use crate::core::test_isolation::{rtk_binary_is_built, rtk_command, tempdir};
+    use crate::core::test_isolation::{rtk_binary_ready, rtk_command, tempdir};
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
 
-    if !rtk_binary_is_built() {
+    if !rtk_binary_ready() {
         return;
     }
 

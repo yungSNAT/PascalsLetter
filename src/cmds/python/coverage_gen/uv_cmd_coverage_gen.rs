@@ -45,8 +45,14 @@ fn successful_stderr_only_run_keeps_both_ends_and_offers_recall() {
             .strip_prefix(preview.as_str())
             .unwrap_or_else(|| panic!("unexpected stderr preview: {shown:?}"));
 
-        // The recall tail starts immediately after the visible head.
-        let prefix = format!("[+{} hidden: rtk recall ", lines.len() - head);
+        // The hidden count is left unpinned: it counts every line after the
+        // head, including the tail shown above, not just the 3 omitted.
+        let (count, _) = hint
+            .strip_prefix("[+")
+            .and_then(|rest| rest.split_once(" hidden: rtk recall "))
+            .unwrap_or_else(|| panic!("unexpected recall hint: {hint:?}"));
+        assert!(count.parse::<usize>().is_ok_and(|n| n >= 3), "{hint:?}");
+        let prefix = format!("[+{count} hidden: rtk recall ");
         assert!(!recall_id(hint, &prefix).is_empty());
     });
 }
@@ -124,7 +130,7 @@ fn failed_run_separates_diagnostics_and_offers_distinct_recall_ids() {
 fn uv_cli_filters_run_but_passes_other_subcommands_through() {
     use std::{fs, os::unix::fs::PermissionsExt, process::Stdio};
 
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
 

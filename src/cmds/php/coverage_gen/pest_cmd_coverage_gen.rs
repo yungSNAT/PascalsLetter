@@ -1,12 +1,12 @@
 #[cfg(unix)]
 #[test]
 fn pest_forwards_arguments_and_filters_progress_output() {
-    use crate::core::test_isolation::{rtk_binary_is_built, rtk_command, tempdir};
+    use crate::core::test_isolation::{rtk_binary_ready, rtk_command, tempdir};
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
     use std::process::Stdio;
 
-    if !rtk_binary_is_built() {
+    if !rtk_binary_ready() {
         return;
     }
 

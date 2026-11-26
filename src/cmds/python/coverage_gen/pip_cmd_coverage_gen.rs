@@ -80,11 +80,11 @@ fn outdated_reports_the_omitted_count_before_the_upgrade_hint() {
 #[cfg(unix)]
 #[test]
 fn uv_fallback_filters_queries_and_preserves_passthrough_streams() {
-    use crate::core::test_isolation::{rtk_binary_is_built, rtk_command, tempdir};
+    use crate::core::test_isolation::{rtk_binary_ready, rtk_command, tempdir};
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
 
-    if !rtk_binary_is_built() {
+    if !rtk_binary_ready() {
         return;
     }
 

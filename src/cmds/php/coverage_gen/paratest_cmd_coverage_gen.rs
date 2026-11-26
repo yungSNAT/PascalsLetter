@@ -6,7 +6,7 @@ fn paratest_forwards_arguments_and_filters_output() {
     use std::os::unix::fs::PermissionsExt;
     use std::process::Stdio;
 
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
 

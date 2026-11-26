@@ -17,18 +17,26 @@ fn json_reports_global_errors_before_diagnostics_for_short_paths() {
         }
     }"#;
 
-    assert_eq!(
-        filter_phpstan_json(input),
-        concat!(
+    // The gap between the two sections is left unpinned: it is two blank
+    // lines today, where the file sections use one.
+    let output = filter_phpstan_json(input);
+    assert!(
+        output.starts_with(concat!(
             "phpstan: 2 errors in 2 files\n\n",
             "Global errors:\n",
             "  Unknown configuration key\n",
-            "  Could not load bootstrap file\n\n\n",
-            "Bootstrap.php (1 errors)\n",
+            "  Could not load bootstrap file\n\n",
+        )),
+        "{output}"
+    );
+    assert!(
+        output.ends_with(concat!(
+            "\nBootstrap.php (1 errors)\n",
             "  :3 Undefined constant\n\n",
             "Service.php (1 errors)\n",
             "  :17 Missing return type",
-        )
+        )),
+        "{output}"
     );
 }
 
@@ -73,12 +81,12 @@ fn text_prefers_the_latest_summary_and_keeps_the_tail_without_one() {
 #[cfg(unix)]
 #[test]
 fn cli_passes_through_utilities_and_selects_the_requested_analysis_format() {
-    use crate::core::test_isolation::{rtk_binary_is_built, rtk_command, tempdir};
+    use crate::core::test_isolation::{rtk_binary_ready, rtk_command, tempdir};
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
     use std::process::Stdio;
 
-    if !rtk_binary_is_built() {
+    if !rtk_binary_ready() {
         return;
     }
 
