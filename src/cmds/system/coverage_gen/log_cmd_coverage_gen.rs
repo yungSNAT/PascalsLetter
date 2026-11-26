@@ -68,7 +68,7 @@ fn run_file_rejects_invalid_utf8_and_accepts_a_valid_log() {
 
 #[test]
 fn log_command_summarizes_both_a_file_and_piped_input() {
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
 

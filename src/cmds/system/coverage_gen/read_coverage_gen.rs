@@ -3,7 +3,7 @@ use crate::core::test_isolation;
 
 #[test]
 fn verbose_file_reads_report_language_counts_and_range() -> Result<()> {
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_ready() {
         return Ok(());
     }
 
@@ -62,7 +62,7 @@ fn verbose_file_reads_report_language_counts_and_range() -> Result<()> {
 
 #[test]
 fn verbose_stdin_read_reports_counts_and_deduplicates_stdin() -> Result<()> {
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_ready() {
         return Ok(());
     }
 

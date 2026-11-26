@@ -126,7 +126,7 @@ exit "$FORMAT_TEST_STATUS"
 
     #[test]
     fn format_forwards_arguments_and_reports_formatter_output_and_status() {
-        if !test_isolation::rtk_binary_is_built() {
+        if !test_isolation::rtk_binary_ready() {
             return;
         }
 

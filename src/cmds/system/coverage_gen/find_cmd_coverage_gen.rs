@@ -157,7 +157,7 @@ fn disclosure_skips_missing_directories_and_reports_its_cap() {
 fn compressed_find_caps_text_but_preserves_non_utf8_results_and_tracks_passthrough() {
     use std::os::unix::fs::PermissionsExt;
 
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
 

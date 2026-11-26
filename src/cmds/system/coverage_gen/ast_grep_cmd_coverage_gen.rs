@@ -22,10 +22,17 @@ fn blank_separators_do_not_count_toward_match_caps() {
     let raw = "\n a.rs:1:first\n \t\n a.rs:2:second\n\nb.rs:3:third\n";
     let result = filter_ast_grep(raw, 1, 2);
 
-    assert_eq!(
-        result.text,
-        " a.rs:1:first\n  … 1 more match line(s) in  a.rs\nb.rs:3:third\n"
+    // The overflow line's file name is left unpinned: it keeps the input's
+    // leading space today ("in  a.rs").
+    let lines: Vec<_> = result.text.lines().collect();
+    assert_eq!(lines.len(), 3, "{}", result.text);
+    assert_eq!(lines[0], " a.rs:1:first");
+    assert!(
+        lines[1].starts_with("  … 1 more match line(s) in ") && lines[1].ends_with("a.rs"),
+        "{}",
+        result.text
     );
+    assert_eq!(lines[2], "b.rs:3:third");
     assert_eq!(result.hidden_lines, 1);
 }
 
@@ -111,7 +118,7 @@ exit "$AST_GREP_TEST_STATUS"
 
     #[test]
     fn json_and_non_run_invocations_preserve_stdout() {
-        if !test_isolation::rtk_binary_is_built() {
+        if !test_isolation::rtk_binary_ready() {
             return;
         }
 

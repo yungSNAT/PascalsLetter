@@ -58,9 +58,9 @@ fn render_caps_search_path_entries_but_prints_other_path_vars_as_assignments() {
 #[cfg(all(unix, feature = "engine"))]
 #[test]
 fn verbose_env_cli_prints_sorted_filtered_assignments_when_raw_is_shorter() {
-    use crate::core::test_isolation::{rtk_binary_is_built, rtk_command};
+    use crate::core::test_isolation::{rtk_binary_ready, rtk_command};
 
-    if !rtk_binary_is_built() {
+    if !rtk_binary_ready() {
         return;
     }
 

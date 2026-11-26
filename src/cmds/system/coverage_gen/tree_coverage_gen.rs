@@ -6,14 +6,24 @@ fn tree_filter_skips_leading_whitespace_but_keeps_internal_spacing() {
 
 #[test]
 fn tree_reports_install_options_when_unavailable() {
-    if super::tool_exists("tree") {
+    use crate::core::test_isolation;
+
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
 
-    let message = super::run(&[], 0).unwrap_err().to_string();
-    assert_eq!(
-        message.lines().next(),
-        Some("tree command not found. Install it first:")
+    // An empty PATH hides any installed tree.
+    let empty = test_isolation::tempdir();
+    let output = test_isolation::rtk_command()
+        .env("PATH", empty.path())
+        .arg("tree")
+        .output()
+        .expect("run the isolated rtk binary");
+    assert!(!output.status.success(), "{output:?}");
+    let message = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        message.contains("tree command not found. Install it first:"),
+        "{message}"
     );
     for hint in [
         "brew install tree",

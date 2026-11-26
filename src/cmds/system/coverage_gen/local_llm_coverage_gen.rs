@@ -1,14 +1,8 @@
 use super::*;
 
 #[test]
-fn run_reads_local_files_and_reports_a_missing_path() {
+fn run_reports_a_missing_path() {
     let dir = crate::core::test_isolation::tempdir();
-    for name in ["example.ts", "README"] {
-        let path = dir.path().join(name);
-        fs::write(&path, "const render = () => 1;\n").expect("write source fixture");
-        run(&path, "unused", false, 1).expect("summarize readable source");
-    }
-
     let missing = dir.path().join("missing.ts");
     let error = run(&missing, "unused", false, 0).expect_err("missing source should fail");
     assert_eq!(

@@ -58,10 +58,10 @@ fn prefix_search_uses_only_shared_directory_segments() {
 #[cfg(unix)]
 #[test]
 fn verbose_wc_reports_the_command_and_filters_its_output() {
-    use crate::core::test_isolation::{rtk_binary_is_built, rtk_command};
+    use crate::core::test_isolation::{rtk_binary_ready, rtk_command};
     use std::os::unix::fs::PermissionsExt;
 
-    if !rtk_binary_is_built() {
+    if !rtk_binary_ready() {
         return;
     }
 

@@ -92,10 +92,10 @@ fn adds_raw_failure_recovery_hint_without_duplicating_parsed_failure() {
 #[cfg(unix)]
 #[test]
 fn ctest_cli_forwards_arguments_in_filtered_and_passthrough_modes() {
-    use crate::core::test_isolation::{rtk_binary_is_built, rtk_command, tempdir};
+    use crate::core::test_isolation::{rtk_binary_ready, rtk_command, tempdir};
     use std::os::unix::fs::PermissionsExt;
 
-    if !rtk_binary_is_built() {
+    if !rtk_binary_ready() {
         return;
     }
 

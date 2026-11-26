@@ -84,7 +84,7 @@ fn json_schema_classifies_values_and_honors_the_depth_limit() {
 #[cfg(unix)]
 #[test]
 fn json_stdin_prints_schema_and_verbose_diagnostic() {
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
 

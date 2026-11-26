@@ -155,11 +155,11 @@ fn grep_and_find_handle_empty_results_and_unqualified_file_names() {
 #[cfg(all(unix, feature = "engine"))]
 #[test]
 fn pipe_passthrough_relays_non_utf8_stdin_verbatim() {
-    use crate::core::test_isolation::{rtk_binary_is_built, rtk_command};
+    use crate::core::test_isolation::{rtk_binary_ready, rtk_command};
     use std::io::Write;
     use std::process::Stdio;
 
-    if !rtk_binary_is_built() {
+    if !rtk_binary_ready() {
         return;
     }
 
