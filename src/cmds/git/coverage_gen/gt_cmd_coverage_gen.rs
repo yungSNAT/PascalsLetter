@@ -82,7 +82,7 @@ mod cli {
 
     #[test]
     fn gt_cli_filters_output_and_preserves_arguments_and_exit_status() {
-        if !test_isolation::rtk_binary_or_skip() {
+        if !test_isolation::rtk_binary_ready() {
             return;
         }
 
@@ -203,7 +203,7 @@ esac
 
     #[test]
     fn gt_cli_routes_git_aliases_to_git_instead_of_graphite() {
-        if !test_isolation::rtk_binary_or_skip() {
+        if !test_isolation::rtk_binary_ready() {
             return;
         }
 
@@ -267,7 +267,7 @@ exit 0
 
     #[test]
     fn gt_cli_reports_context_when_graphite_cannot_be_started() {
-        if !test_isolation::rtk_binary_or_skip() {
+        if !test_isolation::rtk_binary_ready() {
             return;
         }
 
