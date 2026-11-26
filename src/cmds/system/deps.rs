@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use regex::Regex;
 use std::fs;
 use std::path::Path;
-use toml_edit::{ImDocument, Item, Key, TableLike};
+use toml_edit::{Document, Item, Key, TableLike};
 
 const MAX_DEPS: usize = CAP_WARNINGS;
 // dev and build deps are secondary to prod — show fewer.
@@ -148,10 +148,10 @@ fn cargo_deps(table: Option<&Item>, out: &mut Vec<(usize, String)>) {
 }
 
 /// The parsed manifest, keeping each key's place in the file.
-fn read_toml(path: &Path) -> Result<ImDocument<String>> {
+fn read_toml(path: &Path) -> Result<Document<String>> {
     let content =
         fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
-    ImDocument::parse(content).with_context(|| format!("Failed to parse {}", path.display()))
+    Document::parse(content).with_context(|| format!("Failed to parse {}", path.display()))
 }
 
 /// `  <title> (<n>):` and up to `max` items, then a count of the rest.
