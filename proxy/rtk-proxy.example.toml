@@ -1,7 +1,7 @@
 # rtk-proxy — optional config file.
 #
-# Copy to `rtk-proxy.toml` (or point RTK_PROXY_CONFIG at it) to configure the
-# proxy from one versioned file instead of a handful of env vars. Every key is
+# Save as `rtk-proxy.toml` in the user's rtk/llm-proxy configuration directory,
+# or point RTK_PROXY_CONFIG at a file of your choice. Every key is
 # optional and mirrors its env var 1:1 (lowercased, without the RTK_PROXY_
 # prefix).
 #
@@ -33,8 +33,8 @@ ccr = true
 # SQLite path for the usage store; empty or "off" disables recording. This is
 # the DB `rtk gain` reads. Default: <config-dir>/rtk/llm-proxy/rtk-proxy.db --
 # the fixed path the CLI looks at. Set this only to an ABSOLUTE path: a
-# relative one resolves against the daemon's working directory (`/` under a
-# service), which `rtk gain` never reads. (env: RTK_PROXY_DB)
+# relative one in an explicitly selected file resolves against the daemon's
+# working directory. (env: RTK_PROXY_DB)
 # db = "/absolute/path/to/rtk-proxy.db"
 
 # SQLite path for CCR's content cache (ICM). Separate file from `db`; with this

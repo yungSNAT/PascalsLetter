@@ -15,7 +15,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 toml = "1.2"
 toon-format = { version = "0.7.0", default-features = false }
-htmd = "0.5.5"
+htmd = "0.6.1"
 
 [lints.rust]
 unsafe_code = "deny"
