@@ -37,12 +37,17 @@ fn run_hook(path: &std::path::Path) -> std::process::Output {
         .stderr(Stdio::piped())
         .spawn()
         .expect("spawn hook");
-    child
+    // When `rtk` is absent the hook exits 0 before reading stdin, which can race with write_all.
+    match child
         .stdin
         .take()
         .expect("stdin")
         .write_all(PAYLOAD.as_bytes())
-        .expect("write payload");
+    {
+        Ok(()) => {}
+        Err(err) if err.kind() == std::io::ErrorKind::BrokenPipe => {}
+        Err(err) => panic!("write payload: {err}"),
+    }
     child.wait_with_output().expect("hook output")
 }
 
