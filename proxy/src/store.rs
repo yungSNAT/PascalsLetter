@@ -695,8 +695,10 @@ fn saved_by_model(c: &Connection) -> rusqlite::Result<Vec<(String, i64)>> {
         "SELECT model, COALESCE(sum(MAX(tokens_saved, 0)),0) FROM usage_records
          WHERE status < 400 GROUP BY model",
     )?;
-    stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
-        .collect()
+    let rows = stmt
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect();
+    rows
 }
 
 #[cfg(test)]
