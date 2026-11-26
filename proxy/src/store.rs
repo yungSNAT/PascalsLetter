@@ -744,6 +744,8 @@ mod tests {
             "[",
             "[default]\ninput = -1.0",
             "[default]\noutput = inf",
+            "[default]\ninput = 1e308\noutput = 2.0",
+            "[default]\ninput = 1e150\noutput = 2.0\ncache_read_mult = 1e150",
             "[[model]]\npattern = 'x'\ncache_read_mult = nan\n[default]",
         ] {
             assert!(store.model_registry(|| Ok(invalid.to_owned())).is_err());

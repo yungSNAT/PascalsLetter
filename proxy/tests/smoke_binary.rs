@@ -136,6 +136,45 @@ async fn real_binary_boots_forwards_and_records() {
     assert_eq!(d.status(), 404, "no dashboard fallback");
 }
 
+#[test]
+fn model_registry_errors_stop_startup_before_listening() {
+    let dir = tempfile::tempdir().unwrap();
+    let rates = dir.path().join("rates.toml");
+    // If startup ever misses a configuration error it still exits on this occupied port.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    for (db, text, reason) in [
+        (
+            dir.path().to_str().unwrap(),
+            "[default]\ninput = 1.0\noutput = 2.0",
+            "configured usage database is unavailable",
+        ),
+        (
+            "off",
+            "invalid-private-fixture",
+            "invalid model registry TOML",
+        ),
+    ] {
+        std::fs::write(&rates, text).unwrap();
+        let output = Command::new(env!("CARGO_BIN_EXE_rtk-proxy"))
+            .arg("start")
+            .env("RTK_PROXY_BIND", listener.local_addr().unwrap().to_string())
+            .env("RTK_PROXY_DB", db)
+            .env("RTK_PROXY_ICM_DB", "off")
+            .env("RTK_PROXY_MODELS_TOML", &rates)
+            .env("RUST_LOG", "error")
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        let log = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(log.contains(reason), "{log}");
+        assert!(!log.contains("invalid-private-fixture"));
+    }
+}
+
 /// Run `rtk-proxy <args...>` as a real child process and return its stdout.
 fn run_cli(args: &[&str]) -> String {
     let out = Command::new(env!("CARGO_BIN_EXE_rtk-proxy"))

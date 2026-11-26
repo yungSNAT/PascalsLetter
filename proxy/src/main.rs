@@ -216,7 +216,7 @@ async fn run_start(args: StartArgs) {
         });
     }
     let state = AppState::new(config).with_pipeline_name(&rules.pipeline);
-    if let Err(e) = rtk_proxy::models::load_at_start(state.store.as_ref()) {
+    if let Err(e) = rtk_proxy::models::load_at_start(state.store.as_ref(), &state.config.db) {
         tracing::error!(error = %e, "model registry configuration error");
         std::process::exit(1);
     }

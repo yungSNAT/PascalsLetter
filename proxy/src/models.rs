@@ -74,6 +74,18 @@ impl Registry {
                     .all(|v| v.is_finite() && v >= 0.0),
                 "model registry rates must be finite and nonnegative"
             );
+            // Every usage counter is i64. Bound the same intermediate products as billing.
+            let tokens = i64::MAX as f64;
+            let max_input = tokens * input.unwrap_or_default();
+            let max_output = tokens * output.unwrap_or_default();
+            let max_cost =
+                (max_input + max_input * crate::pricing::CACHE_WRITE_MULT + max_input * cache)
+                    / 1_000_000.0
+                    + max_output / 1_000_000.0;
+            anyhow::ensure!(
+                max_cost.is_finite(),
+                "model registry rates exceed the supported token range"
+            );
         }
         Ok(registry)
     }
@@ -144,10 +156,11 @@ fn read_seed() -> anyhow::Result<String> {
 }
 
 /// Install the database's registry, or a process-local registry when recording is off.
-pub fn load_at_start(store: Option<&crate::store::Store>) -> anyhow::Result<()> {
+pub fn load_at_start(store: Option<&crate::store::Store>, db: &str) -> anyhow::Result<()> {
     let registry = match store {
         Some(store) => store.model_registry(read_seed)?,
-        None => Registry::parse(&read_seed()?)?,
+        None if matches!(db.trim(), "" | "off") => Registry::parse(&read_seed()?)?,
+        None => anyhow::bail!("the configured usage database is unavailable"),
     };
     install(registry);
     Ok(())

@@ -1,8 +1,8 @@
 # Model registry for families and prompt-cache rates. Loaded at startup.
 # Set RTK_PROXY_MODELS_TOML to an absolute path to seed a new usage database.
 # An existing registry in the usage database takes precedence across restarts.
-# With recording disabled the proxy reads the file at each start. An unreadable
-# file or invalid registry stops startup so its prices cannot be misreported.
+# With recording disabled the proxy reads the file at each start. Startup
+# requires a readable configured database and valid rates for its token range.
 #
 # rtk ships NO prices: dollar figures exist only when you add `input` and
 # `output` (USD per million tokens) to an entry here. `cache_read_mult` is
