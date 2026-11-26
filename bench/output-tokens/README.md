@@ -58,4 +58,4 @@ ANTHROPIC_API_KEY=... cargo run --release --locked --manifest-path bench/output-
   --rtk "PascalsLetter=$HOME/output-tokens-work/target-rtk/release/rtk"
 ```
 
-It needs the clones a `published` run sets up in `<work>/repos`.
+It needs the clones a `published` run sets up in `<work>/repos`, and that run's corpus file: `ab` reads the corpus with the same schema, so one without each repository's `url` and `rev` fails to load.
