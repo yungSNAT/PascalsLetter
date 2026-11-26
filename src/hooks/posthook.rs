@@ -1357,9 +1357,8 @@ fn deliver_seen(
                 .filter(|p| baseline.is_some() && p.split_once(' ').map(|(i, _)| i) == input)
                 .and_then(record_baseline)
                 .and_then(|previous| pointer(Some(previous)));
-            if hunks.is_some() {
-                sound = clear(&record);
-            } else if std::fs::write(&record, record_body(&seen, baseline)).is_err() {
+            // A hunked call keeps no record; any other keeps this one.
+            if hunks.is_some() || std::fs::write(&record, record_body(&seen, baseline)).is_err() {
                 sound = clear(&record);
             }
             hunks
@@ -2335,7 +2334,7 @@ mod tests {
         while let Some(head) = lines.next() {
             let op = head.find(['a', 'c', 'd']).expect("a hunk header");
             let start: usize = head[..op].split(',').next().unwrap().parse().unwrap();
-            let end: usize = head[..op].split(',').last().unwrap().parse().unwrap();
+            let end: usize = head[..op].split(',').next_back().unwrap().parse().unwrap();
             // `NaM` adds after line N; `c` and `d` replace lines N to end.
             let (keep, skip) = if &head[op..op + 1] == "a" {
                 (start, 0)
