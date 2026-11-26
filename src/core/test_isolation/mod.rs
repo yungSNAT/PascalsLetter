@@ -195,6 +195,22 @@ pub fn rtk_binary_is_built() -> bool {
     }
 }
 
+/// Whether a test that spawns the binary may run. A local run without a
+/// current binary skips, saying so on stderr; a CI or `RTK_PROOF` run fails
+/// instead, since a skipped test prints `ok` there and reads as a pass.
+pub fn rtk_binary_ready() -> bool {
+    if rtk_binary_is_built() {
+        return true;
+    }
+    assert!(
+        std::env::var_os("CI").is_none() && std::env::var_os("RTK_PROOF").is_none(),
+        "rtk binary at {} is missing or older than its sources: build it before the tests",
+        rtk_bin().display()
+    );
+    eprintln!("skipped: rtk binary missing or stale; run `cargo build` first");
+    false
+}
+
 /// When the binary's inputs were last touched, or `None` if the sources are
 /// not there to look at: the Rust sources, the filters `build.rs` embeds from
 /// `src/`, every file an `include_str!` or `include_bytes!` names outside the

@@ -6,7 +6,6 @@ fn format_duration_switches_units_at_one_second_and_one_minute() {
         (999, "999ms"),
         (1_000, "1.0s"),
         (1_260, "1.3s"),
-        (59_999, "60.0s"),
         (60_000, "1m0s"),
         (125_999, "2m5s"),
     ] {

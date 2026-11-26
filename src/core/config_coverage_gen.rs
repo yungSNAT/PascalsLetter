@@ -138,7 +138,7 @@ fn show_commands_leave_config_unchanged_and_handle_parse_errors() {
 #[cfg(unix)]
 #[test]
 fn config_cli_reports_defaults_and_explains_legacy_recall() {
-    if !test_isolation::rtk_binary_is_built() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
 
