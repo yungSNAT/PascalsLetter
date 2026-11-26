@@ -1369,8 +1369,11 @@ const PANEL_RULES: usize = 5;
 /// `rtk recall` pointers: how many, and the tokens they stood in for.
 #[cfg(feature = "engine")]
 fn repeat_kpi(calls: i64, tokens_in: i64, tokens_out: i64) -> String {
-    let _ = (calls, tokens_in, tokens_out);
-    String::new()
+    format!(
+        "{calls} repeated outputs sent as pointers: {} → {} tokens   est.",
+        format_tokens(tokens_in.max(0) as usize),
+        format_tokens(tokens_out.max(0) as usize),
+    )
 }
 
 fn print_kpi(label: &str, value: String) {

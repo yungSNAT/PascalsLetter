@@ -1326,7 +1326,10 @@ fn deliver_seen(
     if ours && sound {
         let _ = std::fs::remove_file(&taken);
         return match repeat {
-            Some(pointer) => Some(pointer.output),
+            Some(pointer) => {
+                record_repeat(event, &pointer);
+                Some(pointer.output)
+            }
             None => emitted,
         };
     }
@@ -1360,7 +1363,6 @@ thread_local! {
 
 /// Books a delivered pointer as its own `repeat` kind, per tool, so `rtk gain`
 /// counts what repeated outputs save.
-#[allow(dead_code)]
 fn record_repeat(event: &Value, pointer: &Pointer) {
     let tool = event
         .get("tool_name")
