@@ -6,12 +6,12 @@
 //! model cost than `String::len()`. The authoritative per-request token counts
 //! in the stats still come from the provider's `usage` field.
 
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 use tiktoken_rs::CoreBPE;
 
 /// The BPE is built once (embedded vocab, no network). `None` if it failed to
 /// load, in which case callers fall back to a bytes/4 estimate.
-static BPE: Lazy<Option<CoreBPE>> = Lazy::new(|| tiktoken_rs::o200k_base().ok());
+static BPE: LazyLock<Option<CoreBPE>> = LazyLock::new(|| tiktoken_rs::o200k_base().ok());
 
 /// Count the tokens in `text` (≈ bytes/4 fallback if the tokenizer is absent).
 pub fn count(text: &str) -> usize {

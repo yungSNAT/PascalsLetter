@@ -35,3 +35,18 @@ test("rtk runs only from an absolute PATH entry, never from the working folder o
       assert.deepEqual(pi.ran, bin ? [bin, bin] : [], where)
     }
   }))
+
+test("an rtk older than 0.23.0 disables the extension; a newer one, build metadata and all, does not", () =>
+  withDecoys("rtk-pi-version-", async ({ real }) => {
+    process.env.PATH = real
+    for (const [stdout, enabled] of [
+      ["rtk 0.22.9\n", false],
+      ["rtk 0.23.0\n", true],
+      ["rtk 1.2.0+fork.2\n", true],
+    ]) {
+      const pi = fakePi()
+      pi.exec = async () => ({ code: 0, stdout, stderr: "", killed: false })
+      await plugin(pi)
+      assert.equal(typeof pi.handlers.tool_call === "function", enabled, stdout)
+    }
+  }))
