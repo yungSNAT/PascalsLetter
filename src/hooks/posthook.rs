@@ -1047,9 +1047,19 @@ fn full_hash(text: &str) -> String {
 /// A session that starts, resumes, clears or compacts has lost the outputs a
 /// pointer would refer to.
 pub fn forget_repeats(event: &Value) {
+    #[cfg(test)]
+    FORGOTTEN.with(|forgotten| forgotten.borrow_mut().push(event.clone()));
+    #[cfg(not(test))]
     if let Ok(config) = Config::load() {
         forget_repeats_with(&config, event);
     }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// The events [`forget_repeats`] was called with under test, which
+    /// leaves the user's own repeat folders alone.
+    pub static FORGOTTEN: std::cell::RefCell<Vec<Value>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
 /// PreToolUse of a Bash, Read, Grep or Glob call. A call still marked never

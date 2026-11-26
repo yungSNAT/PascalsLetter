@@ -336,9 +336,11 @@ fn log(v: &Value, subject: &str, target: &str, rule: &str, action: &str) {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use permissions::PermissionVerdict;
+
     #[test]
     fn test_session_start_and_compaction_forget_repeats() {
-        use super::forgets_repeats;
         assert!(forgets_repeats(Some("SessionStart")));
         assert!(forgets_repeats(Some("PreCompact")));
         for other in [Some("PreToolUse"), Some("PostToolUse"), Some("Stop"), None] {
@@ -346,8 +348,15 @@ mod tests {
         }
     }
 
-    use super::*;
-    use permissions::PermissionVerdict;
+    /// A compaction reaching `handle` forgets the session's repeat records.
+    #[test]
+    fn test_handle_forgets_repeats_at_compaction() {
+        use crate::hooks::posthook::FORGOTTEN;
+        let event = serde_json::json!({"hook_event_name": "PreCompact", "session_id": "s1"});
+        FORGOTTEN.with(|f| f.borrow_mut().clear());
+        assert!(handle(&event, 0).expect("handled"));
+        FORGOTTEN.with(|f| assert_eq!(*f.borrow(), vec![event.clone()]));
+    }
 
     fn decide(cmd: &str, verdict: PermissionVerdict, excluded: &[String]) -> bool {
         let rewrite = decision::decide_with_params(
