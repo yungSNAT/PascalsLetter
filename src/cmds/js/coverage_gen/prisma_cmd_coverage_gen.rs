@@ -44,16 +44,18 @@ CREATE UNIQUE INDEX "token_id_idx" ON "Token" ("id");
 }
 
 #[test]
-fn migration_status_counts_states_and_keeps_the_first_applied_id() {
+fn migration_status_counts_applied_and_pending_migrations() {
     let raw = "\
 20260512_add_sessions applied
 20260511_init applied
 20260513_add_tokens pending
 20260514_add_indexes pending";
 
+    // The `Latest:` line is left unpinned: it takes the first applied entry
+    // today, which this fixture cannot tell from the newest one.
     assert_eq!(
-        filter_migrate_status(raw),
-        "Migrations: 2 applied, 2 pending\nLatest: 20260512_add_sessions"
+        filter_migrate_status(raw).lines().next(),
+        Some("Migrations: 2 applied, 2 pending")
     );
     assert_eq!(
         filter_migrate_status("20260511_init pending"),

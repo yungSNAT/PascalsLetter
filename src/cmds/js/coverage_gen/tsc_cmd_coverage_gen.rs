@@ -58,7 +58,7 @@ shift
 "#;
     let compiler_body = r#"
 if [ "$#" -eq 3 ] && [ "$1" = '--noEmit' ] && [ "$2" = '--project' ] && [ "$3" = 'project with spaces.json' ]; then
-    printf '%s\n' "coverage.ts(4,2): warning TS6133: invoked ${0##*/}" 'Found 1 error.'
+    printf '%s\n' "coverage.ts(4,2): error TS2322: invoked ${0##*/}" 'Found 1 error.'
 fi
 "#;
 
@@ -102,7 +102,7 @@ fi
 
         let invocation = format!("Running: {via} --noEmit --project project with spaces.json");
         assert!(stderr.lines().any(|line| line == invocation), "{stderr}");
-        let diagnostic = format!("coverage.ts(4,2): warning TS6133: invoked {tool}");
+        let diagnostic = format!("coverage.ts(4,2): error TS2322: invoked {tool}");
         assert!(stdout.contains(&diagnostic), "{stdout}");
         assert!(
             stdout.contains("TypeScript: 1 errors in 1 files"),

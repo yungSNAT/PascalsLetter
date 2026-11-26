@@ -34,7 +34,7 @@ fn scaffold_rejects_invalid_names_and_reports_a_blocked_directory() {
 }
 
 #[test]
-fn scaffold_pins_the_upstream_release_tag_and_preserves_existing_files() {
+fn scaffold_pins_the_release_tag_and_preserves_existing_files() {
     let root = test_isolation::tempdir();
     test_isolation::with_root(root.path(), || {
         user_env::with_vars(&[("RTK_PLUGIN_SOURCE", None)], || {

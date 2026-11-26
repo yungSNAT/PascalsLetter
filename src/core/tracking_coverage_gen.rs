@@ -15,6 +15,22 @@ fn assert_sqlite_failure<T: std::fmt::Debug>(result: Result<T>, detail: &str) {
     );
 }
 
+/// As `assert_blob_decode_error`, and the failing column is `column`.
+fn assert_blob_decode_error_at<T: std::fmt::Debug>(result: Result<T>, column: usize) {
+    let err = result.expect_err("a BLOB must not decode as a string");
+    assert!(
+        matches!(
+            err.downcast_ref::<rusqlite::Error>(),
+            Some(rusqlite::Error::InvalidColumnType(
+                index,
+                _,
+                rusqlite::types::Type::Blob
+            )) if *index == column
+        ),
+        "expected a BLOB error in column {column}, got {err:#}"
+    );
+}
+
 fn assert_blob_decode_error<T: std::fmt::Debug>(result: Result<T>) {
     let err = result.expect_err("a BLOB must not decode as a string");
     assert!(
@@ -324,13 +340,15 @@ fn parse_failure_summary_propagates_bad_columns_and_rows() {
         .conn
         .execute_batch("UPDATE parse_failures SET raw_command = X'FF';")
         .unwrap();
-    assert_blob_decode_error(tracker.get_parse_failure_summary());
+    // Column 0 of the top-commands query, which runs first.
+    assert_blob_decode_error_at(tracker.get_parse_failure_summary(), 0);
 
     tracker
         .conn
         .execute_batch("UPDATE parse_failures SET raw_command = 'ls', error_message = X'FF';")
         .unwrap();
-    assert_blob_decode_error(tracker.get_parse_failure_summary());
+    // Column 2 of the recent-failures query.
+    assert_blob_decode_error_at(tracker.get_parse_failure_summary(), 2);
 
     tracker
         .conn
