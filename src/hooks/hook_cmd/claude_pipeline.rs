@@ -23,6 +23,13 @@ pub(super) fn read_payload() -> Result<String> {
     Ok(input)
 }
 
+/// Events after which the agent no longer holds the outputs the repeat
+/// records name: a new, resumed or cleared session, and a compaction, which
+/// keeps the session but summarises its context.
+fn forgets_repeats(event: Option<&str>) -> bool {
+    matches!(event, Some(SESSION_START_KEY | PRE_COMPACT_KEY))
+}
+
 pub(super) fn handle(v: &Value, raw_len: usize) -> Result<bool> {
     crate::hooks::set_hook_agent("claude-code");
     if let Some(purpose) = v
@@ -33,21 +40,21 @@ pub(super) fn handle(v: &Value, raw_len: usize) -> Result<bool> {
     }
     crate::core::call_context::set_source(v);
 
-    match v.get("hook_event_name").and_then(|e| e.as_str()) {
+    let event = v.get("hook_event_name").and_then(|e| e.as_str());
+    if forgets_repeats(event) {
+        crate::hooks::posthook::forget_repeats(v);
+    }
+    match event {
         Some(POST_TOOL_USE_KEY) => {
             crate::hooks::posthook::run(v);
             return Ok(true);
         }
         Some(SESSION_START_KEY) => {
-            crate::hooks::posthook::forget_repeats(v);
             crate::hooks::session_start::run();
             return Ok(true);
         }
         // Prints nothing: PreCompact's stdout becomes compaction instructions.
-        Some(PRE_COMPACT_KEY) => {
-            crate::hooks::posthook::forget_repeats(v);
-            return Ok(true);
-        }
+        Some(PRE_COMPACT_KEY) => return Ok(true),
         Some(PRE_TOOL_USE_KEY) | None => {
             crate::hooks::posthook::note_tool_start(v);
             if raw_len > STDIN_CAP {
@@ -329,6 +336,16 @@ fn log(v: &Value, subject: &str, target: &str, rule: &str, action: &str) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn test_session_start_and_compaction_forget_repeats() {
+        use super::forgets_repeats;
+        assert!(forgets_repeats(Some("SessionStart")));
+        assert!(forgets_repeats(Some("PreCompact")));
+        for other in [Some("PreToolUse"), Some("PostToolUse"), Some("Stop"), None] {
+            assert!(!forgets_repeats(other), "{other:?}");
+        }
+    }
+
     use super::*;
     use permissions::PermissionVerdict;
 

@@ -1269,7 +1269,10 @@ fn deliver_native(config: &Config, event: &Value, emitted: Option<String>) -> Op
     let baseline = text.as_deref().filter(|text| {
         config.hooks.dedup_hunks
             && event.get("tool_name").and_then(Value::as_str) == Some("Read")
-            && response.as_ref().is_some_and(|r| whole_read(event, r))
+            // The tool's own response: a rewrite resets its line counts.
+            && event
+                .get("tool_response")
+                .is_some_and(|r| whole_read(event, r))
             && hunkable(text)
     });
     deliver_seen(config, event, seen, baseline, emitted, |previous| {
@@ -1529,7 +1532,10 @@ fn native_pointer(
             )
         }
         Some(previous) => {
-            if !whole_read(event, &response) {
+            if !event
+                .get("tool_response")
+                .is_some_and(|r| whole_read(event, r))
+            {
                 return None;
             }
             let hunks = read_hunks(previous, text)?;
@@ -1544,7 +1550,7 @@ fn native_pointer(
             let hash = store_repeat(config, text)?;
             format!(
                 "[rtk: {path} changed since your last Read of it in this session ({} lines now). \
-                 These diff hunks, numbered by the file's own lines, turn the text you got \
+                 These diff hunks turn the text you got \
                  then into the current one, which prints whole with: rtk recall {hash}]\n{hunks}",
                 text.lines().count(),
             )
@@ -2465,13 +2471,7 @@ mod tests {
         let config = hunk_config(dir.path());
         // One line inserted at line 10: inside every window below.
         let old = lines(400);
-        let new = old.replace(
-            "line 9
-",
-            "line 9
-line 9.5
-",
-        );
+        let new = old.replace("line 9\n", "line 9\nline 9.5\n");
         let read = |id: &str, path: &str, content: &str, edit: &dyn Fn(&mut Value)| {
             let mut call = Call::read(id, path, content);
             edit(&mut call.event);
@@ -2521,14 +2521,38 @@ line 9.5
         let path = "/repo/src/control.rs";
         read("a", path, &old, &whole);
         let shown = hunks_of(&read("b", path, &new, &whole)).expect("hunks");
+        assert!(shown.ends_with("\n10a11\n> line 9.5\n"), "{shown}");
+    }
+
+    /// A Read rule's rewrite sets `numLines` and `totalLines` to the rewritten
+    /// text, so a cut Read it converted would look whole. Wholeness is judged
+    /// on the tool's own response.
+    #[test]
+    fn test_converted_truncated_reread_is_whole() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = hunk_config(dir.path());
+        let path = "/repo/data.txt";
+        let file_old: Vec<String> = (1..=2100).map(|k| format!("r{k}")).collect();
+        let mut file_new = file_old.clone();
+        file_new.insert(9, "new".to_string());
+        let head =
+            |f: &[String]| -> String { f[..2000].iter().map(|l| format!("{l}\n")).collect() };
+        let read = |id: &str, content: &str, total: usize| {
+            let mut call = Call::read(id, path, content);
+            call.event["tool_response"]["file"]["totalLines"] = serde_json::json!(total);
+            let (updated, _) = rebuild(&call.event, "Read", content).expect("rebuild");
+            let envelope = serde_json::json!({"hookSpecificOutput": {
+                "hookEventName": POST_TOOL_USE_KEY, "updatedToolOutput": updated,
+                "additionalContext": READ_CONVERSION_NOTE}})
+            .to_string();
+            call.pre(&config);
+            deliver_native(&config, &call.event, Some(envelope))
+        };
+        read("a", &head(&file_old), 2100);
+        let out = read("b", &head(&file_new), 2101);
         assert!(
-            shown.ends_with(
-                "
-10a11
-> line 9.5
-"
-            ),
-            "{shown}"
+            hunks_of(&out).is_none(),
+            "hunks between 2 converted windows"
         );
     }
 
