@@ -117,7 +117,7 @@ fn discovery_handles_absence_and_returns_only_visible_crates_in_order() {
 fn plugin_cli_lists_scaffolds_and_distinguishes_cargo_failures() {
     use std::os::unix::fs::PermissionsExt;
 
-    if !test_isolation::rtk_binary_or_skip() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
 

@@ -66,7 +66,7 @@ fn status_is_read_only_and_disable_preserves_local_data() {
 #[cfg(unix)]
 #[test]
 fn status_reports_unasked_consent_and_the_environment_override() {
-    if !test_isolation::rtk_binary_or_skip() {
+    if !test_isolation::rtk_binary_ready() {
         return;
     }
 
