@@ -406,7 +406,9 @@ mod tests {
         let mut first = NamedTempFile::new().expect("create tempfile");
         writeln!(first, "{line}").expect("write line");
         let mut resumed = NamedTempFile::new().expect("create tempfile");
-        writeln!(resumed, "{line}\n{other}").expect("write lines");
+        // A subagent turn kept inline is not the session's own.
+        let sidechain = r#"{"type":"assistant","isSidechain":true,"message":{"id":"s","usage":{"input_tokens":100}}}"#;
+        writeln!(resumed, "{line}\n{other}\n{sidechain}").expect("write lines");
 
         let (usage, logs_read) =
             sum_token_usage(&[first.path().to_path_buf(), resumed.path().to_path_buf()]);
