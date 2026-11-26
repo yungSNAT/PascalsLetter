@@ -399,3 +399,7 @@ Tests: 1, Assertions: 0, Errors: 1."#;
         );
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/phpunit_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_php_phpunit_cmd;

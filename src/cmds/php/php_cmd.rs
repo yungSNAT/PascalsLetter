@@ -113,3 +113,7 @@ mod tests {
         assert!(filtered.contains("Parse error"));
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/php_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_php_php_cmd;

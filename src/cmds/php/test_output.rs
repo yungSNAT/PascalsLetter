@@ -82,3 +82,7 @@ mod tests {
         assert!(filtered.contains("Failed asserting true is false"));
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/test_output_coverage_gen.rs"]
+mod coverage_gen_src_cmds_php_test_output;

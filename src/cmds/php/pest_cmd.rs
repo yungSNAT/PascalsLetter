@@ -44,3 +44,7 @@ mod tests {
         assert!(filtered.contains("PASS  Tests\\Unit\\ExampleTest"));
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/pest_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_php_pest_cmd;

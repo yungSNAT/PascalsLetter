@@ -224,3 +224,7 @@ mod tests {
         assert!(!result.contains("pint: ok"), "got: {}", result);
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/pint_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_php_pint_cmd;

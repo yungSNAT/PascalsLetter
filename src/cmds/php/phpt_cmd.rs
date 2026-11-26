@@ -885,3 +885,7 @@ FAILURES (1):
         assert_eq!(out, expected, "got: {}", out);
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/phpt_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_php_phpt_cmd;
