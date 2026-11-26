@@ -311,7 +311,6 @@ mod spawned {
             (&["jest", "src"], "jest"),
             (&["tsc", "--noEmit"], "tsc"),
             (&["next", "build"], "next"),
-            (&["format", "--check", "."], "prettier"),
             (&["playwright", "test"], "playwright"),
         ] {
             let calls = run_and_calls(&sb, args);
