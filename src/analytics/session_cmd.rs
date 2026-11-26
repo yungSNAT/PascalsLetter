@@ -137,8 +137,8 @@ fn token_usage_report(usage: &TokenUsage, logs_read: usize, logs_total: usize) -
     }
     report.push_str(
         "\n  Token counts, not cost: each kind bills at its own rate. Tool results reach \
-         the model as input, are written to the cache once and read back on each later \
-         turn. Subagent logs are not counted.",
+         the model as input, are written to the cache and, whilst it holds, read back on \
+         each later turn. Subagent logs are not counted.",
     );
     report
 }
@@ -383,8 +383,8 @@ mod tests {
              Fresh input      20.0K    1%\n  \
              Output           40.0K    2%\n  \
              Token counts, not cost: each kind bills at its own rate. Tool results reach \
-             the model as input, are written to the cache once and read back on each later \
-             turn. Subagent logs are not counted."
+             the model as input, are written to the cache and, whilst it holds, read back on \
+             each later turn. Subagent logs are not counted."
         );
     }
 
