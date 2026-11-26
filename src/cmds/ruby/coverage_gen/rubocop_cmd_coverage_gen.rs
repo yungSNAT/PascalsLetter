@@ -77,8 +77,8 @@ fn json_file_overflow_keeps_ten_files_inline_and_reports_two_hidden() {
                     .next()
                     .expect("expected a recall hint for the hidden files");
                 let recall_id = hint
-                    .strip_prefix("  [+2 hidden: rtk recall ")
-                    .and_then(|suffix| suffix.strip_suffix(']'))
+                    .strip_prefix("  ")
+                    .and_then(|line| hidden_hint_id(line, 2))
                     .expect("hint should report two hidden files and give a recall command");
                 assert!(
                     !recall_id.is_empty() && recall_id.bytes().all(|byte| byte.is_ascii_hexdigit()),
@@ -137,4 +137,14 @@ fn compact_paths_keep_the_last_app_directory_or_just_the_basename() {
     );
     assert_eq!(compact_ruby_path("/checkout/scripts/tool.rb"), "tool.rb");
     assert_eq!(compact_ruby_path("Rakefile"), "Rakefile");
+}
+
+/// The recall ID in a `[+N hidden (lines A-B): rtk recall <id>]` tail hint,
+/// provided the range covers exactly `hidden` lines.
+fn hidden_hint_id(line: &str, hidden: usize) -> Option<&str> {
+    let rest = line.strip_prefix(&format!("[+{hidden} hidden (lines "))?;
+    let (range, id) = rest.split_once("): rtk recall ")?;
+    let (first, last) = range.split_once('-')?;
+    let (first, last): (usize, usize) = (first.parse().ok()?, last.parse().ok()?);
+    (first >= 1 && last + 1 == first + hidden).then_some(id.strip_suffix(']')?)
 }

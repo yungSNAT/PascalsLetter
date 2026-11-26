@@ -136,8 +136,7 @@ fn go_build_and_vet_cap_diagnostics_and_show_a_recall_hint() {
 
                         let recall_id = lines
                             .next()
-                            .and_then(|line| line.strip_prefix("  [+2 hidden: rtk recall "))
-                            .and_then(|line| line.strip_suffix(']'))
+                            .and_then(|line| hidden_hint_id(line.strip_prefix("  ")?, 2))
                             .unwrap_or_else(|| panic!("missing {tool} recall hint: {summary}"));
                         assert!(
                             !recall_id.is_empty()
@@ -330,4 +329,14 @@ esac
         assert!(stderr.contains("Running: go tool golangci-lint run --output.json.path stdout"));
         assert!(stderr.lines().any(|line| line == "lint fixture notice"));
     }
+}
+
+/// The recall ID in a `[+N hidden (lines A-B): rtk recall <id>]` tail hint,
+/// provided the range covers exactly `hidden` lines.
+fn hidden_hint_id(line: &str, hidden: usize) -> Option<&str> {
+    let rest = line.strip_prefix(&format!("[+{hidden} hidden (lines "))?;
+    let (range, id) = rest.split_once("): rtk recall ")?;
+    let (first, last) = range.split_once('-')?;
+    let (first, last): (usize, usize) = (first.parse().ok()?, last.parse().ok()?);
+    (first >= 1 && last + 1 == first + hidden).then_some(id.strip_suffix(']')?)
 }

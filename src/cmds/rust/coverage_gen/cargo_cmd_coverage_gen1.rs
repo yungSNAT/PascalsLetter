@@ -15,7 +15,10 @@ fn filter_with_tee(input: &str, root: &Path) -> String {
 fn assert_recall_hint(summary: &str, prefix: &str) {
     let id = summary
         .lines()
-        .find_map(|line| line.strip_prefix(prefix)?.strip_suffix(']'))
+        .find_map(|line| match prefix.strip_prefix("  [+") {
+            Some(hidden) => hidden_hint_id(line.strip_prefix("  ")?, hidden.parse().ok()?),
+            None => line.strip_prefix(prefix)?.strip_suffix(']'),
+        })
         .unwrap_or_else(|| panic!("missing recall hint starting with {prefix:?}: {summary}"));
     assert_eq!(id.len(), 16, "invalid recall ID: {id:?}");
     assert!(
@@ -93,7 +96,7 @@ fn clippy_caps_locations_and_rules_and_offers_hidden_rule_recall() {
         "{result}"
     );
     assert!(result.lines().any(|line| line == "… +2 more rules"));
-    assert_recall_hint(&result, "  [+2 hidden: rtk recall ");
+    assert_recall_hint(&result, "  [+2");
 }
 
 #[cfg(unix)]
@@ -151,4 +154,14 @@ fn cargo_passthrough_preserves_arguments_and_child_output() {
         stderr.lines().any(|line| line == "passthrough-stderr"),
         "{stderr}"
     );
+}
+
+/// The recall ID in a `[+N hidden (lines A-B): rtk recall <id>]` tail hint,
+/// provided the range covers exactly `hidden` lines.
+fn hidden_hint_id(line: &str, hidden: usize) -> Option<&str> {
+    let rest = line.strip_prefix(&format!("[+{hidden} hidden (lines "))?;
+    let (range, id) = rest.split_once("): rtk recall ")?;
+    let (first, last) = range.split_once('-')?;
+    let (first, last): (usize, usize) = (first.parse().ok()?, last.parse().ok()?);
+    (first >= 1 && last + 1 == first + hidden).then_some(id.strip_suffix(']')?)
 }
