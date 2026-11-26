@@ -3029,9 +3029,40 @@ mod tests {
             .unwrap();
         assert!(new_content.starts_with("Cargo.lock: "), "summary header");
         assert!(new_content.contains("serde@"));
+        assert_eq!(
+            hook["additionalContext"],
+            json!(READ_CONVERSION_NOTE),
+            "a whole Read gets the plain note"
+        );
+    }
+
+    #[test]
+    fn test_read_cut_lockfile_note_names_the_lines_read() {
+        let whole = include_str!("../../Cargo.lock");
+        let total = whole.lines().count();
+        let kept = total / 2;
+        let content: String = whole.lines().take(kept).map(|l| format!("{l}\n")).collect();
+        let event = serde_json::json!({
+            "tool_name": "Read",
+            "tool_input": {"file_path": "/repo/Cargo.lock"},
+            "tool_response": {"type": "text", "file": {
+                "filePath": "/repo/Cargo.lock",
+                "content": content,
+                "numLines": kept,
+                "startLine": 1,
+                "totalLines": total
+            }},
+            "duration_ms": 3
+        });
+        let out = run_posthook(&event).expect("a cut lockfile still summarises");
+        let v: Value = serde_json::from_str(&out).expect("valid JSON");
+        let note = v["hookSpecificOutput"]["additionalContext"]
+            .as_str()
+            .expect("Read conversion note");
+        assert!(note.starts_with(READ_CONVERSION_NOTE), "{note}");
         assert!(
-            hook["additionalContext"].as_str().is_some(),
-            "Read conversion note"
+            note.contains(&format!("lines 1-{kept} of {total}")),
+            "the note names the lines the summary covers: {note}"
         );
     }
 
