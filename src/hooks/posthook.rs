@@ -2502,21 +2502,17 @@ mod tests {
             let files = agent_files(&config, &call.event).expect("agent files");
             files.dir.join(&files.record)
         };
-        let cases: [(&str, fn(&str) -> String); 2] = [
-            ("corrupt kept text", |body| {
-                body.replace("line 200\n", "line 2OO\n")
-            }),
-            ("old format", |body| {
-                body.lines().next().unwrap().to_string()
-            }),
-        ];
-        for (n, (name, rewrite)) in cases.into_iter().enumerate() {
+        let rewrite = |name: &str, body: &str| match name {
+            "corrupt kept text" => body.replace("line 200\n", "line 2OO\n"),
+            _ => body.lines().next().unwrap().to_string(),
+        };
+        for (n, name) in ["corrupt kept text", "old format"].into_iter().enumerate() {
             let path = format!("/repo/src/{n}.rs");
             let a = Call::read(&format!("{n}a"), &path, &first);
             a.run(&config);
             let body = std::fs::read_to_string(record(&a)).expect("record");
             assert!(body.contains("line 200\n"), "{name}: the text is kept");
-            std::fs::write(record(&a), rewrite(&body)).expect("rewrite");
+            std::fs::write(record(&a), rewrite(name, &body)).expect("rewrite");
             let out = Call::read(&format!("{n}b"), &path, &second).run(&config);
             assert!(hunks_of(&out).is_none(), "{name}");
             assert!(native_pointer_of(&out).is_none(), "{name}");
