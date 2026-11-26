@@ -31,6 +31,7 @@ fn assert_blob_decode_error_at<T: std::fmt::Debug>(result: Result<T>, column: us
     );
 }
 
+#[cfg(feature = "engine")]
 fn assert_blob_decode_error<T: std::fmt::Debug>(result: Result<T>) {
     let err = result.expect_err("a BLOB must not decode as a string");
     assert!(
