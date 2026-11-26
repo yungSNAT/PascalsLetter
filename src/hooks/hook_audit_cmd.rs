@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 /// Default log file location (aligned with hook's $HOME/.local/share/rtk/).
 fn default_log_path() -> PathBuf {
-    if let Some(dir) = user_env::var("RTK_AUDIT_DIR") {
+    if let Some(dir) = user_env::var("RTK_AUDIT_DIR").filter(|d| !d.is_empty()) {
         PathBuf::from(dir).join("hook-audit.log")
     } else {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());

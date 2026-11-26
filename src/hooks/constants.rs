@@ -84,6 +84,23 @@ pub fn claude_matcher(subjects: &[rtk_engine::block::Subject]) -> Option<String>
     });
     Some(tools.join("|"))
 }
+#[cfg(feature = "engine")]
+/// `matcher` with `tools` added, in the same stable order.
+pub fn claude_matcher_with(matcher: &str, tools: &[&str]) -> String {
+    let mut all: Vec<&str> = matcher.split('|').filter(|t| !t.is_empty()).collect();
+    for tool in tools {
+        if !all.contains(tool) {
+            all.push(tool);
+        }
+    }
+    all.sort_by_key(|t| {
+        CLAUDE_TOOL_ORDER
+            .iter()
+            .position(|o| o == t)
+            .unwrap_or(usize::MAX)
+    });
+    all.join("|")
+}
 /// Native Rust hook command for Trae.
 pub const TRAE_HOOK_COMMAND: &str = "rtk hook trae";
 /// Native Rust hook command for Codex CLI.

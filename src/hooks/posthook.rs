@@ -108,8 +108,18 @@ fn subject_of_for(agent: &str, tool_name: &str) -> Subject {
         .unwrap_or(Subject::Any)
 }
 
-/// Testable core: gates → extract → classify → evaluate rules → guard → re-wrap.
+/// Testable core: the filtered output, or a repeat pointer for a Read, Grep
+/// or Glob result.
 fn process_with_config(event: &Value, config: &Config, pipeline: &Resolved) -> Option<String> {
+    let emitted = filter_tool_output(event, config, pipeline);
+    match event.get("tool_name").and_then(Value::as_str) {
+        Some("Read" | "Grep" | "Glob") => deliver_native(config, event, emitted),
+        _ => emitted,
+    }
+}
+
+/// Gates → extract → classify → evaluate rules → guard → re-wrap.
+fn filter_tool_output(event: &Value, config: &Config, pipeline: &Resolved) -> Option<String> {
     let tool_name = event.get("tool_name")?.as_str()?;
     let subject = subject_of(tool_name);
 
@@ -788,7 +798,7 @@ fn process_shell(
             &raw_combined,
             duration_ms,
         );
-        return None;
+        return deliver(config, event, response, command, stdout, stderr, None);
     }
 
     let slug = format!("bash_{first_word}");
@@ -808,7 +818,7 @@ fn process_shell(
             &raw_combined,
             duration_ms,
         );
-        return None;
+        return deliver(config, event, response, command, stdout, stderr, None);
     }
 
     let mut updated = response.clone();
@@ -835,15 +845,588 @@ fn process_shell(
         &emitted_combined,
         duration_ms,
     );
-    Some(
-        json!({
-            "hookSpecificOutput": {
-                "hookEventName": POST_TOOL_USE_KEY,
-                "updatedToolOutput": updated,
-            }
-        })
-        .to_string(),
+    let emitted = json!({
+        "hookSpecificOutput": {
+            "hookEventName": POST_TOOL_USE_KEY,
+            "updatedToolOutput": updated,
+        }
+    })
+    .to_string();
+    deliver(
+        config,
+        event,
+        response,
+        command,
+        &composed_stdout,
+        &filtered_stderr,
+        Some(emitted),
     )
+}
+
+/// Tools whose repeated results can become pointers.
+const REPEAT_TOOLS: &[&str] = &["Bash", "Read", "Grep", "Glob"];
+
+/// Where each agent's last deliveries in a session are remembered.
+fn repeat_dir(config: &Config, event: &Value) -> Option<std::path::PathBuf> {
+    let session = event
+        .get("session_id")?
+        .as_str()
+        .filter(|s| !s.is_empty())?;
+    Some(
+        tee::posthook_recall_dir(config)?
+            .join("repeat")
+            .join(short_hash(session)),
+    )
+}
+
+/// An agent's repeat state in a session's folder.
+struct AgentFiles {
+    dir: std::path::PathBuf,
+    /// The agent's name in the folder; its mark is `<agent>.run`.
+    agent: String,
+    /// The record this call compares against: the agent's last completed
+    /// Bash call (`<agent>`), or its last completed Read, Grep or Glob call
+    /// with this same input (`<agent>.<input digest>`).
+    record: String,
+}
+
+impl AgentFiles {
+    fn record(&self) -> std::path::PathBuf {
+        self.dir.join(&self.record)
+    }
+
+    fn mark(&self) -> std::path::PathBuf {
+        self.dir.join(format!("{}.run", self.agent))
+    }
+
+    /// A mark holds the id of the call in flight (empty: none matches),
+    /// then the records to clear if it is found stale. A mark written before
+    /// Read, Grep and Glob were covered holds the id alone and stands for the
+    /// Bash record.
+    fn records_of(&self, mark: &str) -> Vec<String> {
+        let mut lines = mark.split('\n');
+        lines.next();
+        let names: Vec<String> = lines
+            .filter(|name| self.is_record_name(name))
+            .map(str::to_string)
+            .collect();
+        if names.is_empty() {
+            vec![self.agent.clone()]
+        } else {
+            names
+        }
+    }
+
+    fn is_record_name(&self, name: &str) -> bool {
+        name.strip_prefix(&self.agent).is_some_and(|rest| {
+            rest.is_empty()
+                || rest
+                    .strip_prefix('.')
+                    .is_some_and(|d| d.len() == 16 && d.bytes().all(|b| b.is_ascii_hexdigit()))
+        })
+    }
+
+    /// Clears `names` and writes the mark: this call's, when every one is
+    /// gone, else an empty id naming the records still to clear.
+    fn settle(&self, id: &str, names: Vec<String>) {
+        let mut left: Vec<String> = Vec::new();
+        for name in names {
+            if !left.contains(&name) && !clear(&self.dir.join(&name)) {
+                left.push(name);
+            }
+        }
+        let body = if left.is_empty() {
+            mark_body(id, std::slice::from_ref(&self.record))
+        } else {
+            mark_body("", &left)
+        };
+        self.write_mark(&body);
+    }
+
+    /// The record may still be there: no call matches the mark until a
+    /// start has cleared it.
+    fn poison(&self) {
+        let mut names = std::fs::read_to_string(self.mark())
+            .map(|mark| self.records_of(&mark))
+            .unwrap_or_default();
+        if !names.contains(&self.record) {
+            names.push(self.record.clone());
+        }
+        self.write_mark(&mark_body("", &names));
+    }
+
+    /// A mark that cannot be rewritten is removed, so the call it named
+    /// matches nothing.
+    fn write_mark(&self, body: &str) {
+        if std::fs::write(self.mark(), body).is_err() {
+            let _ = std::fs::remove_file(self.mark());
+        }
+    }
+}
+
+fn mark_body(id: &str, records: &[String]) -> String {
+    let mut body = id.to_string();
+    for name in records {
+        body.push('\n');
+        body.push_str(name);
+    }
+    body
+}
+
+fn mark_id(mark: &str) -> &str {
+    mark.split('\n').next().unwrap_or("")
+}
+
+/// `agent_id` is sent only from a subagent.
+fn agent_files(config: &Config, event: &Value) -> Option<AgentFiles> {
+    let agent = short_hash(
+        event
+            .get("agent_id")
+            .and_then(Value::as_str)
+            .unwrap_or("main"),
+    );
+    let record = match event.get("tool_name").and_then(Value::as_str) {
+        Some("Bash") => agent.clone(),
+        _ => format!("{agent}.{}", short_hash(&input_key(event))),
+    };
+    Some(AgentFiles {
+        dir: repeat_dir(config, event)?,
+        agent,
+        record,
+    })
+}
+
+/// A Read, Grep or Glob call's tool and arguments.
+fn input_key(event: &Value) -> String {
+    format!(
+        "{}\0{}",
+        event
+            .get("tool_name")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+        event.get("tool_input").unwrap_or(&Value::Null)
+    )
+}
+
+/// Pointers need the option, recall storage that accepts writes, the Claude
+/// Code hook and a Bash, Read, Grep or Glob call.
+fn dedup_active(config: &Config, event: &Value) -> bool {
+    config.hooks.dedup_repeats
+        && matches!(
+            config.retriever.mode,
+            crate::core::retriever::RecoveryMode::Sqlite
+        )
+        && !crate::core::retriever::recovery_disabled_by_env()
+        && super::hook_agent().as_deref().unwrap_or("claude-code") == "claude-code"
+        && event
+            .get("tool_name")
+            .and_then(Value::as_str)
+            .is_some_and(|tool| REPEAT_TOOLS.contains(&tool))
+}
+
+fn tool_use_id(event: &Value) -> &str {
+    event
+        .get("tool_use_id")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+}
+
+fn short_hash(text: &str) -> String {
+    full_hash(text)[..16].to_string()
+}
+
+/// The whole SHA-256 digest: equal digests stand for equal bytes.
+fn full_hash(text: &str) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(text.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// A session that starts, resumes, clears or compacts has lost the outputs a
+/// pointer would refer to.
+pub fn forget_repeats(event: &Value) {
+    if let Ok(config) = Config::load() {
+        forget_repeats_with(&config, event);
+    }
+}
+
+/// PreToolUse of a Bash, Read, Grep or Glob call. A call still marked never
+/// reached PostToolUse (it failed, was denied or interrupted, or its hook
+/// died), or is still running beside this one, so the records it and this
+/// call compare against no longer hold what the agent last got. Then this
+/// call is marked.
+pub fn note_tool_start(event: &Value) {
+    if event
+        .get("tool_name")
+        .and_then(Value::as_str)
+        .is_some_and(|tool| REPEAT_TOOLS.contains(&tool))
+    {
+        note_tool_start_with(&crate::core::config::cached_config(), event);
+    }
+}
+
+fn note_tool_start_with(config: &Config, event: &Value) {
+    if !dedup_active(config, event) {
+        return;
+    }
+    let Some(files) = agent_files(config, event) else {
+        return;
+    };
+    let id = tool_use_id(event);
+    let mark = files.mark();
+    // A session's first call prunes, for installs without SessionStart.
+    if !files.dir.exists() && crate::core::utils::create_private_dir(&files.dir).is_ok() {
+        prune_repeats(&files.dir, std::time::SystemTime::now());
+    }
+    // Creating the mark is the check: of 2 parallel starts, the second finds
+    // it and clears both calls' records.
+    let created = crate::core::utils::create_private_dir(&files.dir).is_ok()
+        && std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&mark)
+            .and_then(|mut file| {
+                std::io::Write::write_all(
+                    &mut file,
+                    mark_body(id, std::slice::from_ref(&files.record)).as_bytes(),
+                )
+            })
+            .is_ok();
+    if !created {
+        let mut names = files.records_of(&std::fs::read_to_string(&mark).unwrap_or_default());
+        names.push(files.record.clone());
+        files.settle(id, names);
+    }
+}
+
+/// Deletes a record; false when one may still be there.
+fn clear(record: &std::path::Path) -> bool {
+    match std::fs::remove_file(record) {
+        Ok(()) => true,
+        Err(e) => e.kind() == std::io::ErrorKind::NotFound,
+    }
+}
+
+fn forget_repeats_with(config: &Config, event: &Value) {
+    if let Some(dir) = repeat_dir(config, event) {
+        let _ = std::fs::remove_dir_all(&dir);
+        prune_repeats(&dir, std::time::SystemTime::now());
+    }
+}
+
+/// A session folder untouched this long belongs to a finished session.
+const REPEAT_SESSION_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(7 * 24 * 3600);
+/// A taken mark (`<agent>.run.<pid>`) lives for one PostToolUse; one this old
+/// was left by a hook that died.
+const TAKEN_MARK_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(3600);
+
+/// Removes other sessions' folders untouched for `REPEAT_SESSION_MAX_AGE`
+/// and taken marks older than `TAKEN_MARK_MAX_AGE`. `live` (the session
+/// being started or used) is never removed. Old folders are renamed to a
+/// tombstone before deletion so a resuming session starts clean instead of
+/// reading a half-deleted folder, and a failed rename leaves the folder alone.
+fn is_pruning_tombstone(name: &std::ffi::OsStr) -> bool {
+    name.to_str().is_some_and(|s| {
+        s.rsplit_once(".pruning.")
+            .is_some_and(|(_, pid)| !pid.is_empty() && pid.bytes().all(|b| b.is_ascii_digit()))
+    })
+}
+
+fn prune_repeats(live: &std::path::Path, now: std::time::SystemTime) {
+    prune_repeats_with(live, now, &mut |dir| {
+        let _ = std::fs::remove_dir_all(dir);
+    });
+}
+
+fn prune_repeats_with(
+    live: &std::path::Path,
+    now: std::time::SystemTime,
+    remove_dir: &mut impl FnMut(&std::path::Path),
+) {
+    let Some(entries) = live.parent().and_then(|root| std::fs::read_dir(root).ok()) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        // Not followed: a link is not a session's folder.
+        if !entry.file_type().is_ok_and(|t| t.is_dir()) {
+            continue;
+        }
+        let path = entry.path();
+        if path == live {
+            prune_taken_marks(&path, now);
+        } else if is_pruning_tombstone(&entry.file_name()) {
+            if older_than(&path, now, REPEAT_SESSION_MAX_AGE) {
+                remove_dir(&path);
+            }
+        } else if older_than(&path, now, REPEAT_SESSION_MAX_AGE) {
+            let mut tombstone = path.as_os_str().to_os_string();
+            tombstone.push(format!(".pruning.{}", std::process::id()));
+            let tombstone = std::path::PathBuf::from(tombstone);
+            if std::fs::rename(&path, &tombstone).is_ok() {
+                remove_dir(&tombstone);
+            }
+        } else if older_than(&path, now, TAKEN_MARK_MAX_AGE) {
+            // A folder touched within the hour can hold no stale taken mark
+            // worth a full listing yet.
+            prune_taken_marks(&path, now);
+        }
+    }
+}
+
+fn prune_taken_marks(dir: &std::path::Path, now: std::time::SystemTime) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let taken = entry.file_name().to_str().is_some_and(|name| {
+            name.split_once(".run.").is_some_and(|(agent, pid)| {
+                agent.len() == 16
+                    && agent.bytes().all(|b| b.is_ascii_hexdigit())
+                    && !pid.is_empty()
+                    && pid.bytes().all(|b| b.is_ascii_digit())
+            })
+        });
+        if taken && older_than(&entry.path(), now, TAKEN_MARK_MAX_AGE) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
+fn older_than(
+    path: &std::path::Path,
+    now: std::time::SystemTime,
+    age: std::time::Duration,
+) -> bool {
+    std::fs::symlink_metadata(path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|modified| now.duration_since(modified).ok())
+        .is_some_and(|elapsed| elapsed >= age)
+}
+
+/// Hands back what the agent gets for this Bash call (`emitted`, or `None`
+/// for the command's own output), or a pointer when `[hooks] dedup_repeats`
+/// is on and the agent's last completed Bash call ran the same command and
+/// got these same bytes.
+fn deliver(
+    config: &Config,
+    event: &Value,
+    response: &Value,
+    command: &str,
+    stdout: &str,
+    stderr: &str,
+    emitted: Option<String>,
+) -> Option<String> {
+    if !dedup_active(config, event) {
+        return emitted;
+    }
+    let delivered = combine_streams(stdout, stderr);
+    deliver_seen(
+        config,
+        event,
+        Some((command, delivered.as_str())),
+        emitted,
+        || pointer(config, response, &delivered),
+    )
+}
+
+/// Read, Grep and Glob: hands back what the agent gets (`emitted`, or `None`
+/// for the tool's own result), or a pointer when the agent's last completed
+/// call of the same tool with the same arguments got this same result. The
+/// result is compared whole, so a file that changed is delivered whole.
+fn deliver_native(config: &Config, event: &Value, emitted: Option<String>) -> Option<String> {
+    if !dedup_active(config, event) {
+        return emitted;
+    }
+    let envelope = emitted
+        .as_deref()
+        .and_then(|out| serde_json::from_str::<Value>(out).ok());
+    let response = match &emitted {
+        Some(_) => envelope
+            .as_ref()
+            .and_then(|v| v.pointer("/hookSpecificOutput/updatedToolOutput").cloned()),
+        None => event.get("tool_response").cloned(),
+    };
+    let text = response.as_ref().and_then(native_text);
+    // Everything the agent is shown but the call's duration.
+    let shown = response.as_ref().filter(|_| text.is_some()).map(|r| {
+        let mut r = r.clone();
+        if let Some(obj) = r.as_object_mut() {
+            obj.remove("durationMs");
+        }
+        r.to_string()
+    });
+    let key = input_key(event);
+    let seen = shown.as_deref().map(|shown| (key.as_str(), shown));
+    deliver_seen(config, event, seen, emitted, || {
+        native_pointer(config, event, envelope, response?, &text?)
+    })
+}
+
+/// A call counts as completed only when its PreToolUse marked it and nothing
+/// else started since; any doubt delivers the output. `seen` is the call's
+/// input and what the agent was shown (`None`: nothing to compare). Claude
+/// Code sends `agent_id` only from a subagent, so its absence is the main
+/// thread; other hosts are left alone.
+fn deliver_seen(
+    config: &Config,
+    event: &Value,
+    seen: Option<(&str, &str)>,
+    emitted: Option<String>,
+    pointer: impl FnOnce() -> Option<String>,
+) -> Option<String> {
+    if !dedup_active(config, event) {
+        return emitted;
+    }
+    let Some(files) = agent_files(config, event) else {
+        return emitted;
+    };
+    let (record, mark) = (files.record(), files.mark());
+    let id = tool_use_id(event);
+    if id.is_empty()
+        || std::fs::read_to_string(&mark)
+            .ok()
+            .is_none_or(|body| mark_id(&body) != id)
+    {
+        if !clear(&record) {
+            files.poison();
+        }
+        return emitted;
+    }
+    let mut sound = true;
+    let repeat = match seen.map(|(key, shown)| format!("{} {}", full_hash(key), full_hash(shown))) {
+        Some(seen) if std::fs::read_to_string(&record).ok().as_deref() == Some(seen.as_str()) => {
+            pointer()
+        }
+        Some(seen) => {
+            if std::fs::write(&record, seen).is_err() {
+                sound = clear(&record);
+            }
+            None
+        }
+        None => {
+            sound = clear(&record);
+            None
+        }
+    };
+    // Take the mark atomically: a call that started meanwhile overwrote it,
+    // and its record must not survive this call.
+    let mut taken = mark.clone().into_os_string();
+    taken.push(format!(".{}", std::process::id()));
+    let taken = std::path::PathBuf::from(taken);
+    let ours = std::fs::rename(&mark, &taken).is_ok()
+        && std::fs::read_to_string(&taken)
+            .ok()
+            .is_some_and(|body| mark_id(&body) == id);
+    if ours && sound {
+        let _ = std::fs::remove_file(&taken);
+        return repeat.or(emitted);
+    }
+    if !clear(&record) {
+        files.poison();
+    } else if !ours && let Ok(other) = std::fs::read(&taken) {
+        let _ = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&mark)
+            .and_then(|mut file| std::io::Write::write_all(&mut file, &other));
+    }
+    let _ = std::fs::remove_file(&taken);
+    emitted
+}
+
+/// Saves `delivered` for `rtk recall`; its handle.
+fn store_repeat(config: &Config, delivered: &str) -> Option<String> {
+    match crate::core::retriever::store(
+        &config.retriever,
+        delivered.as_bytes(),
+        "posthook:repeat",
+        None,
+        1,
+    ) {
+        crate::core::retriever::Stored::Saved(stored) => Some(stored.hash),
+        _ => None,
+    }
+}
+
+fn hook_output(updated: Value) -> String {
+    json!({
+        "hookSpecificOutput": {
+            "hookEventName": POST_TOOL_USE_KEY,
+            "updatedToolOutput": updated,
+        }
+    })
+    .to_string()
+}
+
+fn pointer(config: &Config, response: &Value, delivered: &str) -> Option<String> {
+    let hash = store_repeat(config, delivered)?;
+    let text = format!(
+        "[rtk: same output as the previous run of this command ({} lines): rtk recall {hash}]",
+        delivered.lines().count(),
+    );
+    if text.len() >= delivered.len() {
+        return None;
+    }
+    let mut updated = response.clone();
+    let obj = updated.as_object_mut()?;
+    obj.insert("stdout".into(), json!(text));
+    obj.insert("stderr".into(), json!(""));
+    Some(hook_output(updated))
+}
+
+/// The text a Read, Grep or Glob result shows: a file's content, matching
+/// lines or counts, or the file names found.
+fn native_text(response: &Value) -> Option<String> {
+    if let Some(text) = response
+        .pointer("/file/content")
+        .or_else(|| response.get("content"))
+    {
+        return text.as_str().map(str::to_string);
+    }
+    let names = response.get("filenames")?.as_array()?;
+    names
+        .iter()
+        .map(|name| name.as_str())
+        .collect::<Option<Vec<_>>>()
+        .map(|names| names.join("\n"))
+}
+
+/// `response` with its text replaced by a pointer to `text`, inside the
+/// hook's own output (`envelope`) when it emitted one.
+fn native_pointer(
+    config: &Config,
+    event: &Value,
+    envelope: Option<Value>,
+    mut response: Value,
+    text: &str,
+) -> Option<String> {
+    let tool = event.get("tool_name").and_then(Value::as_str)?;
+    let hash = store_repeat(config, text)?;
+    let line = format!(
+        "[rtk: same result as an earlier identical {tool} in this session ({} lines): rtk recall {hash}]",
+        text.lines().count(),
+    );
+    if line.len() >= text.len() {
+        return None;
+    }
+    if let Some(content) = response.pointer_mut("/file/content") {
+        *content = json!(line);
+    } else if response.get("content").is_some() {
+        response["content"] = json!(line);
+    } else {
+        response["filenames"] = json!([line]);
+    }
+    // The rest of the hook's own output (a format conversion note) stays.
+    match envelope {
+        Some(mut envelope) => {
+            *envelope.pointer_mut("/hookSpecificOutput/updatedToolOutput")? = response;
+            Some(envelope.to_string())
+        }
+        None => Some(hook_output(response)),
+    }
 }
 
 /// Path or URL the tracking rows and `when` facts key on.
@@ -1109,6 +1692,820 @@ mod tests {
 
     fn run_with(event: &Value, config: &Config, pipeline: &Resolved) -> Option<String> {
         process_with_config(event, config, pipeline)
+    }
+
+    fn repeat_config(dir: &std::path::Path, on: bool) -> Config {
+        let mut config = test_config();
+        config.retriever.mode = crate::core::retriever::RecoveryMode::Sqlite;
+        config.retriever.database_path = Some(dir.join("recall.db"));
+        config.retriever.tee_directory = Some(dir.join("tee"));
+        config.hooks.dedup_repeats = on;
+        config
+    }
+
+    fn bash_event(command: &str, stdout: &str, agent: Option<&str>) -> Value {
+        let mut event = serde_json::json!({
+            "session_id": "s1",
+            "tool_name": "Bash",
+            "tool_input": {"command": command},
+            "tool_response": {"stdout": stdout, "stderr": ""},
+            "duration_ms": 10
+        });
+        if let Some(agent) = agent {
+            event["agent_id"] = serde_json::json!(agent);
+        }
+        event
+    }
+
+    /// One Bash call's events: `pre` is its PreToolUse, `post` its PostToolUse.
+    struct Call {
+        event: Value,
+    }
+
+    impl Call {
+        fn new(id: &str, command: &str, stdout: &str, agent: Option<&str>) -> Self {
+            let mut event = bash_event(command, stdout, agent);
+            event["tool_use_id"] = serde_json::json!(id);
+            Self { event }
+        }
+
+        fn in_session(mut self, session: &str) -> Self {
+            self.event["session_id"] = serde_json::json!(session);
+            self
+        }
+
+        fn pre(&self, config: &Config) {
+            note_tool_start_with(config, &self.event);
+        }
+
+        fn post(&self, config: &Config) -> Option<String> {
+            run_with(&self.event, config, &default_pipeline())
+        }
+
+        /// PreToolUse then PostToolUse: a call that completed.
+        fn run(&self, config: &Config) -> Option<String> {
+            self.pre(config);
+            self.post(config)
+        }
+    }
+
+    fn lines(n: usize) -> String {
+        (0..n).map(|i| format!("line {i}\n")).collect()
+    }
+
+    fn pointer_of(out: &Option<String>) -> Option<String> {
+        let parsed: Value = serde_json::from_str(out.as_deref()?).ok()?;
+        let stdout = parsed
+            .pointer("/hookSpecificOutput/updatedToolOutput/stdout")?
+            .as_str()?;
+        stdout
+            .starts_with("[rtk: same output as the previous run")
+            .then(|| stdout.to_string())
+    }
+
+    /// Off by default: a repeated output reaches the agent exactly as before.
+    #[test]
+    fn test_repeat_pointer_is_off_by_default() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), false);
+        let output: String = (0..400).map(|i| format!("line {i}\n")).collect();
+        let event = bash_event("make test", &output, None);
+        let first = run_with(&event, &config, &default_pipeline());
+        let second = run_with(&event, &config, &default_pipeline());
+        assert_eq!(first, second);
+        assert!(pointer_of(&second).is_none());
+    }
+
+    #[test]
+    fn test_repeat_pointer_replaces_only_a_consecutive_identical_output() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let output = lines(400);
+        let mut n = 0;
+        let mut run = |command: &str, stdout: &str, agent: Option<&str>| {
+            n += 1;
+            Call::new(&format!("t{n}"), command, stdout, agent).run(&config)
+        };
+
+        let first = run("make test", &output, None);
+        assert!(
+            pointer_of(&first).is_none(),
+            "a first run is delivered whole"
+        );
+        let pointer = pointer_of(&run("make test", &output, None)).expect("a pointer");
+        assert_eq!(
+            pointer
+                .split_once(" lines): rtk recall ")
+                .map(|(head, _)| head),
+            Some("[rtk: same output as the previous run of this command (400"),
+        );
+        let hash = pointer
+            .rsplit_once("rtk recall ")
+            .and_then(|(_, rest)| rest.strip_suffix(']'))
+            .expect("a recall handle");
+        let conn = crate::core::retriever::open_existing(&config.retriever)
+            .unwrap()
+            .unwrap();
+        let row = crate::core::retriever::load_by_hash(&conn, hash)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            crate::core::retriever::decode(&row).unwrap(),
+            output.as_bytes(),
+            "the handle reads back the output the pointer stands for"
+        );
+
+        // A call the hook passes over (below its size floor) in between ends the run.
+        assert!(pointer_of(&run("true", "", None)).is_none());
+        assert!(pointer_of(&run("make test", &output, None)).is_none());
+        // Another command in between, other bytes, or another agent: delivered whole.
+        assert!(pointer_of(&run("git status", &output, None)).is_none());
+        assert!(pointer_of(&run("make test", &output, None)).is_none());
+        let changed = format!("{output}one more\n");
+        assert!(pointer_of(&run("make test", &changed, None)).is_none());
+        assert!(pointer_of(&run("make test", &changed, Some("sub-1"))).is_none());
+        assert!(pointer_of(&run("make test", &changed, None)).is_some());
+
+        // A SessionStart, where it is registered, forgets.
+        forget_repeats_with(&config, &bash_event("make test", "", None));
+        assert!(pointer_of(&run("make test", &changed, None)).is_none());
+    }
+
+    /// Pass, fail, pass: a failed call fires PostToolUseFailure, which this
+    /// hook never sees, so only its PreToolUse arrives.
+    #[test]
+    fn test_repeat_pointer_not_given_after_a_failed_call() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let pass = lines(400);
+        assert!(pointer_of(&Call::new("a", "cargo test", &pass, None).run(&config)).is_none());
+        Call::new("b", "cargo test", &lines(300), None).pre(&config);
+        assert!(
+            pointer_of(&Call::new("c", "cargo test", &pass, None).run(&config)).is_none(),
+            "the previous run the agent saw is the failed one"
+        );
+        assert!(pointer_of(&Call::new("d", "cargo test", &pass, None).run(&config)).is_some());
+    }
+
+    /// Without PreToolUse (not registered, or an older host without
+    /// `tool_use_id`), nothing shows a call completed: always whole.
+    #[test]
+    fn test_repeat_pointer_needs_the_pre_tool_use_registration() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let output = lines(400);
+        for id in ["a", "b", "c"] {
+            let call = Call::new(id, "make test", &output, None);
+            assert!(pointer_of(&call.post(&config)).is_none());
+        }
+        let mut no_id = bash_event("make test", &output, None);
+        for _ in 0..3 {
+            note_tool_start_with(&config, &no_id);
+            assert!(pointer_of(&run_with(&no_id, &config, &default_pipeline())).is_none());
+        }
+        no_id["tool_use_id"] = serde_json::json!("");
+        note_tool_start_with(&config, &no_id);
+        assert!(pointer_of(&run_with(&no_id, &config, &default_pipeline())).is_none());
+    }
+
+    /// A new session has no previous call.
+    #[test]
+    fn test_repeat_pointer_not_given_across_sessions() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let output = lines(400);
+        let call = |id: &str, session: &str| {
+            Call::new(id, "make test", &output, None)
+                .in_session(session)
+                .run(&config)
+        };
+        assert!(pointer_of(&call("a", "s1")).is_none());
+        assert!(pointer_of(&call("b", "s2")).is_none());
+        assert!(pointer_of(&call("c", "s2")).is_some());
+    }
+
+    /// A hook process that died between a call's events leaves the state
+    /// doubtful, so the next identical output is delivered whole.
+    #[test]
+    fn test_repeat_pointer_not_given_after_a_crashed_hook() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let output = lines(400);
+        Call::new("a", "make test", &output, None).run(&config);
+        // PreToolUse died before marking its call.
+        let b = Call::new("b", "make test", &output, None);
+        assert!(pointer_of(&b.post(&config)).is_none());
+        // PostToolUse died after the agent got the output and before it
+        // finished: its call is still marked.
+        Call::new("c", "make test", &output, None).run(&config);
+        let d = Call::new("d", "make test", &lines(300), None);
+        d.pre(&config);
+        assert!(pointer_of(&Call::new("e", "make test", &lines(300), None).run(&config)).is_none());
+    }
+
+    /// Parallel calls: A and B start together, B finishes, C starts, then A
+    /// finishes. C matching B must not point at B: A came back last.
+    #[test]
+    fn test_repeat_pointer_not_given_after_parallel_calls() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let a = Call::new("a", "make test", &lines(300), None);
+        let b = Call::new("b", "make test", &lines(400), None);
+        let c = Call::new("c", "make test", &lines(400), None);
+        a.pre(&config);
+        b.pre(&config);
+        assert!(pointer_of(&b.post(&config)).is_none());
+        c.pre(&config);
+        assert!(pointer_of(&a.post(&config)).is_none());
+        assert!(pointer_of(&c.post(&config)).is_none());
+    }
+
+    /// Recall storage switched off: nothing is stored and no pointer given.
+    #[test]
+    fn test_repeat_pointer_respects_disabled_recall_storage() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut config = repeat_config(dir.path(), true);
+        config.retriever.mode = crate::core::retriever::RecoveryMode::Disabled;
+        let output = lines(400);
+        for id in ["a", "b"] {
+            let out = Call::new(id, "make test", &output, None).run(&config);
+            assert!(pointer_of(&out).is_none());
+        }
+        assert!(!dir.path().join("recall.db").exists());
+    }
+
+    /// A record that cannot be deleted (another process holds it open without
+    /// delete sharing) must not let a later call point at it.
+    #[cfg(windows)]
+    #[test]
+    fn test_repeat_pointer_not_given_while_the_record_cannot_be_deleted() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let output = lines(400);
+        let a = Call::new("a", "make test", &output, None);
+        assert!(pointer_of(&a.run(&config)).is_none());
+        let record = agent_files(&config, &a.event)
+            .expect("state files")
+            .record();
+        const FILE_SHARE_READ: u32 = 1;
+        let held = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ)
+            .open(&record)
+            .expect("hold the record");
+        Call::new("b", "make test", &lines(300), None).pre(&config);
+        for id in ["c", "d"] {
+            let call = Call::new(id, "make test", &output, None);
+            assert!(pointer_of(&call.run(&config)).is_none(), "call {id}");
+        }
+        drop(held);
+        assert!(pointer_of(&Call::new("e", "make test", &output, None).run(&config)).is_none());
+        assert!(pointer_of(&Call::new("f", "make test", &output, None).run(&config)).is_some());
+    }
+
+    /// An overlapping start that can neither delete the record nor rewrite
+    /// the mark (another process holds both, the mark still renamable) must
+    /// not leave the first call's mark valid.
+    #[cfg(windows)]
+    #[test]
+    fn test_repeat_pointer_not_given_when_the_mark_cannot_be_rewritten() {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_SHARE_READ: u32 = 1;
+        const FILE_SHARE_DELETE: u32 = 4;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let output = lines(400);
+        assert!(pointer_of(&Call::new("a", "make test", &output, None).run(&config)).is_none());
+        let b = Call::new("b", "make test", &output, None);
+        b.pre(&config);
+        let files = agent_files(&config, &b.event).expect("state files");
+        let hold = |path: std::path::PathBuf, share: u32| {
+            std::fs::OpenOptions::new()
+                .read(true)
+                .share_mode(share)
+                .open(path)
+                .expect("hold the file")
+        };
+        let record = hold(files.record(), FILE_SHARE_READ);
+        let mark = hold(files.mark(), FILE_SHARE_READ | FILE_SHARE_DELETE);
+        // c starts whilst b is in flight.
+        Call::new("c", "make test", &output, None).pre(&config);
+        drop(record);
+        drop(mark);
+        assert!(
+            pointer_of(&b.post(&config)).is_none(),
+            "b overlapped c: delivered whole"
+        );
+    }
+
+    /// No other shell tool, and never a pointer longer than the output it
+    /// replaces.
+    #[test]
+    fn test_repeat_pointer_not_for_other_shells_and_only_when_shorter() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let output = lines(400);
+        for id in ["a", "b"] {
+            let mut call = Call::new(id, "Get-ChildItem", &output, None);
+            call.event["tool_name"] = serde_json::json!("PowerShell");
+            assert!(pointer_of(&call.run(&config)).is_none());
+        }
+        let short = "ok\n".repeat(20);
+        let pipeline =
+            pipeline_from("[pipeline]\nextends = \"rtk:default\"\n[guards]\nmin_size = 1\n");
+        for id in ["c", "d"] {
+            let call = Call::new(id, "make check", &short, None);
+            call.pre(&config);
+            assert!(pointer_of(&run_with(&call.event, &config, &pipeline)).is_none());
+        }
+    }
+
+    impl Call {
+        /// A Read, Grep or Glob call.
+        fn tool(id: &str, tool: &str, input: Value, response: Value) -> Self {
+            Self {
+                event: serde_json::json!({
+                    "session_id": "s1",
+                    "tool_use_id": id,
+                    "tool_name": tool,
+                    "tool_input": input,
+                    "tool_response": response,
+                    "duration_ms": 10
+                }),
+            }
+        }
+
+        fn read(id: &str, path: &str, content: &str) -> Self {
+            let n = content.lines().count();
+            Self::tool(
+                id,
+                "Read",
+                serde_json::json!({"file_path": path}),
+                serde_json::json!({"type": "text", "file": {
+                    "filePath": path, "content": content,
+                    "numLines": n, "startLine": 1, "totalLines": n
+                }}),
+            )
+        }
+
+        fn glob(id: &str, pattern: &str, files: &[String], duration: u64) -> Self {
+            Self::tool(
+                id,
+                "Glob",
+                serde_json::json!({"pattern": pattern}),
+                serde_json::json!({
+                    "filenames": files, "durationMs": duration,
+                    "numFiles": files.len(), "truncated": false
+                }),
+            )
+        }
+
+        fn by(mut self, agent: &str) -> Self {
+            self.event["agent_id"] = serde_json::json!(agent);
+            self
+        }
+    }
+
+    /// The pointer a native tool's result was replaced with, wherever its
+    /// text lives in that tool's output.
+    fn native_pointer_of(out: &Option<String>) -> Option<String> {
+        let parsed: Value = serde_json::from_str(out.as_deref()?).ok()?;
+        let updated = parsed.pointer("/hookSpecificOutput/updatedToolOutput")?;
+        let text = updated
+            .pointer("/file/content")
+            .or_else(|| updated.get("content"))
+            .or_else(|| updated.pointer("/filenames/0"))?
+            .as_str()?;
+        text.starts_with("[rtk: same result as an earlier identical ")
+            .then(|| text.to_string())
+    }
+
+    fn recalled(config: &Config, pointer: &str) -> Vec<u8> {
+        let hash = pointer
+            .rsplit_once("rtk recall ")
+            .and_then(|(_, rest)| rest.strip_suffix(']'))
+            .expect("a recall handle");
+        let conn = crate::core::retriever::open_existing(&config.retriever)
+            .unwrap()
+            .unwrap();
+        let row = crate::core::retriever::load_by_hash(&conn, hash)
+            .unwrap()
+            .unwrap();
+        crate::core::retriever::decode(&row).unwrap()
+    }
+
+    fn files(n: usize) -> Vec<String> {
+        (0..n).map(|i| format!("/repo/src/file_{i}.rs")).collect()
+    }
+
+    #[test]
+    fn test_repeat_pointer_for_a_read_is_off_by_default() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), false);
+        for id in ["a", "b"] {
+            let out = Call::read(id, "/repo/src/lib.rs", &lines(400)).run(&config);
+            assert!(native_pointer_of(&out).is_none());
+        }
+    }
+
+    /// A re-read of the same bytes points at them; the handle reads them back.
+    /// Other reads in between do not matter: each input has its own record.
+    #[test]
+    fn test_repeat_pointer_for_an_unchanged_read() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let content = lines(400);
+        let first = Call::read("a", "/repo/src/lib.rs", &content).run(&config);
+        assert!(native_pointer_of(&first).is_none(), "a first read is whole");
+        Call::read("b", "/repo/src/main.rs", &lines(300)).run(&config);
+        let pointer =
+            native_pointer_of(&Call::read("c", "/repo/src/lib.rs", &content).run(&config))
+                .expect("a pointer");
+        assert!(
+            pointer.starts_with("[rtk: same result as an earlier identical Read in this session (400 lines): rtk recall "),
+            "{pointer}"
+        );
+        assert_eq!(recalled(&config, &pointer), content.as_bytes());
+    }
+
+    /// A file that changed between reads is compared by content, not path.
+    #[test]
+    fn test_repeat_pointer_not_given_for_a_changed_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let path = "/repo/src/lib.rs";
+        Call::read("a", path, &lines(400)).run(&config);
+        let changed = format!("{}changed\n", lines(400));
+        let out = Call::read("b", path, &changed).run(&config);
+        assert!(
+            native_pointer_of(&out).is_none(),
+            "changed content is whole"
+        );
+        assert!(native_pointer_of(&Call::read("c", path, &changed).run(&config)).is_some());
+        // Back to the first content: that is no longer the last read.
+        assert!(native_pointer_of(&Call::read("d", path, &lines(400)).run(&config)).is_none());
+    }
+
+    /// Another range of the same file is another input.
+    #[test]
+    fn test_repeat_pointer_keys_on_the_whole_input() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let content = lines(400);
+        Call::read("a", "/repo/src/lib.rs", &content).run(&config);
+        let mut ranged = Call::read("b", "/repo/src/lib.rs", &content);
+        ranged.event["tool_input"]["offset"] = serde_json::json!(1);
+        assert!(native_pointer_of(&ranged.run(&config)).is_none());
+    }
+
+    /// Failed, unmarked and overlapping calls are delivered whole, and the
+    /// call after a failed one too.
+    #[test]
+    fn test_repeat_pointer_for_a_read_not_given_when_completion_is_in_doubt() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let path = "/repo/src/lib.rs";
+        let content = lines(400);
+        Call::read("a", path, &content).run(&config);
+        // b failed: only its PreToolUse arrived.
+        Call::read("b", path, &content).pre(&config);
+        assert!(native_pointer_of(&Call::read("c", path, &content).run(&config)).is_none());
+        // d has no PreToolUse.
+        assert!(native_pointer_of(&Call::read("d", path, &content).post(&config)).is_none());
+        // No tool_use_id.
+        let mut no_id = Call::read("", path, &content);
+        no_id.event.as_object_mut().unwrap().remove("tool_use_id");
+        assert!(native_pointer_of(&no_id.run(&config)).is_none());
+        assert!(native_pointer_of(&Call::read("e", path, &content).run(&config)).is_none());
+        assert!(native_pointer_of(&Call::read("e2", path, &content).run(&config)).is_some());
+        // f and g overlap, across tools: both whole.
+        let f = Call::read("f", path, &content);
+        let g = Call::glob("g", "**/*.rs", &files(200), 3);
+        f.pre(&config);
+        g.pre(&config);
+        assert!(native_pointer_of(&g.post(&config)).is_none());
+        assert!(native_pointer_of(&f.post(&config)).is_none());
+        assert!(native_pointer_of(&Call::read("h", path, &content).run(&config)).is_none());
+        assert!(native_pointer_of(&Call::read("i", path, &content).run(&config)).is_some());
+    }
+
+    /// A subagent never gets a pointer to what only another agent read.
+    #[test]
+    fn test_repeat_pointer_for_a_read_is_per_agent() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let path = "/repo/src/lib.rs";
+        let content = lines(400);
+        Call::read("a", path, &content).run(&config);
+        let sub = Call::read("b", path, &content).by("sub-1").run(&config);
+        assert!(native_pointer_of(&sub).is_none());
+        assert!(
+            native_pointer_of(&Call::read("c", path, &content).by("sub-1").run(&config)).is_some()
+        );
+    }
+
+    /// Glob: the volatile duration is not part of the result compared.
+    #[test]
+    fn test_repeat_pointer_for_glob_and_grep() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let found = files(200);
+        Call::glob("a", "**/*.rs", &found, 3).run(&config);
+        let pointer = native_pointer_of(&Call::glob("b", "**/*.rs", &found, 9).run(&config))
+            .expect("a Glob pointer");
+        assert_eq!(recalled(&config, &pointer), found.join("\n").as_bytes());
+        let more = files(201);
+        assert!(native_pointer_of(&Call::glob("c", "**/*.rs", &more, 3).run(&config)).is_none());
+
+        let grep = |id: &str| {
+            Call::tool(
+                id,
+                "Grep",
+                serde_json::json!({"pattern": "fn ", "output_mode": "files_with_matches"}),
+                serde_json::json!({
+                    "mode": "files_with_matches", "filenames": found,
+                    "numFiles": found.len()
+                }),
+            )
+            .run(&config)
+        };
+        assert!(native_pointer_of(&grep("d")).is_none());
+        assert!(native_pointer_of(&grep("e")).is_some());
+    }
+
+    /// A Read between 2 identical Bash runs leaves the Bash pointer alone.
+    #[test]
+    fn test_repeat_pointer_for_bash_unaffected_by_a_read_between() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let output = lines(400);
+        Call::new("a", "make test", &output, None).run(&config);
+        Call::read("b", "/repo/src/lib.rs", &lines(300)).run(&config);
+        assert!(pointer_of(&Call::new("c", "make test", &output, None).run(&config)).is_some());
+    }
+
+    fn session_dir(config: &Config, session: &str) -> std::path::PathBuf {
+        repeat_dir(config, &serde_json::json!({"session_id": session})).expect("a folder")
+    }
+
+    const DAY: std::time::Duration = std::time::Duration::from_secs(24 * 3600);
+
+    /// Old sessions' folders go; the live session's stays however old, and a
+    /// recent session's stays.
+    #[test]
+    fn test_prune_repeats_keeps_the_live_session() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        for session in ["live", "old"] {
+            Call::new("a", "make test", &lines(400), None)
+                .in_session(session)
+                .run(&config);
+        }
+        let (live, old) = (session_dir(&config, "live"), session_dir(&config, "old"));
+        let now = std::time::SystemTime::now();
+
+        prune_repeats(&live, now + DAY);
+        assert!(live.exists() && old.exists(), "a day idle is kept");
+
+        prune_repeats(&live, now + 8 * DAY);
+        assert!(live.exists(), "the live session survives");
+        assert!(!old.exists(), "a week idle is pruned");
+        assert!(
+            pointer_of(
+                &Call::new("b", "make test", &lines(400), None)
+                    .in_session("live")
+                    .run(&config)
+            )
+            .is_some(),
+            "the live session's records are intact"
+        );
+    }
+
+    /// A taken mark a dead hook left goes after an hour, in every session;
+    /// marks and records stay.
+    #[test]
+    fn test_prune_repeats_removes_stale_taken_marks() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let call = Call::new("a", "make test", &lines(400), None);
+        call.run(&config);
+        Call::new("b", "make test", &lines(400), None).pre(&config);
+        let files = agent_files(&config, &call.event).expect("state files");
+        let mut taken = files.mark().into_os_string();
+        taken.push(".4242");
+        let taken = std::path::PathBuf::from(taken);
+        std::fs::write(&taken, "a").unwrap();
+        let other = files.dir.join("notes.run.txt");
+        std::fs::write(&other, "x").unwrap();
+        let now = std::time::SystemTime::now();
+
+        prune_repeats(&files.dir, now);
+        assert!(taken.exists(), "a recent taken mark may be in use");
+
+        prune_repeats(&files.dir, now + std::time::Duration::from_secs(2 * 3600));
+        assert!(!taken.exists());
+        assert!(files.mark().exists() && files.record().exists());
+        assert!(other.exists(), "only taken marks are removed");
+    }
+
+    /// A handle on a folder that can set its times.
+    fn folder_handle(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+            std::fs::OpenOptions::new()
+                .write(true)
+                .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+                .open(path)
+        }
+        #[cfg(not(windows))]
+        {
+            std::fs::File::open(path)
+        }
+    }
+
+    /// SessionStart and a session's first call both prune.
+    #[test]
+    fn test_prune_repeats_runs_at_session_start_and_first_call() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let age = |session: &str| {
+            let path = session_dir(&config, session);
+            folder_handle(&path)
+                .and_then(|f| f.set_modified(std::time::SystemTime::now() - 8 * DAY))
+                .expect("age the folder");
+            path
+        };
+        Call::new("a", "make test", &lines(400), None)
+            .in_session("old")
+            .run(&config);
+        let old = age("old");
+        forget_repeats_with(&config, &serde_json::json!({"session_id": "new"}));
+        assert!(!old.exists(), "SessionStart prunes");
+
+        Call::new("b", "make test", &lines(400), None)
+            .in_session("old2")
+            .run(&config);
+        let old2 = age("old2");
+        Call::new("c", "make test", &lines(400), None)
+            .in_session("new2")
+            .run(&config);
+        assert!(!old2.exists(), "a session's first call prunes");
+    }
+
+    /// Renaming an aged folder to a tombstone before deletion keeps a resuming
+    /// session from picking up a surviving record after a failed call's mark.
+    #[test]
+    fn test_prune_repeats_tombstones_old_folder_before_deleting() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let output = lines(400);
+        Call::new("a", "make test", &output, None)
+            .in_session("old")
+            .run(&config);
+        let failed = Call::new("b", "make test", &output, None).in_session("old");
+        failed.pre(&config);
+        let old_files = agent_files(&config, &failed.event).expect("state files");
+        let mark_name = old_files
+            .mark()
+            .file_name()
+            .expect("mark file name")
+            .to_os_string();
+        let live = session_dir(&config, "live");
+        std::fs::create_dir_all(&live).unwrap();
+        let now = std::time::SystemTime::now();
+
+        let mut victim_seen = None;
+        prune_repeats_with(&live, now + 8 * DAY, &mut |victim| {
+            victim_seen = Some(victim.to_path_buf());
+            // Simulate partial deletion: remove `.run` before the record,
+            // then resume the old session before deletion finishes.
+            let _ = std::fs::remove_file(victim.join(&mark_name));
+            let resumed = Call::new("c", "make test", &output, None)
+                .in_session("old")
+                .run(&config);
+            assert!(
+                pointer_of(&resumed).is_none(),
+                "resuming mid-prune must not print a pointer across a failed call"
+            );
+            let _ = std::fs::remove_dir_all(victim);
+        });
+
+        let victim = victim_seen.expect("old folder reached pruning");
+        assert_ne!(victim, old_files.dir, "old folder must be tombstoned first");
+        assert!(!victim.exists(), "tombstone directory is deleted");
+        assert!(
+            pointer_of(
+                &Call::new("d", "make test", &output, None)
+                    .in_session("old")
+                    .run(&config)
+            )
+            .is_some(),
+            "a fresh repeat after the clean restart works normally"
+        );
+    }
+
+    /// A non-live session folder aged between 1 hour and 7 days is kept, and
+    /// its stale taken marks are swept.
+    #[test]
+    fn test_prune_repeats_sweeps_stale_taken_marks_in_non_live_folder_between_1h_and_7d() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let call = Call::new("a", "make test", &lines(400), None).in_session("idle");
+        call.run(&config);
+        Call::new("b", "make test", &lines(400), None)
+            .in_session("idle")
+            .pre(&config);
+        let idle_files = agent_files(&config, &call.event).expect("state files");
+        let mut taken = idle_files.mark().into_os_string();
+        taken.push(".4242");
+        let taken = std::path::PathBuf::from(taken);
+        std::fs::write(&taken, "a").unwrap();
+        let other = idle_files.dir.join("notes.run.txt");
+        std::fs::write(&other, "x").unwrap();
+
+        let live = session_dir(&config, "live");
+        std::fs::create_dir_all(&live).unwrap();
+        let now = std::time::SystemTime::now();
+
+        prune_repeats(&live, now + std::time::Duration::from_secs(1800));
+        assert!(taken.exists(), "taken mark younger than 1 hour stays");
+
+        prune_repeats(&live, now + std::time::Duration::from_secs(2 * 3600));
+        assert!(
+            idle_files.dir.exists(),
+            "non-live folder under 7 days stays"
+        );
+        assert!(!taken.exists(), "stale taken mark in non-live folder goes");
+        assert!(idle_files.mark().exists() && idle_files.record().exists());
+        assert!(other.exists(), "only taken marks are removed");
+    }
+
+    /// When another process holds a file open on Windows without delete share,
+    /// renaming the folder fails and the folder (mark and records) is left alone.
+    #[cfg(windows)]
+    #[test]
+    fn test_prune_repeats_skips_folder_when_rename_fails() {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_SHARE_READ: u32 = 1;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let output = lines(400);
+        Call::new("a", "make test", &output, None)
+            .in_session("old")
+            .run(&config);
+        let failed = Call::new("b", "make test", &output, None).in_session("old");
+        failed.pre(&config);
+        let old_files = agent_files(&config, &failed.event).expect("state files");
+        let live = session_dir(&config, "live");
+        std::fs::create_dir_all(&live).unwrap();
+        let now = std::time::SystemTime::now();
+
+        let hold = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ)
+            .open(old_files.mark())
+            .expect("hold mark without delete share");
+        prune_repeats(&live, now + 8 * DAY);
+        drop(hold);
+
+        assert!(old_files.dir.exists());
+        assert!(old_files.mark().exists() && old_files.record().exists());
+        assert!(
+            pointer_of(
+                &Call::new("c", "make test", &output, None)
+                    .in_session("old")
+                    .run(&config)
+            )
+            .is_none(),
+            "skipped folder still keeps its stale mark and blocks a pointer"
+        );
+    }
+
+    /// A pointer to a converted Read keeps the note that the text is not the
+    /// file's bytes.
+    #[test]
+    fn test_repeat_pointer_keeps_the_read_conversion_note() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let read = |id: &str| {
+            let mut event = fixture("read_flat");
+            event["session_id"] = json!("s1");
+            event["tool_use_id"] = json!(id);
+            note_tool_start_with(&config, &event);
+            run_with(&event, &config, &json_reads_pipeline())
+        };
+        let note = |out: &Option<String>| {
+            let parsed: Value = serde_json::from_str(out.as_deref().expect("output")).unwrap();
+            parsed["hookSpecificOutput"]["additionalContext"].clone()
+        };
+        let first = read("a");
+        assert_eq!(note(&first), json!(READ_CONVERSION_NOTE));
+        let second = read("b");
+        assert!(native_pointer_of(&second).is_some(), "{second:?}");
+        assert_eq!(note(&second), json!(READ_CONVERSION_NOTE));
     }
 
     fn run_posthook(event: &Value) -> Option<String> {

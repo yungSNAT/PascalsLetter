@@ -37,10 +37,12 @@ pub(super) fn handle(v: &Value, raw_len: usize) -> Result<bool> {
             return Ok(true);
         }
         Some(SESSION_START_KEY) => {
+            crate::hooks::posthook::forget_repeats(v);
             crate::hooks::session_start::run();
             return Ok(true);
         }
         Some(PRE_TOOL_USE_KEY) | None => {
+            crate::hooks::posthook::note_tool_start(v);
             if raw_len > STDIN_CAP {
                 anyhow::bail!("hook stdin exceeds {} byte limit", STDIN_CAP);
             }
