@@ -78,7 +78,7 @@ Where the tokens go (24.6M from API usage, 3 of 3 sessions):
   Cache writes      1.2M    5%
   Fresh input        100    0%
   Output          410.2K    2%
-  Token counts, not cost: each kind bills at its own rate. Tool results reach the model as input, so they count in the input and cache rows. Subagent logs are not counted.
+  Token counts, not cost: each kind bills at its own rate. Tool results reach the model as input and, depending on caching, may count in the cache rows. Subagent logs are not counted.
 Tip: Run `rtk discover` to find missed RTK opportunities
 ```
 
@@ -86,4 +86,4 @@ Adoption counts explicit `rtk` commands and every command RTK could rewrite, whe
 
 The Bash share line is the denominator `rtk gain` lacks. Only Bash reaches RTK's default hook, so `rtk gain` leaves out what Read, Grep, MCP servers and other tools return, unless a pipeline adds them. The figure covers the text in the tool results of the same 10 logs, including any session with no Bash. It is measured after filtering, so it falls as RTK cuts Bash output. Images and subagent logs are not counted, and the report says how many logs or lines it could not read.
 
-'Where the tokens go' splits the same logs' billed tokens by kind, from the API usage Claude Code records on each assistant message: cache reads, cache writes, fresh input and output. These are measured counts, not estimates, and not cost: each kind bills at its own rate. Shares are rounded. A message Claude Code logs over several lines counts once. Tool results are part of the input, so they count in the input and cache rows.
+'Where the tokens go' splits the same logs' billed tokens by kind, from the API usage Claude Code records on each assistant message: cache reads, cache writes, fresh input and output. These are measured counts, not estimates, and not cost: each kind bills at its own rate. Shares are rounded. A message Claude Code logs over several lines counts once. Tool results are part of the input and, depending on caching, may count in the cache rows.
