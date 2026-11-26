@@ -877,3 +877,7 @@ fn main() {
         assert_eq!(output, input);
     }
 }
+
+#[cfg(test)]
+#[path = "filter_coverage_gen.rs"]
+mod coverage_gen_src_core_filter;

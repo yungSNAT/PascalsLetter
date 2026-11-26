@@ -454,3 +454,7 @@ mod tests {
         assert_eq!(total_avg_time_ms(&data), 150);
     }
 }
+
+#[cfg(test)]
+#[path = "display_helpers_coverage_gen.rs"]
+mod coverage_gen_src_core_display_helpers;
