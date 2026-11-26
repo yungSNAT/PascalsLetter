@@ -685,6 +685,30 @@ impl Store {
 mod tests {
     use super::*;
 
+    /// The band covers successful requests only; a model no test prices puts
+    /// its tokens in `saved_tokens_unpriced` with no dollars.
+    #[tokio::test]
+    async fn summary_prices_only_successful_saved_tokens() {
+        let s = Store::open(":memory:").unwrap();
+        for (status, saved) in [(200, 300), (200, 50), (502, 1000)] {
+            s.record(UsageRow {
+                ts: "2026-01-01T00:00:00Z".into(),
+                provider: "anthropic".into(),
+                model: "no-price-in-any-test".into(),
+                status,
+                tokens_saved: saved,
+                ..Default::default()
+            })
+            .await;
+        }
+        let summary = s.summary().await;
+        assert_eq!(summary["tokens_saved"], 1350);
+        assert_eq!(summary["saved_tokens_unpriced"], 350);
+        assert_eq!(summary["saved_tokens_priced"], 0);
+        assert_eq!(summary["saved_usd_low"], 0.0);
+        assert_eq!(summary["saved_usd_high"], 0.0);
+    }
+
     async fn rec(s: &Store, session: &str, ts: &str, read: i64, created: i64) {
         s.record(UsageRow {
             ts: ts.into(),
