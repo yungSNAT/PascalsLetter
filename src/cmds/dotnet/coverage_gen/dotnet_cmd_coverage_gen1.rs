@@ -48,10 +48,9 @@ fn assert_diagnostic_overflow<'a>(
     assert_eq!(lines.next(), Some(overflow.as_str()));
 
     let hint = lines.next().expect("overflow should include a recall hint");
-    let prefix = format!("  [+{hidden} hidden: rtk recall ");
     let recall_id = hint
-        .strip_prefix(prefix.as_str())
-        .and_then(|rest| rest.strip_suffix(']'))
+        .strip_prefix("  ")
+        .and_then(|line| hidden_hint_id(line, hidden))
         .unwrap_or_else(|| panic!("unexpected {kind} recall hint: {hint}"));
     assert!(
         !recall_id.is_empty() && recall_id.bytes().all(|byte| byte.is_ascii_hexdigit()),
@@ -124,4 +123,14 @@ fn dotnet_restore_caps_diagnostics_without_changing_verdict_totals() {
             )
         );
     });
+}
+
+/// The recall ID in a `[+N hidden (lines A-B): rtk recall <id>]` tail hint,
+/// provided the range covers exactly `hidden` lines.
+fn hidden_hint_id(line: &str, hidden: usize) -> Option<&str> {
+    let rest = line.strip_prefix(&format!("[+{hidden} hidden (lines "))?;
+    let (range, id) = rest.split_once("): rtk recall ")?;
+    let (first, last) = range.split_once('-')?;
+    let (first, last): (usize, usize) = (first.parse().ok()?, last.parse().ok()?);
+    (first >= 1 && last + 1 == first + hidden).then_some(id.strip_suffix(']')?)
 }
