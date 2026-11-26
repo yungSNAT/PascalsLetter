@@ -43,7 +43,7 @@ cargo test -- --nocapture      # With stdout
 # Pre-commit gate (must all pass before any PR)
 cargo fmt --all --check && cargo clippy --all-targets && cargo test
 
-bash scripts/test-all.sh       # Smoke tests (requires installed binary)
+cargo run --manifest-path tools/dev/Cargo.toml -- smoke  # Smoke tests (requires installed binary)
 ```
 
 PRs target the **`develop`** branch, not `main`. All commits require a DCO sign-off (`git commit -s`).
