@@ -405,6 +405,24 @@ mod tests {
         );
     }
 
+    /// A resumed or forked session copies its history into a new log, so the
+    /// same message can sit in 2 logs: it counts once across them.
+    #[test]
+    fn test_sum_token_usage_counts_a_message_once_across_logs() {
+        let line = r#"{"type":"assistant","message":{"id":"m","usage":{"input_tokens":2,"cache_creation_input_tokens":3,"cache_read_input_tokens":5,"output_tokens":7}}}"#;
+        let other = r#"{"type":"assistant","message":{"id":"n","usage":{"input_tokens":1,"output_tokens":1}}}"#;
+        let mut first = NamedTempFile::new().expect("create tempfile");
+        writeln!(first, "{line}").expect("write line");
+        let mut resumed = NamedTempFile::new().expect("create tempfile");
+        writeln!(resumed, "{line}\n{other}").expect("write lines");
+
+        let (usage, logs_read) =
+            sum_token_usage(&[first.path().to_path_buf(), resumed.path().to_path_buf()]);
+
+        assert_eq!(usage.total(), 19);
+        assert_eq!(logs_read, 2);
+    }
+
     #[test]
     fn test_sum_token_usage_adds_the_logs_it_can_read() {
         let mut log = NamedTempFile::new().expect("create tempfile");
