@@ -1,6 +1,8 @@
 use super::{STDIN_CAP, audit_log, pre_tool_use_rewrite_output};
 use crate::core::pipeline_config::{self, ShellHookDecision};
-use crate::hooks::constants::{POST_TOOL_USE_KEY, PRE_TOOL_USE_KEY, SESSION_START_KEY};
+use crate::hooks::constants::{
+    POST_TOOL_USE_KEY, PRE_COMPACT_KEY, PRE_TOOL_USE_KEY, SESSION_START_KEY,
+};
 use crate::hooks::decision::{self, HookDecision};
 use crate::hooks::permissions;
 use anyhow::{Context, Result};
@@ -21,6 +23,13 @@ pub(super) fn read_payload() -> Result<String> {
     Ok(input)
 }
 
+/// Events after which the agent no longer holds the outputs the repeat
+/// records name: a new, resumed or cleared session, and a compaction, which
+/// keeps the session but summarises its context.
+fn forgets_repeats(event: Option<&str>) -> bool {
+    matches!(event, Some(SESSION_START_KEY | PRE_COMPACT_KEY))
+}
+
 pub(super) fn handle(v: &Value, raw_len: usize) -> Result<bool> {
     crate::hooks::set_hook_agent("claude-code");
     if let Some(purpose) = v
@@ -31,16 +40,21 @@ pub(super) fn handle(v: &Value, raw_len: usize) -> Result<bool> {
     }
     crate::core::call_context::set_source(v);
 
-    match v.get("hook_event_name").and_then(|e| e.as_str()) {
+    let event = v.get("hook_event_name").and_then(|e| e.as_str());
+    if forgets_repeats(event) {
+        crate::hooks::posthook::forget_repeats(v);
+    }
+    match event {
         Some(POST_TOOL_USE_KEY) => {
             crate::hooks::posthook::run(v);
             return Ok(true);
         }
         Some(SESSION_START_KEY) => {
-            crate::hooks::posthook::forget_repeats(v);
             crate::hooks::session_start::run();
             return Ok(true);
         }
+        // Prints nothing: PreCompact's stdout becomes compaction instructions.
+        Some(PRE_COMPACT_KEY) => return Ok(true),
         Some(PRE_TOOL_USE_KEY) | None => {
             crate::hooks::posthook::note_tool_start(v);
             if raw_len > STDIN_CAP {
@@ -324,6 +338,25 @@ fn log(v: &Value, subject: &str, target: &str, rule: &str, action: &str) {
 mod tests {
     use super::*;
     use permissions::PermissionVerdict;
+
+    #[test]
+    fn test_session_start_and_compaction_forget_repeats() {
+        assert!(forgets_repeats(Some("SessionStart")));
+        assert!(forgets_repeats(Some("PreCompact")));
+        for other in [Some("PreToolUse"), Some("PostToolUse"), Some("Stop"), None] {
+            assert!(!forgets_repeats(other), "{other:?}");
+        }
+    }
+
+    /// A compaction reaching `handle` forgets the session's repeat records.
+    #[test]
+    fn test_handle_forgets_repeats_at_compaction() {
+        use crate::hooks::posthook::FORGOTTEN;
+        let event = serde_json::json!({"hook_event_name": "PreCompact", "session_id": "s1"});
+        FORGOTTEN.with(|f| f.borrow_mut().clear());
+        assert!(handle(&event, 0).expect("handled"));
+        FORGOTTEN.with(|f| assert_eq!(*f.borrow(), vec![event.clone()]));
+    }
 
     fn decide(cmd: &str, verdict: PermissionVerdict, excluded: &[String]) -> bool {
         let rewrite = decision::decide_with_params(
