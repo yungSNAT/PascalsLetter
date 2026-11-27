@@ -365,6 +365,18 @@ mod tests {
         }
     }
 
+    /// Quotes inside a word join its pieces, so a filtered chain whose excluded
+    /// segment or `rtk` call is spelt with quotes is not swapped either.
+    #[test]
+    fn a_filtered_chain_with_a_quoted_opt_out_is_not_swapped() {
+        let excluded = vec!["./run-suite.sh".to_string()];
+        for cmd in ["git status && ./run-su''ite.sh", "git status && r''tk bypass cat x"] {
+            for verdict in [PermissionVerdict::Default, PermissionVerdict::Ask] {
+                assert!(!decide(cmd, verdict, &excluded), "{cmd}");
+            }
+        }
+    }
+
     #[test]
     fn a_filtered_chain_with_rtk_bypass_is_not_swapped() {
         for verdict in [PermissionVerdict::Default, PermissionVerdict::Ask] {
