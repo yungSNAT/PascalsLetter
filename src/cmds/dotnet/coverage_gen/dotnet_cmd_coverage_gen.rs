@@ -29,16 +29,13 @@ fn format_report_fallbacks_return_raw_output() {
     let raw = "RAW FORMAT OUTPUT";
 
     // No report path at all.
-    assert_eq!(
-        format_report_summary_or_raw(None, true, raw, SystemTime::now()),
-        raw
-    );
+    assert_eq!(format_report_summary_or_raw(None, true, raw, None), raw);
 
     // Report path that does not exist: metadata fails.
     let missing = dir.path().join("missing.json");
-    assert!(!is_fresh_report(&missing, UNIX_EPOCH));
+    assert!(!is_fresh_report(&missing, None));
     assert_eq!(
-        format_report_summary_or_raw(Some(&missing), true, raw, UNIX_EPOCH),
+        format_report_summary_or_raw(Some(&missing), true, raw, None),
         raw
     );
 
@@ -46,7 +43,7 @@ fn format_report_fallbacks_return_raw_output() {
     let broken = dir.path().join("broken.json");
     std::fs::write(&broken, "this is { not json").expect("write broken report");
     assert_eq!(
-        format_report_summary_or_raw(Some(&broken), true, raw, UNIX_EPOCH),
+        format_report_summary_or_raw(Some(&broken), true, raw, None),
         raw
     );
 }
@@ -87,7 +84,7 @@ fn format_report_summary_lists_capped_files_and_write_mode() {
 
     let root = test_isolation::tempdir();
     test_isolation::with_root(root.path(), || {
-        let check = format_report_summary_or_raw(Some(&report), true, "RAW", UNIX_EPOCH);
+        let check = format_report_summary_or_raw(Some(&report), true, "RAW", None);
         assert!(
             check.contains(&format!("Format: {changed} files need formatting")),
             "{check}"
@@ -102,7 +99,7 @@ fn format_report_summary_lists_capped_files_and_write_mode() {
             "{check}"
         );
 
-        let write = format_report_summary_or_raw(Some(&report), false, "RAW", UNIX_EPOCH);
+        let write = format_report_summary_or_raw(Some(&report), false, "RAW", None);
         assert!(
             write.starts_with(&format!("ok dotnet format: formatted {changed} files (")),
             "{write}"
