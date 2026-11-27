@@ -76,9 +76,9 @@ fn assert_verify_report(
     let stdout = String::from_utf8(output.stdout).unwrap();
     let stderr = String::from_utf8(output.stderr).unwrap();
     // `verify` also runs the built-in filter self-tests, and on Windows 15 of
-    // them fail (ledger line), so the exit status is checked off Windows only.
+    // them fail (ledger line), so Windows may exit 1, but no other failure.
     assert!(
-        output.status.success() || cfg!(windows),
+        output.status.success() || (cfg!(windows) && output.status.code() == Some(1)),
         "{stdout}\n{stderr}"
     );
 
