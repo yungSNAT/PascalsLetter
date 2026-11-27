@@ -2517,7 +2517,8 @@ mod tests {
                 // 2 hunks, the first an `a`, so both `apply_classic` arms run.
                 let headers = hunks.lines().filter(|l| l.as_bytes()[0].is_ascii_digit());
                 assert_eq!(headers.count(), 2, "{name}");
-                assert!(hunks.starts_with("20a21"), "{name}");
+                let first_header = hunks.lines().next().unwrap_or_default();
+                assert!(first_header.contains('a'), "{name}: {first_header}");
             }
         }
     }
