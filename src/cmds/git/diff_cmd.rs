@@ -7418,3 +7418,7 @@ diff --git a/b.rs b/b.rs
         );
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/diff_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_git_diff_cmd;
