@@ -229,12 +229,11 @@ fn shell_output_with_recall_hint_never_grows() {
         "duration_ms": 3
     });
     let raw_tokens = estimate_tokens(&stdout);
-    if let Some(out) = process_with_config(&ev, &config, &pipeline) {
-        assert!(
-            shell_tokens(&out) <= raw_tokens,
-            "never emit a larger output"
-        );
-    }
+    let out = process_with_config(&ev, &config, &pipeline).expect("unique output still filtered");
+    assert!(
+        shell_tokens(&out) <= raw_tokens,
+        "never emit a larger output"
+    );
 }
 
 #[test]

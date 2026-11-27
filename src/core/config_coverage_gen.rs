@@ -138,9 +138,8 @@ fn show_commands_leave_config_unchanged_and_handle_parse_errors() {
 #[cfg(unix)]
 #[test]
 fn config_cli_reports_defaults_and_explains_legacy_recall() {
-    if !test_isolation::rtk_binary_ready() {
-        return;
-    }
+    let ready = test_isolation::rtk_binary_ready();
+    let true = ready else { return };
 
     let root = test_isolation::tempdir();
     let show = |args: &[&str], recall_override: &str| {

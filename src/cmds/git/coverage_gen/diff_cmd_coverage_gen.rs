@@ -40,9 +40,10 @@ fn stdin_guard_rejects_a_valid_condensation_that_grows() {
 fn classic_diff_skips_an_empty_hunk_between_aligned_edits() {
     let before = ["head", "OLD", "gap", "drop", "tail"];
     let after = ["head", "gap", "NEW", "more", "tail"];
-    let Ok(Aligned::Script(ops)) = myers_ops(&before, &after) else {
-        panic!("the small edit script should align");
-    };
+    use super::Aligned::Script;
+    // The small edit script aligns.
+    let aligned = myers_ops(&before, &after);
+    let Ok(Script(ops)) = aligned else { panic!() };
 
     let mut diff = ops_to_hunks(ops, 2);
     assert_eq!(diff.hunks.len(), 2);

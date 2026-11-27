@@ -19,26 +19,22 @@ fn run_session(home: &Path) -> Option<String> {
     // Run in-process for coverage even when the CLI binary is unavailable.
     run(0).expect("generate session report");
 
-    #[cfg(unix)]
-    if test_isolation::rtk_binary_ready() {
-        let output = test_isolation::rtk_command()
-            .env("HOME", home)
-            .env("CLAUDE_CONFIG_DIR", home.join(".claude"))
-            .arg("session")
-            .stdin(std::process::Stdio::null())
-            .output()
-            .expect("run isolated session command");
-        assert!(
-            output.status.success(),
-            "session command failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        return Some(String::from_utf8(output.stdout).expect("decode session report"));
-    }
-
-    #[cfg(not(unix))]
-    let _ = home;
-    None
+    // The CLI run is Unix-only; elsewhere the in-process run above is the test.
+    let ready = cfg!(unix) && test_isolation::rtk_binary_ready();
+    let true = ready else { return None };
+    let output = test_isolation::rtk_command()
+        .env("HOME", home)
+        .env("CLAUDE_CONFIG_DIR", home.join(".claude"))
+        .arg("session")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("run isolated session command");
+    assert!(
+        output.status.success(),
+        "session command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Some(String::from_utf8(output.stdout).expect("decode session report"))
 }
 
 fn write_bash_session(project: &Path, id: &str, command: &str) -> PathBuf {

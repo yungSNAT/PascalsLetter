@@ -20,11 +20,12 @@ fn truncate_for_column_pads_cuts_and_elides() {
 fn colorize_recall_rate_keeps_the_padded_text_in_every_band() {
     for (pct, padded) in [(0, "    0%"), (15, "   15%"), (45, "   45%")] {
         let out = colorize_recall_rate(pct, padded);
-        if stdout_is_terminal() {
-            assert!(out.contains(padded), "{out:?} lost {padded:?}");
-        } else {
-            assert_eq!(out, padded);
-        }
+        // Coloured on a terminal, plain otherwise; the text survives either way.
+        assert!(out.contains(padded), "{out:?} lost {padded:?}");
+        assert!(
+            stdout_is_terminal() || out == padded,
+            "{out:?} is not plain"
+        );
     }
     let verdict = colorize_recall_rate(50, recall_verdict(10, 5));
     assert!(verdict.contains("too aggressive"));

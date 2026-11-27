@@ -31,7 +31,7 @@ fn resolve_project_scope_uses_working_dir_only_when_requested() {
     let expected = dir
         .path()
         .canonicalize()
-        .unwrap_or_else(|_| dir.path().to_path_buf());
+        .expect("the temporary directory canonicalises");
     assert_eq!(PathBuf::from(scope), expected);
 }
 
