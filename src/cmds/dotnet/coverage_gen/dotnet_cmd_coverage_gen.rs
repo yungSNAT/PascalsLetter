@@ -358,15 +358,17 @@ fn reported_trx_paths_skip_empty_trailing_marker() {
 const FAKE_DOTNET: &str = r#"#!/bin/sh
 sub="$1"
 touch_binlog=""
+keep_report=""
 for arg in "$@"; do
   if [ "$arg" = "touch-binlog" ]; then touch_binlog=1; fi
+  if [ "$arg" = "keep-report" ]; then keep_report=1; fi
 done
 prev=""
 for arg in "$@"; do
   case "$arg" in
     -bl:*) if [ -n "$touch_binlog" ]; then : > "${arg#-bl:}"; fi ;;
   esac
-  if [ "$prev" = "--report" ]; then printf '[]' > "$arg"; fi
+  if [ "$prev" = "--report" ] && [ -z "$keep_report" ]; then printf '[]' > "$arg"; fi
   prev="$arg"
 done
 i=0
@@ -452,4 +454,44 @@ fn rtk_dotnet_help_passthrough_with_fake_tool() {
         stdout.contains("fake dotnet format output line"),
         "{stdout}"
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn rtk_dotnet_format_summarises_only_a_report_the_run_wrote() {
+    if !test_isolation::rtk_binary_ready() {
+        return;
+    }
+
+    // The run writes RTK's own report: its summary replaces the raw output.
+    let out = run_rtk_with_fake_dotnet(&["dotnet", "format"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success(), "{stdout}");
+    assert!(
+        stdout.contains("ok dotnet format: 0 files formatted correctly"),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains("fake dotnet format output line"),
+        "{stdout}"
+    );
+
+    // A report left by an earlier run and untouched by this one is stale: the
+    // raw output stands, not the old report's summary.
+    let dir = test_isolation::tempdir();
+    let stale = dir.path().join("stale.json");
+    std::fs::copy(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/dotnet/format_success.json"),
+        &stale,
+    )
+    .expect("write stale report");
+    let stale_arg = stale.to_str().expect("utf-8 temp path");
+    let out = run_rtk_with_fake_dotnet(&["dotnet", "format", "--report", stale_arg, "keep-report"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success(), "{stdout}");
+    assert!(
+        stdout.contains("fake dotnet format output line"),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("2 files formatted correctly"), "{stdout}");
 }
