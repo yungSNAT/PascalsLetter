@@ -2072,6 +2072,41 @@ gcc -O2 foo.c
         );
     }
 
+    /// A filter file saved with CRLF line endings (a Windows checkout of the
+    /// built-in filters, or a project file written on Windows) keeps `\r` in its
+    /// multi-line `expected`, whilst the filter's output lines carry none.
+    #[test]
+    fn test_run_filter_tests_passes_with_crlf_line_endings() {
+        let content = r#"
+schema_version = 1
+
+[filters.make]
+match_command = "^make\\b"
+strip_lines_matching = ["^make\\[\\d+\\]:"]
+
+[[tests.make]]
+name = "strips entering/leaving lines"
+input = """
+make[1]: Entering directory '/home/user'
+gcc -O2 foo.c
+gcc -O2 bar.c
+make[1]: Leaving directory '/home/user'
+"""
+expected = """
+gcc -O2 foo.c
+gcc -O2 bar.c
+"""
+"#
+        .replace('\n', "\r\n");
+        let mut outcomes = Vec::new();
+        let mut all_names = Vec::new();
+        let mut tested = std::collections::HashSet::new();
+        collect_test_outcomes(&content, None, &mut outcomes, &mut all_names, &mut tested);
+        assert_eq!(outcomes.len(), 1);
+        assert!(outcomes[0].passed, "{:?}", outcomes[0].actual);
+        assert_eq!(outcomes[0].expected, "gcc -O2 foo.c\ngcc -O2 bar.c");
+    }
+
     #[test]
     fn test_run_filter_tests_fails_on_wrong_expected() {
         let content = r#"
