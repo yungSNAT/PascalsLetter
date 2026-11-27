@@ -1,12 +1,15 @@
 name: Coverage
 
-# The test suite runs here, under cargo-llvm-cov, on every push to develop.
-# Its result is the README's tests badge, and its report feeds the Codecov
-# badge. ci.yml also runs on develop pushes, so that only develop saves the
-# Rust caches pull requests restore; there its Linux leg builds the tests
-# without running them, as they run here.
+# The test suite runs here, under cargo-llvm-cov, on every push to develop and
+# every pull request to it. The develop result is the README's tests badge;
+# the report feeds the Codecov badge and Codecov's patch and project statuses
+# on each pull request. ci.yml also runs on develop pushes, so that only
+# develop saves the Rust caches pull requests restore; there its Linux leg
+# builds the tests without running them, as they run here.
 on:
   push:
+    branches: [develop]
+  pull_request:
     branches: [develop]
   workflow_dispatch:
 
@@ -15,7 +18,8 @@ permissions:
 
 concurrency:
   group: coverage-${{ github.ref }}
-  cancel-in-progress: false
+  # Only pull request runs are cancelled: a running develop push never is.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -38,6 +42,8 @@ jobs:
         with:
           components: llvm-tools
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref == 'refs/heads/develop' }}
       - name: Install the pinned cargo-llvm-cov
         uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with:
@@ -57,8 +63,9 @@ jobs:
           retention-days: 1
 
   # The upload runs apart from the tests so the OIDC token is never available
-  # while test code runs. Keep it out of the required checks: a Codecov outage
-  # must not block merges.
+  # while test code runs. Keep it out of GitHub's required checks: a Codecov
+  # outage must not block merges. The merge procedure reads Codecov's own
+  # statuses instead, and a missing one holds the merge.
   codecov:
     name: upload coverage to Codecov
     needs: test
