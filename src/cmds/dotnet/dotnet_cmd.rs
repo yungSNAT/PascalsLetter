@@ -3676,6 +3676,26 @@ mod tests {
     }
 
     #[test]
+    fn test_format_report_summary_uses_report_written_within_the_start_tick() {
+        // A coarse filesystem clock can stamp a report written after the start
+        // with a time just before it.
+        let temp_dir = test_isolation::tempdir();
+        let report = temp_dir.path().join("report.json");
+        let command_started_at = SystemTime::now();
+        fs::copy(format_fixture("format_success.json"), &report).expect("write report");
+        std::fs::File::options()
+            .write(true)
+            .open(&report)
+            .expect("open report for mtime")
+            .set_modified(command_started_at - Duration::from_millis(500))
+            .expect("set report mtime");
+
+        let output =
+            format_report_summary_or_raw(Some(&report), true, "RAW OUTPUT", command_started_at);
+        assert!(output.contains("ok dotnet format: 2 files formatted correctly"), "{output}");
+    }
+
+    #[test]
     fn test_format_report_summary_uses_fresh_report_file() {
         let report = format_fixture("format_success.json");
         let raw = "RAW OUTPUT";
