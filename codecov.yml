@@ -1,11 +1,18 @@
-# Codecov reports coverage for the README badge. CI sets no coverage gate, so
-# Codecov's own statuses are informational and it posts no comments.
+# Codecov reports coverage for the README badge and sets the merge gate's
+# targets: `codecov/patch` passes only when every changed coverable line is
+# hit, and `codecov/project` only when the project figure does not fall below
+# the base commit's. Neither is a required check, so the merge procedure
+# reads them and treats a missing `codecov/patch` as a fail. Whilst Codecov
+# posts no `codecov/project` here, the procedure compares the head's and the
+# base's totals from Codecov's API instead. It posts no comments.
 coverage:
   status:
     project:
       default:
-        informational: true
+        target: auto
+        threshold: 0%
     patch:
       default:
-        informational: true
+        target: 100%
+        threshold: 0%
 comment: false
