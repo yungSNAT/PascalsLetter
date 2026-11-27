@@ -80,7 +80,16 @@ fn pipeline_detail_prints_hook_section_for_recorded_pipeline() {
             assert!(known.contains("Pipeline: cov-gen1-pipe"), "{known}");
             assert!(known.contains("Agent hooks"), "{known}");
             assert!(known.contains("shell output (bash)"), "{known}");
-            assert!(known.contains("total"), "{known}");
+            assert!(
+                known
+                    .lines()
+                    .any(|l| l.trim_start().starts_with("total") && l.contains("1 calls")),
+                "{known}"
+            );
+            assert!(
+                known.contains("(rows recorded before per-slice tracking count only in the total)"),
+                "{known}"
+            );
             assert!(
                 unknown.contains("no recorded savings for pipeline `cov-gen1-unknown`"),
                 "{unknown}"
