@@ -2,7 +2,9 @@
 # targets: `codecov/patch` passes only when every changed coverable line is
 # hit, and `codecov/project` only when the project figure does not fall below
 # the base commit's. Neither is a required check, so the merge procedure
-# reads them and treats a missing status as a fail. It posts no comments.
+# reads them and treats a missing `codecov/patch` as a fail. Whilst Codecov
+# posts no `codecov/project` here, the procedure compares the head's and the
+# base's totals from Codecov's API instead. It posts no comments.
 coverage:
   status:
     project:

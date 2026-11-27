@@ -57,8 +57,10 @@ request, and whilst CodeQL reports an alert at error level or a security alert
 of high or critical severity. The other checks report on the pull request but
 do not block it in GitHub. Codecov's `codecov/patch` (100% of changed lines)
 and `codecov/project` (no fall from the base) are not required checks either:
-the merge procedure reads them, and a missing status counts as a fail. No
-workflow runs a DCO (sign-off) check.
+the merge procedure reads them, and a missing `codecov/patch` counts as a
+fail. Whilst Codecov posts no `codecov/project` on this repository, the
+procedure compares the head's and the base's totals from Codecov's API
+instead. No workflow runs a DCO (sign-off) check.
 
 ## Draft release (release.yml)
 
