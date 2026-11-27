@@ -80,3 +80,7 @@ mod tests {
         assert!(filtered.contains("ERROR"));
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/ecs_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_php_ecs_cmd;

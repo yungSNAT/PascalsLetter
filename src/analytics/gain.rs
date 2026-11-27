@@ -707,6 +707,7 @@ pub fn run(
         "json" => {
             return export_json(
                 &tracker,
+                history,
                 daily,
                 weekly,
                 monthly,
@@ -1198,18 +1199,9 @@ fn print_efficiency_ledger(tracker: &Tracker) {
     // panel is headed "last 30 days", so older requests must not count.
     let proxy = crate::llm_proxy::read_gain_summary_since(WINDOW_DAYS);
     let proxy = proxy.as_ref();
-    let sum = |kind: &str| -> (i64, i64, i64) {
-        tracker
-            .attribution_site("hook", kind, WINDOW_DAYS)
-            .unwrap_or_default()
-            .iter()
-            .fold((0, 0, 0), |(c, i, o), r| {
-                (c + r.calls, i + r.tokens_in, o + r.tokens_out)
-            })
-    };
-    let (_, comp_in, comp_out) = sum("pipeline");
-    let (_, _, llm_spent) = sum("llm-spend");
-    let (recalls, _, _) = sum("recovery");
+    let hook = HookFigures::read(tracker, WINDOW_DAYS);
+    let (comp_in, comp_out) = (hook.comp_in, hook.comp_out);
+    let (llm_spent, recalls) = (hook.llm_spent, hook.recalls);
     let (shadow_calls, shadow_in, shadow_out) = {
         let rows = tracker
             .attribution_site("shadow", "pipeline", WINDOW_DAYS)
@@ -1233,8 +1225,7 @@ fn print_efficiency_ledger(tracker: &Tracker) {
         .filter(|p| p.cost_without_usd > 0.0)
         .map(|p| (p.cost_actual_usd, p.cost_without_usd));
 
-    let has_hook_data = comp_in > 0 || llm_spent > 0 || recalls > 0;
-    if !has_hook_data && proxy_costs.is_none() && shadow_calls == 0 {
+    if !hook.any() && proxy_costs.is_none() && shadow_calls == 0 {
         return;
     }
 
@@ -1273,6 +1264,12 @@ fn print_efficiency_ledger(tracker: &Tracker) {
             "Recalled",
             format!("{recalls} compressed outputs pulled back in full"),
         );
+    }
+    if let Some(line) = hook.repeat_line() {
+        print_kpi("Repeats", line);
+    }
+    if let Some(line) = hook.hunk_line() {
+        print_kpi("Hunks", line);
     }
     if directive_tokens > 0 {
         print_kpi(
@@ -1360,6 +1357,81 @@ fn styled(text: &str, strong: bool) -> String {
 
 /// Print a key-value pair in KPI layout. // added
 const PANEL_RULES: usize = 5;
+
+/// The efficiency panel's line for results that reached the agent in a
+/// shorter form (`sent`, singular and plural): how many, and the tokens of
+/// the results against those of what was sent instead.
+#[cfg(feature = "engine")]
+fn sent_kpi(calls: i64, sent: [&str; 2], tokens_in: i64, tokens_out: i64) -> String {
+    let sent = sent[usize::from(calls != 1)];
+    format!(
+        "{calls} {sent}: {} → {} tokens   est.",
+        format_tokens(tokens_in.max(0) as usize),
+        format_tokens(tokens_out.max(0) as usize),
+    )
+}
+
+/// The hook's own figures for the efficiency panel, summed over its window.
+#[cfg(feature = "engine")]
+struct HookFigures {
+    comp_in: i64,
+    comp_out: i64,
+    llm_spent: i64,
+    recalls: i64,
+    repeats: (i64, i64, i64),
+    hunks: (i64, i64, i64),
+}
+
+#[cfg(feature = "engine")]
+impl HookFigures {
+    fn read(tracker: &Tracker, days: u32) -> Self {
+        let sum = |kind: &str| -> (i64, i64, i64) {
+            tracker
+                .attribution_site("hook", kind, days)
+                .unwrap_or_default()
+                .iter()
+                .fold((0, 0, 0), |(c, i, o), r| {
+                    (c + r.calls, i + r.tokens_in, o + r.tokens_out)
+                })
+        };
+        let (_, comp_in, comp_out) = sum("pipeline");
+        Self {
+            comp_in,
+            comp_out,
+            llm_spent: sum("llm-spend").2,
+            recalls: sum("recovery").0,
+            repeats: sum("repeat"),
+            hunks: sum("hunks"),
+        }
+    }
+
+    /// Whether the hook booked anything the panel shows.
+    fn any(&self) -> bool {
+        self.comp_in > 0
+            || self.llm_spent > 0
+            || self.recalls > 0
+            || self.repeats.0 > 0
+            || self.hunks.0 > 0
+    }
+
+    fn repeat_line(&self) -> Option<String> {
+        let (calls, tokens_in, tokens_out) = self.repeats;
+        let sent = [
+            "repeated output sent as a pointer",
+            "repeated outputs sent as pointers",
+        ];
+        (calls > 0).then(|| sent_kpi(calls, sent, tokens_in, tokens_out))
+    }
+
+    fn hunk_line(&self) -> Option<String> {
+        let (calls, tokens_in, tokens_out) = self.hunks;
+        let sent = [
+            "changed re-read sent as hunks",
+            "changed re-reads sent as hunks",
+        ];
+        (calls > 0).then(|| sent_kpi(calls, sent, tokens_in, tokens_out))
+    }
+}
 
 fn print_kpi(label: &str, value: String) {
     println!("{:<18} {}", format!("{label}:"), value);
@@ -1646,6 +1718,12 @@ fn print_monthly(tracker: &Tracker, project_scope: Option<&str>) -> Result<()> {
 struct ExportData {
     summary: ExportSummary,
     #[serde(skip_serializing_if = "Option::is_none")]
+    output_accounting: Option<crate::core::tracking::OutputAccounting>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    commands: Option<Vec<crate::core::tracking::InvocationRecord>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recall_events: Option<Vec<crate::core::tracking::RecallEventRecord>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     daily: Option<Vec<DayStats>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     weekly: Option<Vec<WeekStats>>,
@@ -1665,8 +1743,10 @@ struct ExportSummary {
     oversized_capped: usize,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn export_json(
     tracker: &Tracker,
+    history: bool,
     daily: bool,
     weekly: bool,
     monthly: bool,
@@ -1677,7 +1757,19 @@ fn export_json(
         .get_summary_filtered(project_scope) // changed: use filtered variant
         .context("Failed to load token savings summary from database")?;
 
+    // A database whose migration failed lacks what the history reads; the
+    // export leaves the history out and the notice on stderr says why.
+    let history = history && tracker.not_upgraded().is_none();
     let export = ExportData {
+        output_accounting: history
+            .then(|| tracker.output_accounting(project_scope))
+            .transpose()?,
+        commands: history
+            .then(|| tracker.invocation_history(100, project_scope))
+            .transpose()?,
+        recall_events: history
+            .then(|| tracker.recall_event_history(100, project_scope))
+            .transpose()?,
         summary: ExportSummary {
             total_commands: summary.total_commands,
             total_input: summary.total_input,
@@ -1982,6 +2074,54 @@ fn print_pro_hint_if_due(tracker: &Tracker) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "engine")]
+    #[test]
+    fn sent_kpi_shows_the_count_and_the_tokens_replaced() {
+        let sent = ["thing sent", "things sent"];
+        assert_eq!(
+            sent_kpi(3, sent, 12_000, 60),
+            "3 things sent: 12.0K → 60 tokens   est."
+        );
+        assert!(sent_kpi(1, sent, 400, 20).starts_with("1 thing sent:"));
+    }
+
+    /// A panel whose only hook figure is a repeat still prints, with its line.
+    #[cfg(feature = "engine")]
+    #[test]
+    fn repeats_alone_fill_the_panel() {
+        let tracker = Tracker::new_in_memory().expect("tracker");
+        assert!(!HookFigures::read(&tracker, 30).any());
+        tracker
+            .record_attribution("hook", "repeat", "Bash", 4000, 20)
+            .expect("record");
+        let hook = HookFigures::read(&tracker, 30);
+        assert!(hook.any());
+        assert_eq!(hook.hunk_line(), None, "a repeat is not a hunked re-read");
+        assert_eq!(
+            hook.repeat_line().as_deref(),
+            Some("1 repeated output sent as a pointer: 4.0K → 20 tokens   est.")
+        );
+    }
+
+    /// Hunked re-reads have their own line and alone fill the panel too.
+    #[cfg(feature = "engine")]
+    #[test]
+    fn hunked_rereads_alone_fill_the_panel() {
+        let tracker = Tracker::new_in_memory().expect("tracker");
+        for _ in 0..2 {
+            tracker
+                .record_attribution("hook", "hunks", "Read", 3000, 100)
+                .expect("record");
+        }
+        let hook = HookFigures::read(&tracker, 30);
+        assert!(hook.any());
+        assert_eq!(hook.repeat_line(), None, "hunks are not repeats");
+        assert_eq!(
+            hook.hunk_line().as_deref(),
+            Some("2 changed re-reads sent as hunks: 6.0K → 200 tokens   est.")
+        );
+    }
 
     #[cfg(feature = "engine")]
     #[test]

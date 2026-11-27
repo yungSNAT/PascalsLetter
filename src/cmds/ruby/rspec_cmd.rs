@@ -1023,3 +1023,7 @@ rspec ./spec/models/user_spec.rb:5 # User is valid
         assert!(args.iter().any(|a| a.starts_with("--format=")));
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/rspec_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_ruby_rspec_cmd;

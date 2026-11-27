@@ -81,6 +81,7 @@ const KNOWN_PI_PLUGIN_HASHES: &[&str] = &[
     "3eb16108f51a29c2a62a453d5c97a6ea2da8aea1061da34c50fdcfaa32dc0ff7",
     "def594058835ce23d82abd6872a8359144a4486ed0905ff12e59fedb2260b472",
     "4539416fc4c9a84d60794252e0ffd3b29408970e5ecbd79f45b247e9a58a17a0",
+    "711c4fb35d8b1abf98cfd439c721e82564eb67a2969c5ebfdec007b1eb373bb2",
 ];
 
 /// Resolve Pi config directory, honouring `PI_CODING_AGENT_DIR` override.
@@ -1915,3 +1916,7 @@ mod tests {
         assert!(path.exists(), "non-RTK extension must be left in place");
     }
 }
+
+#[cfg(test)]
+#[path = "pi_coverage_gen.rs"]
+mod coverage_gen_src_hooks_init_pi;

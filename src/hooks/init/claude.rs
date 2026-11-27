@@ -4,8 +4,8 @@
 use super::*;
 use crate::core::user_dirs;
 use crate::hooks::constants::{
-    CLAUDE_DIR, CLAUDE_HOOK_COMMAND, CURSOR_DIR, HOOKS_SUBDIR, POST_TOOL_USE_KEY, PRE_TOOL_USE_KEY,
-    REWRITE_HOOK_FILE, SESSION_START_KEY, SETTINGS_JSON,
+    CLAUDE_DIR, CLAUDE_HOOK_COMMAND, CURSOR_DIR, HOOKS_SUBDIR, POST_TOOL_USE_KEY, PRE_COMPACT_KEY,
+    PRE_TOOL_USE_KEY, REWRITE_HOOK_FILE, SESSION_START_KEY, SETTINGS_JSON,
 };
 
 /// Legacy mode (--claude-md): inject the full RTK_INSTRUCTIONS block into CLAUDE.md.
@@ -128,7 +128,12 @@ fn patch_claude_md(path: &Path, ctx: InitContext) -> Result<bool> {
 
 pub(super) fn remove_hook_from_json(root: &mut serde_json::Value) -> bool {
     let mut modified = false;
-    for event_key in [PRE_TOOL_USE_KEY, POST_TOOL_USE_KEY, SESSION_START_KEY] {
+    for event_key in [
+        PRE_TOOL_USE_KEY,
+        POST_TOOL_USE_KEY,
+        SESSION_START_KEY,
+        PRE_COMPACT_KEY,
+    ] {
         if !remove_hook_entries(root, event_key, HookEntries::Grouped, |hook| {
             is_claude_hook_entry(hook) || is_command_hook(hook, is_legacy_rewrite_hook)
         }) {
@@ -497,7 +502,10 @@ pub(super) fn required_claude_events_scoped(
 #[cfg(feature = "engine")]
 /// With `[hooks] dedup_repeats`, both tool events fire for each tool a
 /// repeat pointer can replace: PreToolUse marks the call in flight and
-/// PostToolUse delivers it.
+/// PostToolUse delivers it. PreCompact forgets the session's records, as
+/// compaction keeps the session but summarises away the outputs they name.
+/// Not SessionStart: its handler also starts the proxy for a loopback
+/// `ANTHROPIC_BASE_URL`, which this option must not switch on.
 pub(super) fn add_repeat_tools(events: &mut Vec<(&'static str, String)>) {
     const REPEAT_TOOLS: &[&str] = &["Bash", "Read", "Grep", "Glob"];
     for key in [PRE_TOOL_USE_KEY, POST_TOOL_USE_KEY] {
@@ -507,6 +515,9 @@ pub(super) fn add_repeat_tools(events: &mut Vec<(&'static str, String)>) {
             }
             None => events.push((key, REPEAT_TOOLS.join("|"))),
         }
+    }
+    if !events.iter().any(|(k, _)| *k == PRE_COMPACT_KEY) {
+        events.push((PRE_COMPACT_KEY, "manual|auto".to_string()));
     }
 }
 
@@ -1042,8 +1053,13 @@ mod tests {
             vec![
                 (PRE_TOOL_USE_KEY, all.to_string()),
                 (POST_TOOL_USE_KEY, format!("{all}|mcp__.*")),
+                (PRE_COMPACT_KEY, "manual|auto".to_string()),
             ]
         );
+        // A second pass changes nothing: PreCompact is not added twice.
+        let once = events.clone();
+        add_repeat_tools(&mut events);
+        assert_eq!(events, once);
         let mut none = Vec::new();
         add_repeat_tools(&mut none);
         assert_eq!(
@@ -1051,7 +1067,33 @@ mod tests {
             vec![
                 (PRE_TOOL_USE_KEY, all.to_string()),
                 (POST_TOOL_USE_KEY, all.to_string()),
+                (PRE_COMPACT_KEY, "manual|auto".to_string()),
             ]
+        );
+    }
+
+    /// Compaction keeps the session but summarises away the outputs a
+    /// pointer or hunks refer to, so the option also registers PreCompact,
+    /// where the records are forgotten. Uninstall takes it back.
+    #[cfg(feature = "engine")]
+    #[test]
+    fn test_add_repeat_tools_forgets_at_compaction_and_uninstalls() {
+        let mut events = Vec::new();
+        add_repeat_tools(&mut events);
+        let mut root = serde_json::json!({});
+        for (key, matcher) in &events {
+            insert_hook_entry(&mut root, key, matcher, CLAUDE_HOOK_COMMAND).unwrap();
+        }
+        assert!(hook_already_present(
+            &root,
+            PRE_COMPACT_KEY,
+            CLAUDE_HOOK_COMMAND
+        ));
+        assert!(hook_gaps(&root, &events).is_empty(), "{root}");
+        assert!(remove_hook_from_json(&mut root));
+        assert!(
+            !hook_already_present(&root, PRE_COMPACT_KEY, CLAUDE_HOOK_COMMAND),
+            "{root}"
         );
     }
 
@@ -2851,3 +2893,7 @@ mod tests {
         });
     }
 }
+
+#[cfg(test)]
+#[path = "claude_coverage_gen.rs"]
+mod coverage_gen_src_hooks_init_claude;

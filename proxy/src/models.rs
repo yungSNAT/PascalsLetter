@@ -4,8 +4,8 @@
 //! cost estimates exist only when the operator adds them (via
 //! `RTK_PROXY_MODELS_TOML` or a registry edit). Loaded once at startup.
 
-use once_cell::sync::Lazy;
 use serde::Deserialize;
+use std::sync::LazyLock;
 use std::sync::RwLock;
 
 /// The embedded default registry — only a **seed**. At startup the DB copy (in
@@ -55,7 +55,39 @@ pub struct Registry {
 
 impl Registry {
     pub fn parse(toml_str: &str) -> anyhow::Result<Registry> {
-        Ok(toml::from_str(toml_str)?)
+        // A TOML error's display includes the input line, which may be operator data.
+        let registry: Self =
+            toml::from_str(toml_str).map_err(|_| anyhow::anyhow!("invalid model registry TOML"))?;
+        let defaults = &registry.default;
+        for (input, output, cache) in
+            std::iter::once((defaults.input, defaults.output, defaults.cache_read_mult)).chain(
+                registry
+                    .models
+                    .iter()
+                    .map(|m| (m.input, m.output, m.cache_read_mult)),
+            )
+        {
+            anyhow::ensure!(
+                [input, output, Some(cache)]
+                    .into_iter()
+                    .flatten()
+                    .all(|v| v.is_finite() && v >= 0.0),
+                "model registry rates must be finite and nonnegative"
+            );
+            // Every usage counter is i64. Bound the same intermediate products as billing.
+            let tokens = i64::MAX as f64;
+            let max_input = tokens * input.unwrap_or_default();
+            let max_output = tokens * output.unwrap_or_default();
+            let max_cost =
+                (max_input + max_input * crate::pricing::CACHE_WRITE_MULT + max_input * cache)
+                    / 1_000_000.0
+                    + max_output / 1_000_000.0;
+            anyhow::ensure!(
+                max_cost.is_finite(),
+                "model registry rates exceed the supported token range"
+            );
+        }
+        Ok(registry)
     }
 
     /// First spec whose `pattern` is a substring of the (lowercased) model id.
@@ -92,7 +124,7 @@ impl Registry {
 /// The process-wide registry. Starts as the embedded default so pricing works
 /// before the DB is read (and in tests); `install` overwrites it at startup with
 /// the DB copy — the shared source of truth for every pod.
-static REGISTRY: Lazy<RwLock<Registry>> = Lazy::new(|| {
+static REGISTRY: LazyLock<RwLock<Registry>> = LazyLock::new(|| {
     RwLock::new(Registry::parse(DEFAULT_TOML).expect("embedded models.toml must parse"))
 });
 
@@ -109,19 +141,29 @@ pub fn install(registry: Registry) {
 /// bootstrap), else the embedded default. It deliberately does NOT override an
 /// existing DB value, so replicas never diverge on a per-pod env var.
 pub fn boot_seed_toml() -> String {
-    if let Ok(path) = std::env::var("RTK_PROXY_MODELS_TOML") {
-        match std::fs::read_to_string(&path) {
-            Ok(s) => {
-                tracing::info!(path, "model registry seed from RTK_PROXY_MODELS_TOML");
-                return s;
-            }
-            Err(e) => tracing::warn!(
-                path, error = %e,
-                "RTK_PROXY_MODELS_TOML unreadable; seeding with embedded default"
-            ),
-        }
+    read_seed().unwrap_or_else(|error| {
+        tracing::warn!(%error, "using embedded model registry");
+        DEFAULT_TOML.to_owned()
+    })
+}
+
+fn read_seed() -> anyhow::Result<String> {
+    match std::env::var_os("RTK_PROXY_MODELS_TOML") {
+        Some(path) => std::fs::read_to_string(path)
+            .map_err(|e| anyhow::anyhow!("cannot read RTK_PROXY_MODELS_TOML ({})", e.kind())),
+        None => Ok(DEFAULT_TOML.to_owned()),
     }
-    DEFAULT_TOML.to_string()
+}
+
+/// Install the database's registry, or a process-local registry when recording is off.
+pub fn load_at_start(store: Option<&crate::store::Store>, db: &str) -> anyhow::Result<()> {
+    let registry = match store {
+        Some(store) => store.model_registry(read_seed)?,
+        None if matches!(db.trim(), "" | "off") => Registry::parse(&read_seed()?)?,
+        None => anyhow::bail!("the configured usage database is unavailable"),
+    };
+    install(registry);
+    Ok(())
 }
 
 /// (input $/Mtok, output $/Mtok) for a model; `None` unless the operator

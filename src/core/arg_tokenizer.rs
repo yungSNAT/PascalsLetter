@@ -1446,3 +1446,7 @@ mod tests {
         assert!(tokens.iter().all(|t| !t.double_dash));
     }
 }
+
+#[cfg(test)]
+#[path = "arg_tokenizer_coverage_gen.rs"]
+mod coverage_gen_src_core_arg_tokenizer;

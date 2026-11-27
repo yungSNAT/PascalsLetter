@@ -341,3 +341,7 @@ mod tests {
         });
     }
 }
+
+#[cfg(test)]
+#[path = "plugins_cmd_coverage_gen.rs"]
+mod coverage_gen_src_core_plugins_cmd;

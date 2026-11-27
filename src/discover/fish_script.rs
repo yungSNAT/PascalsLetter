@@ -696,3 +696,7 @@ mod tests {
         assert!(try_wrap_gated("test -d src; and git status", true).is_none());
     }
 }
+
+#[cfg(test)]
+#[path = "fish_script_coverage_gen.rs"]
+mod coverage_gen_src_discover_fish_script;

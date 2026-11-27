@@ -211,3 +211,7 @@ mod tests {
         assert!(rendered.contains("3812 -> 640"));
     }
 }
+
+#[cfg(test)]
+#[path = "pipeline_log_coverage_gen.rs"]
+mod coverage_gen_src_core_pipeline_log;

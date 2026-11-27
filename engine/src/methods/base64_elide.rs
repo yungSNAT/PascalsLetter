@@ -207,3 +207,7 @@ mod base64_guard {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "base64_elide_coverage_gen.rs"]
+mod coverage_gen_engine_src_methods_base64_elide;

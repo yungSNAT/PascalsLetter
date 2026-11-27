@@ -3,8 +3,9 @@
 //! Resolved with precedence **CLI flag > environment variable > config file >
 //! built-in default**. Everything works with zero config; a `rtk-proxy.toml`
 //! file is an optional convenience for anyone who prefers one versioned file
-//! over a handful of env vars. The file is discovered via `RTK_PROXY_CONFIG`,
-//! else `./rtk-proxy.toml`, else `/etc/rtk-proxy/rtk-proxy.toml`.
+//! over a handful of env vars. Set `RTK_PROXY_CONFIG` to select a file, or
+//! place `rtk-proxy.toml` in the user's `rtk/llm-proxy` configuration directory.
+//! Unix also checks `/etc/rtk-proxy/rtk-proxy.toml`.
 //!
 //! The generic [`load_toml_file`] discovery/parse helper is deliberately
 //! public: a downstream binary with a larger config *shape* can still locate
@@ -13,6 +14,7 @@
 use clap::Args;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 const DEFAULT_BIND: &str = "127.0.0.1:8080";
 const DEFAULT_ANTHROPIC_UPSTREAM: &str = "https://api.anthropic.com";
@@ -27,7 +29,9 @@ const DEFAULT_UPSTREAM_RETRIES: u32 = 2;
 /// shell cwd it ran from, a launchd service (cwd `/`) could not write at all,
 /// and `rtk gain`, which reads one fixed path, would see none of it.
 fn default_data_dir() -> Option<std::path::PathBuf> {
-    dirs::config_dir().map(|dir| dir.join("rtk").join("llm-proxy"))
+    dirs::config_dir()
+        .filter(|dir| dir.is_absolute())
+        .map(|dir| dir.join("rtk").join("llm-proxy"))
 }
 
 fn default_path(file_name: &str) -> String {
@@ -63,9 +67,6 @@ const DEFAULT_UPSTREAM_TIMEOUT_SECS: u64 = 600;
 /// a week after the conversation died serves nobody, and the cache stores
 /// raw tool output verbatim -- expiry bounds how long that sits on disk.
 const DEFAULT_ICM_TTL_SECS: u64 = 7 * 24 * 60 * 60;
-
-/// Default config-file locations tried when `RTK_PROXY_CONFIG` is unset.
-const CONFIG_PATHS: &[&str] = &["rtk-proxy.toml", "/etc/rtk-proxy/rtk-proxy.toml"];
 
 /// The resolved runtime configuration (all layers merged).
 #[derive(Debug, Clone)]
@@ -268,9 +269,33 @@ impl Default for PixelCompressConfig {
 impl Config {
     /// Resolve from already-parsed `start` args + env + config file + defaults.
     pub fn from_cli(cli: StartArgs) -> anyhow::Result<Self> {
-        let file: FileConfig =
-            load_toml_file("RTK_PROXY_CONFIG", CONFIG_PATHS)?.unwrap_or_default();
-        Ok(Self::resolve(cli, file))
+        if let Some(file) = load_toml_file("RTK_PROXY_CONFIG", &[])? {
+            return Ok(Self::resolve(cli, file));
+        }
+        let dirs = default_data_dir().into_iter();
+        #[cfg(unix)]
+        let dirs = dirs.chain([std::path::PathBuf::from("/etc/rtk-proxy")]);
+        for dir in dirs {
+            if let Some(mut file) = read_config::<FileConfig>(&dir.join("rtk-proxy.toml"), None)? {
+                // Relative store names in a discovered config belong beside that file.
+                let stores = [
+                    file.db.as_mut().filter(|_| cli.db.is_none()),
+                    file.icm_db.as_mut().filter(|_| cli.icm_db.is_none()),
+                ];
+                for field in stores.into_iter().flatten() {
+                    let value = field.trim();
+                    if !matches!(value, "" | "off" | ":memory:") && Path::new(value).is_relative() {
+                        let absolute = dir.join(value);
+                        anyhow::ensure!(absolute.is_absolute(), "ambiguous database path: {value}");
+                        *field = absolute.into_os_string().into_string().map_err(|_| {
+                            anyhow::anyhow!("database path cannot be represented as Unicode")
+                        })?;
+                    }
+                }
+                return Ok(Self::resolve(cli, file));
+            }
+        }
+        Ok(Self::resolve(cli, FileConfig::default()))
     }
 
     /// Merge the three layers (CLI wins over file wins over default). Pure — the
@@ -377,35 +402,38 @@ pub fn load_toml_file<T: DeserializeOwned>(
     env_var: &str,
     default_paths: &[&str],
 ) -> anyhow::Result<Option<T>> {
-    let candidates: Vec<String> = match std::env::var(env_var).ok().filter(|s| !s.is_empty()) {
-        Some(p) => vec![p],
-        None => default_paths.iter().map(|s| s.to_string()).collect(),
-    };
-    let explicit = std::env::var(env_var)
-        .ok()
-        .filter(|s| !s.is_empty())
-        .is_some();
-    for path in candidates {
-        match std::fs::read_to_string(&path) {
-            Ok(text) => {
-                let parsed: T = toml::from_str(&text)
-                    .map_err(|e| anyhow::anyhow!("invalid config {path}: {e}"))?;
-                tracing::info!(path = %path, "loaded TOML config");
-                return Ok(Some(parsed));
-            }
-            // An EXPLICITLY named file that cannot be read is an error: the
-            // user pointed at a config on purpose, and starting on silent
-            // defaults they believe they overrode is the worst outcome. An
-            // absent file on the default search path stays fine.
-            Err(e) if explicit => {
-                return Err(anyhow::anyhow!(
-                    "cannot read config {path} (from ${env_var}): {e}"
-                ));
-            }
-            Err(_) => {}
+    if let Some(path) = std::env::var_os(env_var).filter(|s| !s.is_empty()) {
+        return read_config(Path::new(&path), Some(env_var));
+    }
+    for path in default_paths {
+        // Preserve the generic helper's fallback order for downstream callers.
+        if let Ok(text) = std::fs::read_to_string(path) {
+            return parse_config(Path::new(path), &text).map(Some);
         }
     }
     Ok(None)
+}
+
+fn read_config<T: DeserializeOwned>(
+    path: &Path,
+    env_var: Option<&str>,
+) -> anyhow::Result<Option<T>> {
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(e) => match env_var {
+            Some(var) => anyhow::bail!("cannot read config {} (from ${var}): {e}", path.display()),
+            None if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            None => anyhow::bail!("cannot read config {}: {e}", path.display()),
+        },
+    };
+    parse_config(path, &text).map(Some)
+}
+
+fn parse_config<T: DeserializeOwned>(path: &Path, text: &str) -> anyhow::Result<T> {
+    let parsed = toml::from_str(text)
+        .map_err(|e| anyhow::anyhow!("invalid config {}: {e}", path.display()))?;
+    tracing::info!(path = %path.display(), "loaded TOML config");
+    Ok(parsed)
 }
 
 #[cfg(test)]

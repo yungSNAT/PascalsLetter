@@ -833,3 +833,7 @@ mod tests {
         assert!(filter_sbt_run("").is_empty());
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/sbt_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_scala_sbt_cmd;

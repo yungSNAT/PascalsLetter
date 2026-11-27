@@ -40,6 +40,35 @@ pub struct ToolOutputBytes {
     pub unparsed_lines: usize,
 }
 
+/// Tokens the API billed for a session's assistant messages, by kind.
+#[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
+pub struct TokenUsage {
+    /// Input read fresh, outside the prompt cache.
+    pub input: usize,
+    /// Input written to the prompt cache.
+    pub cache_write: usize,
+    /// Input read from the prompt cache.
+    pub cache_read: usize,
+    /// Tokens the model wrote.
+    pub output: usize,
+}
+
+impl TokenUsage {
+    pub fn total(&self) -> usize {
+        self.input
+            .saturating_add(self.cache_write)
+            .saturating_add(self.cache_read)
+            .saturating_add(self.output)
+    }
+
+    pub fn add(&mut self, other: Self) {
+        self.input = self.input.saturating_add(other.input);
+        self.cache_write = self.cache_write.saturating_add(other.cache_write);
+        self.cache_read = self.cache_read.saturating_add(other.cache_read);
+        self.output = self.output.saturating_add(other.output);
+    }
+}
+
 /// Trait for session providers (Claude Code, OpenCode, etc.).
 ///
 /// Note: Cursor Agent transcripts use a text-only format without structured
@@ -56,6 +85,85 @@ pub trait SessionProvider {
 }
 
 pub struct ClaudeProvider;
+
+impl ClaudeProvider {
+    /// API usage of the assistant messages in a session log. Claude Code
+    /// writes one line per content block of a message, each carrying the
+    /// message's usage, so a message counts once by `message.id`, at its
+    /// largest figures in case an earlier line was written mid-stream. A line
+    /// with no id counts alone. A resumed or forked session copies messages
+    /// into a new log, so the ids are shared across `paths`. Returns the total
+    /// and how many of the logs could be read.
+    pub fn token_usage(&self, paths: &[PathBuf]) -> (TokenUsage, usize) {
+        let mut by_id: HashMap<String, TokenUsage> = HashMap::new();
+        let mut total = TokenUsage::default();
+        let logs_read = paths
+            .iter()
+            .filter(|path| Self::fold_token_usage(path, &mut by_id, &mut total).is_ok())
+            .count();
+        for usage in by_id.into_values() {
+            total.add(usage);
+        }
+        (total, logs_read)
+    }
+
+    fn fold_token_usage(
+        path: &Path,
+        by_id: &mut HashMap<String, TokenUsage>,
+        total: &mut TokenUsage,
+    ) -> Result<()> {
+        let file =
+            fs::File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
+        for line in BufReader::new(file).split(b'\n') {
+            // A failed read would fail again, so stop there and keep what was counted.
+            let Ok(line) = line else { break };
+            let Ok(line) = String::from_utf8(line) else {
+                continue;
+            };
+            if !line.contains("\"usage\"") {
+                continue;
+            }
+            let Ok(entry) = serde_json::from_str::<serde_json::Value>(&line) else {
+                continue;
+            };
+            // Subagent turns kept inline in older logs are not the session's own.
+            if entry.get("type").and_then(|t| t.as_str()) != Some("assistant")
+                || entry.get("isSidechain") == Some(&serde_json::Value::Bool(true))
+            {
+                continue;
+            }
+            let Some(usage) = entry.pointer("/message/usage") else {
+                continue;
+            };
+            let count = |key: &str| {
+                usage
+                    .get(key)
+                    .and_then(serde_json::Value::as_u64)
+                    .and_then(|n| usize::try_from(n).ok())
+                    .unwrap_or(0)
+            };
+            let usage = TokenUsage {
+                input: count("input_tokens"),
+                cache_write: count("cache_creation_input_tokens"),
+                cache_read: count("cache_read_input_tokens"),
+                output: count("output_tokens"),
+            };
+            match entry.pointer("/message/id").and_then(|i| i.as_str()) {
+                Some(id) => {
+                    let seen = by_id.entry(id.to_string()).or_default();
+                    *seen = TokenUsage {
+                        input: seen.input.max(usage.input),
+                        cache_write: seen.cache_write.max(usage.cache_write),
+                        cache_read: seen.cache_read.max(usage.cache_read),
+                        output: seen.output.max(usage.output),
+                    };
+                }
+                None => total.add(usage),
+            }
+        }
+        Ok(())
+    }
+}
 
 /// Text bytes of a `tool_result` block. `content` is a string for most tools and
 /// an array of blocks for others, such as MCP servers and subagents; a block with
@@ -706,6 +814,72 @@ mod tests {
         assert_eq!(cmds[2].command, "third");
     }
 
+    fn usage_line(id: Option<&str>, input: u64, write: u64, read: u64, output: u64) -> String {
+        let id = id.map_or(String::new(), |id| format!(r#""id":"{id}","#));
+        format!(
+            r#"{{"type":"assistant","message":{{{id}"role":"assistant","content":[{{"type":"text","text":"x"}}],"usage":{{"input_tokens":{input},"cache_creation_input_tokens":{write},"cache_read_input_tokens":{read},"output_tokens":{output}}}}}}}"#
+        )
+    }
+
+    /// Claude Code writes one line per content block of a message, each with
+    /// the message's usage: a message counts once, at its largest figures. A
+    /// line with no id counts alone; user lines and unreadable lines count
+    /// for nothing.
+    #[test]
+    fn test_token_usage_counts_each_message_once() {
+        let jsonl = make_jsonl(&[
+            &usage_line(Some("msg_1"), 3, 100, 1000, 2),
+            &usage_line(Some("msg_1"), 3, 100, 1000, 40),
+            &usage_line(Some("msg_2"), 1, 0, 1100, 7),
+            &usage_line(None, 5, 0, 0, 1),
+            &usage_line(None, 5, 0, 0, 1),
+            r#"{"type":"user","message":{"role":"user","content":"hi","usage":{"input_tokens":999}}}"#,
+            r#"{"type":"assistant","message":{"id":"msg_3","usage":{"input_tok"#,
+        ]);
+
+        let (usage, logs_read) = ClaudeProvider.token_usage(&[jsonl.path().to_path_buf()]);
+        assert_eq!(logs_read, 1);
+        assert_eq!(
+            usage,
+            TokenUsage {
+                input: 14,
+                cache_write: 100,
+                cache_read: 2100,
+                output: 49,
+            }
+        );
+        assert_eq!(usage.total(), 2263);
+    }
+
+    /// A line that is not UTF-8, and an assistant line that mentions usage
+    /// without carrying it, count for nothing; the lines after them count.
+    #[test]
+    fn test_token_usage_skips_lines_without_readable_usage() {
+        let mut jsonl = make_jsonl(&[&usage_line(Some("msg_1"), 3, 0, 0, 2)]);
+        jsonl
+            .write_all(b"{\"type\":\"assistant\",\"usage\":\"\xE3\"}\n")
+            .unwrap();
+        writeln!(
+            jsonl,
+            r#"{{"type":"assistant","message":{{"id":"msg_2","content":"no usage here"}},"note":"usage"}}"#
+        )
+        .unwrap();
+        writeln!(jsonl, "{}", usage_line(Some("msg_3"), 5, 0, 0, 7)).unwrap();
+        jsonl.flush().unwrap();
+
+        let (usage, logs_read) = ClaudeProvider.token_usage(&[jsonl.path().to_path_buf()]);
+        assert_eq!(logs_read, 1);
+        assert_eq!(
+            usage,
+            TokenUsage {
+                input: 8,
+                cache_write: 0,
+                cache_read: 0,
+                output: 9,
+            }
+        );
+    }
+
     #[test]
     fn test_tool_output_bytes_counts_a_repeated_result_once() {
         let jsonl = make_jsonl(&[
@@ -766,3 +940,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "provider_coverage_gen.rs"]
+mod coverage_gen_src_discover_provider;

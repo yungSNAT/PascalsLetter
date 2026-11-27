@@ -8819,3 +8819,19 @@ To https://github.com/foo/bar.git
         }
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/git_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_git_git_cmd;
+
+#[cfg(test)]
+#[path = "coverage_gen/git_cmd_coverage_gen1.rs"]
+mod coverage_gen1_src_cmds_git_git_cmd;
+
+#[cfg(test)]
+#[path = "coverage_gen/git_cmd_coverage_gen3.rs"]
+mod coverage_gen3_src_cmds_git_git_cmd;
+
+#[cfg(test)]
+#[path = "coverage_gen/git_cmd_coverage_gen2.rs"]
+mod coverage_gen2_src_cmds_git_git_cmd;

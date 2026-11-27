@@ -632,3 +632,7 @@ mod onramp_report_tests {
         assert!(lines.contains("nothing routed to it"), "{lines}");
     }
 }
+
+#[cfg(test)]
+#[path = "vibe_coverage_gen.rs"]
+mod coverage_gen_src_hooks_init_vibe;

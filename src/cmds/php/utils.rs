@@ -59,3 +59,7 @@ pub fn detect_php_test_runner() -> PhpTestRunner {
 
     PhpTestRunner::Unknown
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/utils_coverage_gen.rs"]
+mod coverage_gen_src_cmds_php_utils;

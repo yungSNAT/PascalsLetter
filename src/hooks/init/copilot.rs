@@ -851,3 +851,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "copilot_coverage_gen.rs"]
+mod coverage_gen_src_hooks_init_copilot;

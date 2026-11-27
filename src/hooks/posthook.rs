@@ -22,7 +22,7 @@ use crate::core::config::Config;
 use crate::core::pipeline_config::{self, LoadedPipeline};
 use crate::core::pipeline_log;
 use crate::core::tee;
-use crate::core::tracking::{Tracker, estimate_tokens};
+use crate::core::tracking::{Tracker, estimate_tokens, estimate_tokens_from_len};
 use regex::Regex;
 use rtk_engine::block::{Block, ContentFormat, Event, Origin, Provenance, Subject};
 use rtk_engine::method::{Method, MethodCtx};
@@ -37,6 +37,25 @@ use std::sync::LazyLock;
 const READ_CONVERSION_NOTE: &str = "RTK compressed this Read output (format conversion, \
      e.g. json->toon, lockfile summary). The on-disk file is unchanged; re-read with rtk \
      disabled or check the recall file before constructing Edit old_string values.";
+
+/// [`READ_CONVERSION_NOTE`], plus the lines a cut Read covered: a summary of
+/// part of a file (`Cargo.lock: 400 packages`) otherwise reads as the whole.
+fn conversion_note(event: &Value) -> String {
+    let file = event.pointer("/tool_response/file");
+    let count = |key: &str| file.and_then(|f| f.get(key)).and_then(Value::as_u64);
+    let start = count("startLine")
+        .or_else(|| event.pointer("/tool_input/offset").and_then(Value::as_u64))
+        .unwrap_or(1)
+        .max(1);
+    match (count("numLines"), count("totalLines")) {
+        (Some(lines), Some(total)) if lines > 0 && (start > 1 || lines < total) => format!(
+            "{READ_CONVERSION_NOTE} This Read covered lines {start}-{} of {total} only; \
+             the converted output describes those lines, not the whole file.",
+            start.saturating_add(lines - 1)
+        ),
+        _ => READ_CONVERSION_NOTE.to_string(),
+    }
+}
 
 fn apply_terminal(
     text: String,
@@ -165,7 +184,7 @@ fn filter_tool_output(event: &Value, config: &Config, pipeline: &Resolved) -> Op
         "updatedToolOutput": updated,
     });
     if converted {
-        hook_output["additionalContext"] = json!(READ_CONVERSION_NOTE);
+        hook_output["additionalContext"] = json!(conversion_note(event));
     }
 
     track(
@@ -1047,9 +1066,19 @@ fn full_hash(text: &str) -> String {
 /// A session that starts, resumes, clears or compacts has lost the outputs a
 /// pointer would refer to.
 pub fn forget_repeats(event: &Value) {
+    #[cfg(test)]
+    FORGOTTEN.with(|forgotten| forgotten.borrow_mut().push(event.clone()));
+    #[cfg(not(test))]
     if let Ok(config) = Config::load() {
         forget_repeats_with(&config, event);
     }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// The events [`forget_repeats`] was called with under test, which
+    /// leaves the user's own repeat folders alone.
+    pub static FORGOTTEN: std::cell::RefCell<Vec<Value>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
 /// PreToolUse of a Bash, Read, Grep or Glob call. A call still marked never
@@ -1123,8 +1152,8 @@ const REPEAT_SESSION_MAX_AGE: std::time::Duration = std::time::Duration::from_se
 const TAKEN_MARK_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(3600);
 
 /// Removes other sessions' folders untouched for `REPEAT_SESSION_MAX_AGE`
-/// and taken marks older than `TAKEN_MARK_MAX_AGE`. `live` (the session
-/// being started or used) is never removed. Old folders are renamed to a
+/// and taken marks and leftover tombstones older than `TAKEN_MARK_MAX_AGE`.
+/// `live` (the session being started or used) is never removed. Old folders are renamed to a
 /// tombstone before deletion so a resuming session starts clean instead of
 /// reading a half-deleted folder, and a failed rename leaves the folder alone.
 fn is_pruning_tombstone(name: &std::ffi::OsStr) -> bool {
@@ -1157,7 +1186,10 @@ fn prune_repeats_with(
         if path == live {
             prune_taken_marks(&path, now);
         } else if is_pruning_tombstone(&entry.file_name()) {
-            if older_than(&path, now, REPEAT_SESSION_MAX_AGE) {
+            // No session reads a tombstone, so only a delete in progress needs
+            // waiting out; a partial delete refreshes its time, and a week's
+            // gate would defer the retry by another week.
+            if older_than(&path, now, TAKEN_MARK_MAX_AGE) {
                 remove_dir(&path);
             }
         } else if older_than(&path, now, REPEAT_SESSION_MAX_AGE) {
@@ -1227,15 +1259,18 @@ fn deliver(
         config,
         event,
         Some((command, delivered.as_str())),
+        None,
         emitted,
-        || pointer(config, response, &delivered),
+        |_| pointer(config, response, &delivered),
     )
 }
 
 /// Read, Grep and Glob: hands back what the agent gets (`emitted`, or `None`
 /// for the tool's own result), or a pointer when the agent's last completed
 /// call of the same tool with the same arguments got this same result. The
-/// result is compared whole, so a file that changed is delivered whole.
+/// result is compared whole, so a file that changed is delivered whole, or,
+/// for a Read with `[hooks] dedup_hunks`, as hunks against the text the agent
+/// got from that call.
 fn deliver_native(config: &Config, event: &Value, emitted: Option<String>) -> Option<String> {
     if !dedup_active(config, event) {
         return emitted;
@@ -1260,9 +1295,50 @@ fn deliver_native(config: &Config, event: &Value, emitted: Option<String>) -> Op
     });
     let key = input_key(event);
     let seen = shown.as_deref().map(|shown| (key.as_str(), shown));
-    deliver_seen(config, event, seen, emitted, || {
-        native_pointer(config, event, envelope, response?, &text?)
+    let baseline = text.as_deref().filter(|text| {
+        config.hooks.dedup_hunks
+            && event.get("tool_name").and_then(Value::as_str) == Some("Read")
+            // The tool's own response: a rewrite resets its line counts.
+            && event
+                .get("tool_response")
+                .is_some_and(|r| whole_read(event, r))
+            && hunkable(text)
+    });
+    deliver_seen(config, event, seen, baseline, emitted, |previous| {
+        native_pointer(
+            config,
+            event,
+            envelope,
+            response?,
+            text.as_deref()?,
+            previous,
+        )
     })
+}
+
+/// Largest Read text kept to diff a later re-read against.
+const HUNK_BASELINE_MAX_BYTES: usize = 64 * 1024;
+
+/// Text whose lines rebuild it exactly (no `\r` for `lines()` to drop) and
+/// small enough to keep.
+fn hunkable(text: &str) -> bool {
+    text.len() <= HUNK_BASELINE_MAX_BYTES && !text.contains('\r')
+}
+
+/// A record's first line, `<input digest> <shown digest>`, then, when the
+/// call's text was kept for hunks, its digest and the text itself.
+fn record_body(seen: &str, baseline: Option<&str>) -> String {
+    match baseline {
+        Some(text) => format!("{seen}\n{}\n{text}", full_hash(text)),
+        None => seen.to_string(),
+    }
+}
+
+/// The text a record kept, when its digest still matches.
+fn record_baseline(body: &str) -> Option<&str> {
+    let (_, rest) = body.split_once('\n')?;
+    let (digest, text) = rest.split_once('\n')?;
+    (full_hash(text) == digest).then_some(text)
 }
 
 /// A call counts as completed only when its PreToolUse marked it and nothing
@@ -1270,12 +1346,19 @@ fn deliver_native(config: &Config, event: &Value, emitted: Option<String>) -> Op
 /// input and what the agent was shown (`None`: nothing to compare). Claude
 /// Code sends `agent_id` only from a subagent, so its absence is the main
 /// thread; other hosts are left alone.
+///
+/// `baseline` is the text kept for a later re-read's hunks. `pointer(None)`
+/// builds the pointer for an unchanged result; `pointer(Some(previous))` the
+/// hunks against the text the same input got last time. A call answered with
+/// hunks keeps no record, so the next re-read is delivered whole: hunks are
+/// only ever sent against text the agent was given.
 fn deliver_seen(
     config: &Config,
     event: &Value,
     seen: Option<(&str, &str)>,
+    baseline: Option<&str>,
     emitted: Option<String>,
-    pointer: impl FnOnce() -> Option<String>,
+    pointer: impl FnOnce(Option<&str>) -> Option<Pointer>,
 ) -> Option<String> {
     if !dedup_active(config, event) {
         return emitted;
@@ -1296,15 +1379,25 @@ fn deliver_seen(
         return emitted;
     }
     let mut sound = true;
+    let prior = std::fs::read_to_string(&record).ok();
     let repeat = match seen.map(|(key, shown)| format!("{} {}", full_hash(key), full_hash(shown))) {
-        Some(seen) if std::fs::read_to_string(&record).ok().as_deref() == Some(seen.as_str()) => {
-            pointer()
+        Some(seen)
+            if prior.as_deref().and_then(|p| p.split('\n').next()) == Some(seen.as_str()) =>
+        {
+            pointer(None)
         }
         Some(seen) => {
-            if std::fs::write(&record, seen).is_err() {
+            let input = seen.split_once(' ').map(|(input, _)| input);
+            let hunks = prior
+                .as_deref()
+                .filter(|p| baseline.is_some() && p.split_once(' ').map(|(i, _)| i) == input)
+                .and_then(record_baseline)
+                .and_then(|previous| pointer(Some(previous)));
+            // A hunked call keeps no record; any other keeps this one.
+            if hunks.is_some() || std::fs::write(&record, record_body(&seen, baseline)).is_err() {
                 sound = clear(&record);
             }
-            None
+            hunks
         }
         None => {
             sound = clear(&record);
@@ -1322,7 +1415,13 @@ fn deliver_seen(
             .is_some_and(|body| mark_id(&body) == id);
     if ours && sound {
         let _ = std::fs::remove_file(&taken);
-        return repeat.or(emitted);
+        return match repeat {
+            Some(pointer) => {
+                record_repeat(event, &pointer);
+                Some(pointer.output)
+            }
+            None => emitted,
+        };
     }
     if !clear(&record) {
         files.poison();
@@ -1335,6 +1434,44 @@ fn deliver_seen(
     }
     let _ = std::fs::remove_file(&taken);
     emitted
+}
+
+/// A repeat pointer: the hook output that carries it, the byte lengths of
+/// the text it replaces and of the pointer line the agent gets instead, and
+/// the kind `rtk gain` books it under (`repeat`, or `hunks` for a changed
+/// re-read sent as diff hunks).
+struct Pointer {
+    output: String,
+    replaced: usize,
+    line: usize,
+    kind: &'static str,
+}
+
+#[cfg(test)]
+thread_local! {
+    /// The database [`record_repeat`] books into under test, kept per thread
+    /// so a test can read back what was booked.
+    static REPEAT_TRACKER: Tracker = Tracker::new_in_memory().expect("in-memory tracker");
+}
+
+/// Books a delivered pointer under its kind, per tool, so `rtk gain` counts
+/// what repeated outputs and hunked re-reads save.
+fn record_repeat(event: &Value, pointer: &Pointer) {
+    let tool = event
+        .get("tool_name")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let tokens_in = estimate_tokens_from_len(pointer.replaced);
+    let tokens_out = estimate_tokens_from_len(pointer.line);
+    let book = |tracker: &Tracker| {
+        let _ = tracker.record_attribution("hook", pointer.kind, tool, tokens_in, tokens_out);
+    };
+    #[cfg(test)]
+    REPEAT_TRACKER.with(book);
+    #[cfg(not(test))]
+    if let Ok(tracker) = tracker() {
+        book(&tracker);
+    }
 }
 
 /// Saves `delivered` for `rtk recall`; its handle.
@@ -1361,7 +1498,7 @@ fn hook_output(updated: Value) -> String {
     .to_string()
 }
 
-fn pointer(config: &Config, response: &Value, delivered: &str) -> Option<String> {
+fn pointer(config: &Config, response: &Value, delivered: &str) -> Option<Pointer> {
     let hash = store_repeat(config, delivered)?;
     let text = format!(
         "[rtk: same output as the previous run of this command ({} lines): rtk recall {hash}]",
@@ -1374,7 +1511,12 @@ fn pointer(config: &Config, response: &Value, delivered: &str) -> Option<String>
     let obj = updated.as_object_mut()?;
     obj.insert("stdout".into(), json!(text));
     obj.insert("stderr".into(), json!(""));
-    Some(hook_output(updated))
+    Some(Pointer {
+        output: hook_output(updated),
+        replaced: delivered.len(),
+        line: text.len(),
+        kind: "repeat",
+    })
 }
 
 /// The text a Read, Grep or Glob result shows: a file's content, matching
@@ -1402,13 +1544,47 @@ fn native_pointer(
     envelope: Option<Value>,
     mut response: Value,
     text: &str,
-) -> Option<String> {
+    previous: Option<&str>,
+) -> Option<Pointer> {
     let tool = event.get("tool_name").and_then(Value::as_str)?;
-    let hash = store_repeat(config, text)?;
-    let line = format!(
-        "[rtk: same result as an earlier identical {tool} in this session ({} lines): rtk recall {hash}]",
-        text.lines().count(),
-    );
+    let kind = if previous.is_some() {
+        "hunks"
+    } else {
+        "repeat"
+    };
+    let line = match previous {
+        None => {
+            let hash = store_repeat(config, text)?;
+            format!(
+                "[rtk: same result as an earlier identical {tool} in this session ({} lines): rtk recall {hash}]",
+                text.lines().count(),
+            )
+        }
+        Some(previous) => {
+            if !event
+                .get("tool_response")
+                .is_some_and(|r| whole_read(event, r))
+            {
+                return None;
+            }
+            let hunks = read_hunks(previous, text)?;
+            let path = event
+                .pointer("/tool_input/file_path")
+                .and_then(Value::as_str)
+                .unwrap_or("the file");
+            // At most half the file, so the hunks are worth sending.
+            if (hunks.len() + 300) * 2 > text.len() {
+                return None;
+            }
+            let hash = store_repeat(config, text)?;
+            format!(
+                "[rtk: {path} changed since your last Read of it in this session ({} lines now). \
+                 These diff hunks turn the text you got \
+                 then into the current one, which prints whole with: rtk recall {hash}]\n{hunks}",
+                text.lines().count(),
+            )
+        }
+    };
     if line.len() >= text.len() {
         return None;
     }
@@ -1420,13 +1596,47 @@ fn native_pointer(
         response["filenames"] = json!([line]);
     }
     // The rest of the hook's own output (a format conversion note) stays.
-    match envelope {
+    let output = match envelope {
         Some(mut envelope) => {
             *envelope.pointer_mut("/hookSpecificOutput/updatedToolOutput")? = response;
-            Some(envelope.to_string())
+            envelope.to_string()
         }
-        None => Some(hook_output(response)),
+        None => hook_output(response),
+    };
+    Some(Pointer {
+        output,
+        replaced: text.len(),
+        line: line.len(),
+        kind,
+    })
+}
+
+/// A Read that gave the agent the whole file: no `offset` or `limit`, and a
+/// response from line 1 whose `numLines` is its `totalLines`. Text cut to a
+/// window slides when a line is added or removed outside it, and hunks
+/// between 2 windows would report the lines that slid as added or deleted.
+fn whole_read(event: &Value, response: &Value) -> bool {
+    let input = event.get("tool_input");
+    let ranged = ["offset", "limit"]
+        .iter()
+        .any(|key| input.and_then(|i| i.get(key)).is_some_and(|v| !v.is_null()));
+    let file = response.get("file");
+    let count = |key: &str| file.and_then(|f| f.get(key)).and_then(Value::as_u64);
+    !ranged
+        && file
+            .and_then(|f| f.get("startLine"))
+            .is_none_or(|start| start.as_u64() == Some(1))
+        && count("numLines").is_some()
+        && count("numLines") == count("totalLines")
+}
+
+/// `previous` to `current` as classic `diff` hunks, when their lines rebuild
+/// `current` exactly.
+fn read_hunks(previous: &str, current: &str) -> Option<String> {
+    if !hunkable(current) || previous.ends_with('\n') != current.ends_with('\n') {
+        return None;
     }
+    crate::cmds::git::diff_cmd::classic_hunks(previous, current)
 }
 
 /// Path or URL the tracking rows and `when` facts key on.
@@ -1747,6 +1957,12 @@ mod tests {
             self.pre(config);
             self.post(config)
         }
+
+        /// `run` through `pipeline` instead of the default one.
+        fn run_through(&self, config: &Config, pipeline: &Resolved) -> Option<String> {
+            self.pre(config);
+            run_with(&self.event, config, pipeline)
+        }
     }
 
     fn lines(n: usize) -> String {
@@ -1761,6 +1977,40 @@ mod tests {
         stdout
             .starts_with("[rtk: same output as the previous run")
             .then(|| stdout.to_string())
+    }
+
+    /// A pointer that reaches the agent is booked as a `repeat` for its tool,
+    /// the text it replaced in and the pointer line out, so `rtk gain` counts
+    /// what it saved; a whole delivery books nothing.
+    #[test]
+    fn test_repeat_pointer_books_its_saving() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let output = lines(400);
+        let booked = || {
+            REPEAT_TRACKER.with(|tracker| {
+                tracker
+                    .attribution_site("hook", "repeat", 30)
+                    .expect("attribution")
+                    .into_iter()
+                    .map(|row| (row.name, row.calls, row.tokens_in, row.tokens_out))
+                    .collect::<Vec<_>>()
+            })
+        };
+        let first = Call::new("b1", "make test", &output, None).run(&config);
+        assert!(pointer_of(&first).is_none());
+        assert_eq!(booked(), vec![], "a whole delivery is not a repeat");
+        let second = Call::new("b2", "make test", &output, None).run(&config);
+        let pointer = pointer_of(&second).expect("a pointer");
+        assert_eq!(
+            booked(),
+            vec![(
+                "Bash".to_string(),
+                1,
+                estimate_tokens(&output) as i64,
+                estimate_tokens(&pointer) as i64
+            )]
+        );
     }
 
     /// Off by default: a repeated output reaches the agent exactly as before.
@@ -2147,6 +2397,384 @@ mod tests {
         assert!(native_pointer_of(&Call::read("d", path, &lines(400)).run(&config)).is_none());
     }
 
+    fn hunk_config(dir: &std::path::Path) -> Config {
+        let mut config = repeat_config(dir, true);
+        config.hooks.dedup_hunks = true;
+        config
+    }
+
+    /// The Read content the hook replaced the result with, when it says the
+    /// file changed.
+    fn hunks_of(out: &Option<String>) -> Option<String> {
+        let parsed: Value = serde_json::from_str(out.as_deref()?).ok()?;
+        let content = "/hookSpecificOutput/updatedToolOutput/file/content";
+        let text = parsed.pointer(content)?.as_str()?;
+        text.contains(" changed since your last Read of it in this session ")
+            .then(|| text.to_string())
+    }
+
+    /// Classic `diff` hunks applied to `old`, as an agent would rebuild the
+    /// current text from them. The hook sends hunks only when both texts end
+    /// alike, so the result ends with a newline exactly when `old` does.
+    fn apply_classic(old_text: &str, hunks: &str) -> String {
+        let old: Vec<&str> = old_text.lines().collect();
+        let mut out: Vec<String> = Vec::new();
+        let mut next = 0usize; // index of the next old line to copy
+        let mut lines = hunks.lines().peekable();
+        while let Some(head) = lines.next() {
+            let op = head.find(['a', 'c', 'd']).expect("a hunk header");
+            let start: usize = head[..op].split(',').next().unwrap().parse().unwrap();
+            let end: usize = head[..op].split(',').next_back().unwrap().parse().unwrap();
+            // `NaM` adds after line N; `c` and `d` replace lines N to end.
+            let (keep, skip) = if &head[op..op + 1] == "a" {
+                (start, 0)
+            } else {
+                (start - 1, end - start + 1)
+            };
+            out.extend(old[next..keep].iter().map(|l| l.to_string()));
+            next = keep + skip;
+            while let Some(line) = lines.peek() {
+                if let Some(new) = line.strip_prefix("> ") {
+                    out.push(new.to_string());
+                } else if !line.starts_with("< ") && *line != "---" {
+                    break;
+                }
+                lines.next();
+            }
+        }
+        out.extend(old[next..].iter().map(|l| l.to_string()));
+        let mut text: String = out.iter().map(|l| format!("{l}\n")).collect();
+        if !old_text.ends_with('\n') {
+            text.pop();
+        }
+        text
+    }
+
+    /// `native_pointer` itself refuses hunks for a Read that did not give the
+    /// whole file, even when its caller passes an earlier text.
+    #[test]
+    fn test_native_pointer_gives_no_hunks_for_a_partial_read() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = hunk_config(dir.path());
+        let old = lines(400);
+        let new = old.replace("line 10\n", "line ten\n");
+        let pointer = |edit: &dyn Fn(&mut Value)| {
+            let mut call = Call::read("a", "/repo/src/lib.rs", &new);
+            edit(&mut call.event);
+            let response = call.event["tool_response"].clone();
+            native_pointer(&config, &call.event, None, response, &new, Some(&old)).is_some()
+        };
+        assert!(pointer(&|_| {}), "the control: a whole Read gets hunks");
+        assert!(!pointer(
+            &|event| event["tool_input"]["offset"] = serde_json::json!(5)
+        ));
+        assert!(!pointer(&|event| {
+            event["tool_response"]["file"]["totalLines"] = serde_json::json!(800);
+        }));
+    }
+
+    /// Hunks rebuild the current text byte for byte whether or not both texts
+    /// end with a newline, including a change to the last line, and across
+    /// several hunks, one of them an added line.
+    #[test]
+    fn test_reread_hunks_rebuild_the_text_byte_for_byte() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = hunk_config(dir.path());
+        let first = lines(400);
+        let middle = first.replace("line 10\n", "line ten\n");
+        let last = first.replace("line 399\n", "line three nine nine\n");
+        let two = first
+            .replace("line 20\n", "line 20\nline 20.5\n")
+            .replace("line 300\n", "line three hundred\n");
+        let cases = [
+            ("an added line and a changed one", first.clone(), two),
+            ("final newline, middle", first.clone(), middle.clone()),
+            ("final newline, last line", first.clone(), last.clone()),
+            (
+                "no final newline, middle",
+                first.trim_end().to_string(),
+                middle.trim_end().to_string(),
+            ),
+            (
+                "no final newline, last line",
+                first.trim_end().to_string(),
+                last.trim_end().to_string(),
+            ),
+        ];
+        for (n, (name, before, after)) in cases.into_iter().enumerate() {
+            let path = format!("/repo/src/bytes{n}.rs");
+            Call::read(&format!("{n}a"), &path, &before).run(&config);
+            let shown = hunks_of(&Call::read(&format!("{n}b"), &path, &after).run(&config));
+            assert!(shown.is_some(), "{name}: hunks");
+            let shown = shown.unwrap_or_default();
+            let (_, hunks) = shown.split_once('\n').expect("hunks after the header");
+            assert_eq!(
+                apply_classic(&before, hunks).as_bytes(),
+                after.as_bytes(),
+                "{name}"
+            );
+            if name == "an added line and a changed one" {
+                // 2 hunks, the first an `a`, so both `apply_classic` arms run.
+                let headers = hunks.lines().filter(|l| l.as_bytes()[0].is_ascii_digit());
+                assert_eq!(headers.count(), 2, "{name}");
+                let first_header = hunks.lines().next().unwrap_or_default();
+                assert!(first_header.contains('a'), "{name}: {first_header}");
+            }
+        }
+    }
+
+    /// With `dedup_hunks`, a re-read of a file that changed a little gets hunks
+    /// that rebuild it from the text the agent got last time, and `rtk recall`
+    /// returns it whole. The hunked read keeps no record, so the next change
+    /// is delivered whole: hunks only ever apply to text the agent was given.
+    #[test]
+    fn test_changed_reread_gets_hunks_against_the_text_given() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = hunk_config(dir.path());
+        let path = "/repo/src/lib.rs";
+        let first = lines(400);
+        assert!(hunks_of(&Call::read("a", path, &first).run(&config)).is_none());
+
+        let second = first.replace("line 10\n", "line ten\nline 10.5\n");
+        let out = Call::read("b", path, &second).run(&config);
+        let shown = hunks_of(&out).expect("hunks");
+        assert!(
+            shown.starts_with("[rtk: /repo/src/lib.rs changed since your last Read of it in this session (401 lines now). "),
+            "{shown}"
+        );
+        let (header, hunks) = shown.split_once('\n').expect("hunks after the header");
+        assert_eq!(hunks, "11c11,12\n< line 10\n---\n> line ten\n> line 10.5\n");
+        assert_eq!(apply_classic(&first, hunks), second);
+        assert_eq!(recalled(&config, header), second.as_bytes());
+
+        let third = second.replace("line 20\n", "line twenty\n");
+        assert!(
+            hunks_of(&Call::read("c", path, &third).run(&config)).is_none(),
+            "after hunks the next change is whole"
+        );
+        let fourth = third.replace("line 30\n", "line thirty\n");
+        let hunks = hunks_of(&Call::read("d", path, &fourth).run(&config)).expect("hunks again");
+        assert_eq!(
+            apply_classic(&third, hunks.split_once('\n').unwrap().1),
+            fourth
+        );
+        let booked = |kind: &str| {
+            REPEAT_TRACKER.with(|tracker| {
+                tracker
+                    .attribution_site("hook", kind, 30)
+                    .expect("attribution")
+                    .into_iter()
+                    .map(|row| (row.name, row.calls))
+                    .collect::<Vec<_>>()
+            })
+        };
+        assert_eq!(booked("hunks"), vec![("Read".to_string(), 2)]);
+        assert_eq!(booked("repeat"), vec![], "hunks are not booked as repeats");
+    }
+
+    /// Hunks need both Reads to have given the agent the whole file. Text cut
+    /// to a window (an `offset` or `limit`, or the tool's own line cap, seen as
+    /// `numLines` below `totalLines`) slides when a line is added or removed
+    /// outside it, and hunks would report the lines that slid in or out as
+    /// added or deleted. Each such pair is delivered whole.
+    #[test]
+    fn test_partial_reread_is_whole_never_hunks() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = hunk_config(dir.path());
+        // One line inserted at line 10: inside every window below.
+        let old = lines(400);
+        let new = old.replace("line 9\n", "line 9\nline 9.5\n");
+        let read = |id: &str, path: &str, content: &str, edit: &dyn Fn(&mut Value)| {
+            let mut call = Call::read(id, path, content);
+            edit(&mut call.event);
+            call.run(&config)
+        };
+        let whole = |_: &mut Value| {};
+        let ranged = |event: &mut Value| {
+            event["tool_input"]["offset"] = serde_json::json!(101);
+            event["tool_input"]["limit"] = serde_json::json!(400);
+            event["tool_response"]["file"]["startLine"] = serde_json::json!(101);
+            event["tool_response"]["file"]["totalLines"] = serde_json::json!(600);
+        };
+        let limited = |event: &mut Value| {
+            event["tool_input"]["limit"] = serde_json::json!(400);
+        };
+        let truncated = |event: &mut Value| {
+            event["tool_response"]["file"]["totalLines"] = serde_json::json!(2100);
+        };
+        type Edit<'a> = &'a dyn Fn(&mut Value);
+        let cases: [(&str, Edit, Edit); 6] = [
+            ("ranged", &ranged, &ranged),
+            ("limit from line 1", &limited, &limited),
+            ("truncated", &truncated, &truncated),
+            ("whole, then truncated", &whole, &truncated),
+            ("truncated, then whole", &truncated, &whole),
+            (
+                "whole, then a line count that is not a number",
+                &whole,
+                &|event: &mut Value| {
+                    event["tool_response"]["file"]["numLines"] = serde_json::json!("400");
+                },
+            ),
+        ];
+        for (n, (name, before, after)) in cases.into_iter().enumerate() {
+            let path = format!("/repo/src/case{n}.rs");
+            assert!(
+                hunks_of(&read("a", &path, &old, before)).is_none(),
+                "{name}"
+            );
+            let out = read("b", &path, &new, after);
+            assert!(
+                hunks_of(&out).is_none(),
+                "{name}: hunks of a part of the file"
+            );
+        }
+        // The control: the same edit between whole Reads gets hunks.
+        let path = "/repo/src/control.rs";
+        read("a", path, &old, &whole);
+        let shown = hunks_of(&read("b", path, &new, &whole)).expect("hunks");
+        assert!(shown.ends_with("\n10a11\n> line 9.5\n"), "{shown}");
+    }
+
+    /// A Read rule's rewrite sets `numLines` and `totalLines` to the rewritten
+    /// text, so a cut Read it converted would look whole. Wholeness is judged
+    /// on the tool's own response.
+    #[test]
+    fn test_converted_truncated_reread_is_whole() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = hunk_config(dir.path());
+        let path = "/repo/data.txt";
+        let file_old: Vec<String> = (1..=2100).map(|k| format!("r{k}")).collect();
+        let mut file_new = file_old.clone();
+        file_new.insert(9, "new".to_string());
+        let head =
+            |f: &[String]| -> String { f[..2000].iter().map(|l| format!("{l}\n")).collect() };
+        let read = |id: &str, content: &str, total: usize| {
+            let mut call = Call::read(id, path, content);
+            call.event["tool_response"]["file"]["totalLines"] = serde_json::json!(total);
+            let (updated, _) = rebuild(&call.event, "Read", content).expect("rebuild");
+            let envelope = serde_json::json!({"hookSpecificOutput": {
+                "hookEventName": POST_TOOL_USE_KEY, "updatedToolOutput": updated,
+                "additionalContext": READ_CONVERSION_NOTE}})
+            .to_string();
+            call.pre(&config);
+            deliver_native(&config, &call.event, Some(envelope))
+        };
+        read("a", &head(&file_old), 2100);
+        let out = read("b", &head(&file_new), 2101);
+        assert!(
+            hunks_of(&out).is_none(),
+            "hunks between 2 converted windows"
+        );
+    }
+
+    /// The same through a real pipeline with a Read rule on: a cut Read the
+    /// rule rewrote gets no hunks, whilst whole Reads it rewrote still do.
+    #[test]
+    fn test_read_rule_rewrite_of_a_cut_read_gets_no_hunks() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = hunk_config(dir.path());
+        let pipeline = pipeline_from(
+            "[pipeline]\nextends = \"rtk:posthook\"\n[override.strip-line-numbers]\nenabled = true\n",
+        );
+        let file_old: Vec<String> = (1..=2100).map(|k| format!("r{k}")).collect();
+        let mut file_new = file_old.clone();
+        file_new.insert(9, "new".to_string());
+        // The first 2,000 lines as Read numbers them.
+        let numbered = |f: &[String]| -> String {
+            f[..2000]
+                .iter()
+                .enumerate()
+                .map(|(i, l)| format!("{}\u{2192}{l}\n", i + 1))
+                .collect()
+        };
+        let read = |id: &str, path: &str, total: usize, file: &[String]| {
+            let mut call = Call::read(id, path, &numbered(file));
+            call.event["tool_response"]["file"]["totalLines"] = serde_json::json!(total);
+            call.run_through(&config, &pipeline)
+        };
+        let first = read("a", "/repo/cut.txt", 2100, &file_old).expect("the rule rewrote it");
+        assert!(!first.contains('\u{2192}'), "line numbers stripped");
+        let out = read("b", "/repo/cut.txt", 2101, &file_new);
+        assert!(hunks_of(&out).is_none(), "hunks between 2 cut Reads");
+        // The control: whole Reads (2,000 lines each) through the same rule.
+        read("c", "/repo/whole.txt", 2000, &file_old);
+        assert!(hunks_of(&read("d", "/repo/whole.txt", 2000, &file_new)).is_some());
+    }
+
+    /// A record whose kept text no longer matches its digest, or a record from
+    /// a build that kept no text, gives a whole delivery, never hunks.
+    #[test]
+    fn test_changed_reread_is_whole_when_the_record_is_unsound() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = hunk_config(dir.path());
+        let first = lines(400);
+        let second = first.replace("line 10\n", "line ten\n");
+        let record = |call: &Call| {
+            let files = agent_files(&config, &call.event).expect("agent files");
+            files.dir.join(&files.record)
+        };
+        let rewrite = |name: &str, body: &str| match name {
+            "corrupt kept text" => body.replace("line 200\n", "line 2OO\n"),
+            _ => body.lines().next().unwrap().to_string(),
+        };
+        for (n, name) in ["corrupt kept text", "old format"].into_iter().enumerate() {
+            let path = format!("/repo/src/{n}.rs");
+            let a = Call::read(&format!("{n}a"), &path, &first);
+            a.run(&config);
+            let body = std::fs::read_to_string(record(&a)).expect("record");
+            assert!(body.contains("line 200\n"), "{name}: the text is kept");
+            std::fs::write(record(&a), rewrite(name, &body)).expect("rewrite");
+            let out = Call::read(&format!("{n}b"), &path, &second).run(&config);
+            assert!(hunks_of(&out).is_none(), "{name}");
+            assert!(native_pointer_of(&out).is_none(), "{name}");
+        }
+    }
+
+    /// Off by default, and never for a change too large to be worth hunks, a
+    /// text whose lines would not rebuild it, a changed final newline, or
+    /// another tool.
+    #[test]
+    fn test_changed_reread_is_whole_when_hunks_do_not_fit() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = "/repo/src/lib.rs";
+        let first = lines(400);
+        let small = first.replace("line 10\n", "line ten\n");
+
+        let off = repeat_config(dir.path(), true);
+        Call::read("a", path, &first).run(&off);
+        assert!(hunks_of(&Call::read("b", path, &small).run(&off)).is_none());
+
+        let config = hunk_config(dir.path());
+        let cases = [
+            ("big", lines(300)),
+            ("crlf", small.replace("line 11\n", "line 11\r\n")),
+            ("no final newline", small.trim_end().to_string()),
+        ];
+        for (n, (name, changed)) in cases.into_iter().enumerate() {
+            let file = format!("/repo/src/{n}.rs");
+            Call::read(&format!("{n}a"), &file, &first).run(&config);
+            let out = Call::read(&format!("{n}b"), &file, &changed).run(&config);
+            assert!(hunks_of(&out).is_none(), "{name}");
+        }
+
+        let grep = |id: &str, content: &str| {
+            Call::tool(
+                id,
+                "Grep",
+                serde_json::json!({"pattern": "line"}),
+                serde_json::json!({"mode": "content", "content": content, "numLines": 400}),
+            )
+            .run(&config)
+        };
+        grep("ga", &first);
+        let out = grep("gb", &small);
+        assert!(
+            out.is_none_or(|o| !o.contains(" changed since your last Read")),
+            "a Grep is never hunked"
+        );
+    }
+
     /// Another range of the same file is another input.
     #[test]
     fn test_repeat_pointer_keys_on_the_whole_input() {
@@ -2441,6 +3069,32 @@ mod tests {
         assert!(!taken.exists(), "stale taken mark in non-live folder goes");
         assert!(idle_files.mark().exists() && idle_files.record().exists());
         assert!(other.exists(), "only taken marks are removed");
+    }
+
+    /// A tombstone a partial delete left behind (its time refreshed by the
+    /// entries already removed) is retried after an hour, not another week.
+    #[test]
+    fn test_prune_repeats_retries_a_leftover_tombstone_after_an_hour() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let live = session_dir(&config, "live");
+        std::fs::create_dir_all(&live).unwrap();
+        let mut name = session_dir(&config, "old").into_os_string();
+        name.push(".pruning.4242");
+        let tombstone = std::path::PathBuf::from(name);
+        std::fs::create_dir_all(&tombstone).unwrap();
+        std::fs::write(tombstone.join("left"), "x").unwrap();
+        let now = std::time::SystemTime::now();
+
+        prune_repeats(&live, now + std::time::Duration::from_secs(1800));
+        assert!(
+            tombstone.exists(),
+            "a tombstone under an hour old may be mid-delete"
+        );
+
+        prune_repeats(&live, now + std::time::Duration::from_secs(2 * 3600));
+        assert!(!tombstone.exists(), "an hour-old tombstone is deleted");
+        assert!(live.exists(), "the live session survives");
     }
 
     /// When another process holds a file open on Windows without delete share,
@@ -3000,9 +3654,74 @@ mod tests {
             .unwrap();
         assert!(new_content.starts_with("Cargo.lock: "), "summary header");
         assert!(new_content.contains("serde@"));
+        assert_eq!(
+            hook["additionalContext"],
+            json!(READ_CONVERSION_NOTE),
+            "a whole Read gets the plain note"
+        );
+    }
+
+    /// The conversion note for a Read of this repository's `Cargo.lock` cut
+    /// to `kept` lines from `start` (1-based), with `startLine` in the
+    /// response only when `with_start`. Returns the note and the file's
+    /// line count.
+    fn cut_lock_note(input: Value, start: usize, kept: usize, with_start: bool) -> (String, usize) {
+        let whole = include_str!("../../Cargo.lock");
+        let total = whole.lines().count();
+        let content: String = whole
+            .lines()
+            .skip(start - 1)
+            .take(kept)
+            .map(|l| format!("{l}\n"))
+            .collect();
+        let mut file = json!({
+            "filePath": "/repo/Cargo.lock",
+            "content": content,
+            "numLines": kept,
+            "totalLines": total
+        });
+        if with_start {
+            file["startLine"] = json!(start);
+        }
+        let event = json!({
+            "tool_name": "Read",
+            "tool_input": input,
+            "tool_response": {"type": "text", "file": file},
+            "duration_ms": 3
+        });
+        let out = run_posthook(&event).expect("a cut lockfile still summarises");
+        let v: Value = serde_json::from_str(&out).expect("valid JSON");
+        let note = v["hookSpecificOutput"]["additionalContext"]
+            .as_str()
+            .expect("Read conversion note")
+            .to_string();
+        assert!(note.starts_with(READ_CONVERSION_NOTE), "{note}");
+        (note, total)
+    }
+
+    #[test]
+    fn test_read_cut_lockfile_note_names_the_lines_read() {
+        let total = include_str!("../../Cargo.lock").lines().count();
+        let kept = total / 2;
+        let (note, total) = cut_lock_note(json!({"file_path": "/repo/Cargo.lock"}), 1, kept, true);
         assert!(
-            hook["additionalContext"].as_str().is_some(),
-            "Read conversion note"
+            note.contains(&format!("lines 1-{kept} of {total}")),
+            "the note names the lines the summary covers: {note}"
+        );
+    }
+
+    #[test]
+    fn test_read_ranged_lockfile_note_names_the_window() {
+        let input = json!({"file_path": "/repo/Cargo.lock", "offset": 101, "limit": 50});
+        let (note, total) = cut_lock_note(input.clone(), 101, 50, true);
+        assert!(
+            note.contains(&format!("lines 101-150 of {total}")),
+            "{note}"
+        );
+        let (note, total) = cut_lock_note(input, 101, 50, false);
+        assert!(
+            note.contains(&format!("lines 101-150 of {total}")),
+            "without startLine the window starts at the offset: {note}"
         );
     }
 

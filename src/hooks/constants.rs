@@ -8,6 +8,7 @@ pub const HOOKS_JSON: &str = "hooks.json";
 pub const PRE_TOOL_USE_KEY: &str = "PreToolUse";
 pub const POST_TOOL_USE_KEY: &str = "PostToolUse";
 pub const SESSION_START_KEY: &str = "SessionStart";
+pub const PRE_COMPACT_KEY: &str = "PreCompact";
 pub const BEFORE_TOOL_KEY: &str = "BeforeTool";
 
 /// Native Rust hook command for Claude Code (replaces rtk-rewrite.sh).
@@ -220,3 +221,7 @@ mod tests {
         assert!(claude_matcher(&[]).is_none());
     }
 }
+
+#[cfg(test)]
+#[path = "constants_coverage_gen.rs"]
+mod coverage_gen_src_hooks_constants;

@@ -150,6 +150,7 @@ fn every_gain_report_says_the_database_was_not_upgraded() {
         &["--failures"],
         &["--history"],
         &["--format", "json"],
+        &["--history", "--format", "json"],
         &["--by-method"],
         &["--by-rule"],
         &["--shadow"],

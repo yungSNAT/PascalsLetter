@@ -786,6 +786,17 @@ fn format_classic_diff(diff: &DiffResult) -> String {
     out
 }
 
+/// `old` to `new` as classic `diff` hunks (`NcM`, `< old`, `---`, `> new`),
+/// or `None` when no change list was built within this diff's budgets or the
+/// difference is only what `lines()` hides (line endings, a final newline).
+#[cfg(feature = "engine")]
+pub(crate) fn classic_hunks(old: &str, new: &str) -> Option<String> {
+    match compare_files(old, new) {
+        FileComparison::Lines(diff) if diff.unaligned.is_none() => Some(format_classic_diff(&diff)),
+        _ => None,
+    }
+}
+
 fn format_line_range(start: usize, end: usize) -> String {
     if start == end {
         start.to_string()
@@ -2815,6 +2826,32 @@ fn condense_unified_diff_strict(diff: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Classic hunks come only from a change list: identical text, a
+    /// difference `lines()` hides and an over-budget comparison give none.
+    #[cfg(feature = "engine")]
+    #[test]
+    fn test_classic_hunks_only_for_a_line_change_list() {
+        assert_eq!(
+            classic_hunks("a\nb\n", "a\nc\n").as_deref(),
+            Some("2c2\n< b\n---\n> c\n")
+        );
+        assert_eq!(classic_hunks("a\nb\n", "a\nb\n"), None, "identical");
+        assert_eq!(classic_hunks("a\nb\n", "a\nb"), None, "final newline only");
+        assert_eq!(
+            classic_hunks("a\nb\n", "a\r\nb\r\n"),
+            None,
+            "line endings only"
+        );
+        // Over the listing budget: a line comparison with no change list.
+        let old: String = (0..20_000).map(|i| format!("alpha {i}\n")).collect();
+        let new: String = (0..20_000).map(|i| format!("bravo {i}\n")).collect();
+        assert!(matches!(
+            compare_files(&old, &new),
+            FileComparison::Lines(ref diff) if diff.unaligned.is_some()
+        ));
+        assert_eq!(classic_hunks(&old, &new), None, "over budget");
+    }
 
     /// Compare two file contents and render the result, which is the path
     /// `run` takes minus the guard and the tracking.

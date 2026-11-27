@@ -216,6 +216,10 @@ async fn run_start(args: StartArgs) {
         });
     }
     let state = AppState::new(config).with_pipeline_name(&rules.pipeline);
+    if let Err(e) = rtk_proxy::models::load_at_start(state.store.as_ref(), &state.config.db) {
+        tracing::error!(error = %e, "model registry configuration error");
+        std::process::exit(1);
+    }
     let shutdown = state.shutdown.clone();
     let app = server::build_router(state);
 
@@ -373,6 +377,9 @@ async fn run_stats(connect: ConnectArgs) {
     println!("  tokens in      : {tokens_in}");
     println!("  tokens out     : {tokens_out}");
     println!("  tokens saved   : {saved} ({pct:.1}%)");
+    for line in modelled_saving_lines(&j) {
+        println!("{line}");
+    }
     println!("  estimated cost : ${cost:.4}");
 
     // Best-effort: a compression breakdown is a bonus, never worth failing
@@ -409,6 +416,32 @@ async fn run_stats(connect: ConnectArgs) {
             }
         }
     }
+}
+
+/// The `stats` lines for `/stats/summary`'s modelled band: dollars only for
+/// saved tokens on models the operator priced, the rest counted apart.
+fn modelled_saving_lines(j: &serde_json::Value) -> Vec<String> {
+    let int = |key: &str| j.get(key).and_then(|v| v.as_i64()).unwrap_or(0);
+    let usd = |key: &str| j.get(key).and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let mut lines = Vec::new();
+    let priced = int("saved_tokens_priced");
+    if priced > 0 {
+        lines.push(format!(
+            "  modelled saving: ${:.4} to ${:.4} (estimate at current prices)",
+            usd("saved_usd_low"),
+            usd("saved_usd_high"),
+        ));
+        lines.push(format!(
+            "                   {priced} saved tokens on successful requests, priced from the cheapest to the dearest of each model's cache-read, input and cache-write rates"
+        ));
+    }
+    let unpriced = int("saved_tokens_unpriced");
+    if unpriced > 0 {
+        lines.push(format!(
+            "  not priced     : {unpriced} saved tokens on models with no price in models.toml"
+        ));
+    }
+    lines
 }
 
 async fn run_config(action: ConfigAction) {
@@ -611,6 +644,28 @@ mod tests {
         let msg = bind_failure(&err);
         assert!(msg.contains("already in use"), "{msg}");
         assert!(msg.contains("bind"), "{msg}");
+    }
+
+    #[test]
+    fn modelled_saving_shows_the_band_and_the_unpriced_tokens_apart() {
+        let lines = modelled_saving_lines(&serde_json::json!({
+            "saved_usd_low": 1.5,
+            "saved_usd_high": 18.75,
+            "saved_tokens_priced": 1_000_000,
+            "saved_tokens_unpriced": 400,
+        }));
+        assert_eq!(
+            lines,
+            [
+                "  modelled saving: $1.5000 to $18.7500 (estimate at current prices)",
+                "                   1000000 saved tokens on successful requests, priced from the cheapest to the dearest of each model's cache-read, input and cache-write rates",
+                "  not priced     : 400 saved tokens on models with no price in models.toml",
+            ]
+        );
+        assert!(
+            modelled_saving_lines(&serde_json::json!({"saved_tokens_priced": 0})).is_empty(),
+            "no priced and no unpriced savings print nothing"
+        );
     }
 
     #[test]

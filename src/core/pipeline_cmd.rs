@@ -3174,3 +3174,23 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "pipeline_cmd_coverage_gen1.rs"]
+mod coverage_gen1_src_core_pipeline_cmd;
+
+#[cfg(test)]
+#[path = "pipeline_cmd_coverage_gen3.rs"]
+mod coverage_gen3_src_core_pipeline_cmd;
+
+#[cfg(test)]
+#[path = "pipeline_cmd_coverage_gen4.rs"]
+mod coverage_gen4_src_core_pipeline_cmd;
+
+#[cfg(test)]
+#[path = "pipeline_cmd_coverage_gen.rs"]
+mod coverage_gen_src_core_pipeline_cmd;
+
+#[cfg(test)]
+#[path = "pipeline_cmd_coverage_gen2.rs"]
+mod coverage_gen2_src_core_pipeline_cmd;

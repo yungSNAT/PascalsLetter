@@ -18,6 +18,27 @@ updates:
       - "dependencies"
     open-pull-requests-limit: 5
 
+  # The crates with their own workspace and Cargo.lock, kept out of the CLI's
+  # dependency tree: the proxy, the token benchmark and the developer tools.
+  - package-ecosystem: "cargo"
+    target-branch: "develop"
+    directories:
+      - "/proxy"
+      - "/bench/output-tokens"
+      - "/tools/dev"
+      - "/tools/fork-proof"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    groups:
+      cargo-standalone:
+        patterns:
+          - "*"
+    labels:
+      - "dependencies"
+    open-pull-requests-limit: 5
+
   # The ccusage release the npx fallback runs (src/analytics/ccusage.rs).
   - package-ecosystem: "npm"
     target-branch: "develop"

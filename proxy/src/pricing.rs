@@ -40,9 +40,80 @@ pub fn cost_usd_cached(
     )
 }
 
+/// Saved tokens priced as a scenario band at today's prices: every saved token
+/// at the cheapest of a cache read, fresh input and a cache write at the low
+/// end, at the dearest at the high end. A band, not a measurement: which of
+/// those a removed token would have been is not observable.
+#[derive(Debug, Default, PartialEq)]
+pub struct ModelledSavings {
+    pub usd_low: f64,
+    pub usd_high: f64,
+    /// Saved tokens on models with a price, which the band covers.
+    pub priced_tokens: i64,
+    /// Saved tokens on models with no price, which no dollar figure covers.
+    pub unpriced_tokens: i64,
+}
+
+/// Prices each `(model, saved tokens)` row with `rate`: a model's input price
+/// per million tokens and its cache-read multiplier, `None` when unpriced.
+pub fn modelled_savings(
+    rows: impl IntoIterator<Item = (String, i64)>,
+    rate: impl Fn(&str) -> Option<(f64, f64)>,
+) -> ModelledSavings {
+    let mut m = ModelledSavings::default();
+    for (model, saved) in rows {
+        let saved = saved.max(0);
+        match rate(&model) {
+            Some((input_price, read_mult)) => {
+                let fresh = saved as f64 * input_price / 1_000_000.0;
+                let mults = [read_mult, 1.0, CACHE_WRITE_MULT];
+                m.usd_low += fresh * mults.into_iter().fold(f64::INFINITY, f64::min);
+                m.usd_high += fresh * mults.into_iter().fold(f64::NEG_INFINITY, f64::max);
+                m.priced_tokens += saved;
+            }
+            None => m.unpriced_tokens += saved,
+        }
+    }
+    m
+}
+
+/// The operator's input price for `model` and its cache-read multiplier.
+pub fn input_rate(model: &str) -> Option<(f64, f64)> {
+    let (input_price, _) = crate::models::price(model)?;
+    Some((input_price, cache_read_mult_of(model)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn modelled_savings_band_runs_from_cache_read_to_cache_write() {
+        let rate = |model: &str| match model {
+            "priced" => Some((15.0, 0.1)),
+            _ => None,
+        };
+        let m = modelled_savings(
+            [
+                ("priced".to_string(), 1_000_000),
+                ("unpriced".to_string(), 400),
+                ("priced".to_string(), -5),
+            ],
+            rate,
+        );
+        assert!((m.usd_low - 1.5).abs() < 1e-9, "{m:?}");
+        assert!((m.usd_high - 18.75).abs() < 1e-9, "{m:?}");
+        assert_eq!((m.priced_tokens, m.unpriced_tokens), (1_000_000, 400));
+        // An operator's cache-read multiplier above the write multiplier
+        // still gives low <= high, and fresh input stays inside the band.
+        let m = modelled_savings([("dear".to_string(), 1_000_000)], |_| Some((15.0, 2.0)));
+        assert!((m.usd_low - 15.0).abs() < 1e-9, "{m:?}");
+        assert!((m.usd_high - 30.0).abs() < 1e-9, "{m:?}");
+        assert_eq!(
+            modelled_savings(Vec::new(), rate),
+            ModelledSavings::default()
+        );
+    }
 
     const PRICED: &str = r#"
 [[model]]

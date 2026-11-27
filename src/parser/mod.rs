@@ -350,3 +350,7 @@ Scope: all 6 workspace projects
         assert_eq!(extracted, input);
     }
 }
+
+#[cfg(test)]
+#[path = "mod_coverage_gen.rs"]
+mod coverage_gen_src_parser_mod;

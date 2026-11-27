@@ -1296,3 +1296,7 @@ mod override_when {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "resolve_coverage_gen.rs"]
+mod coverage_gen_engine_src_pipeline_resolve;

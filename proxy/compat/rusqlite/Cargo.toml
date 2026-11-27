@@ -1,0 +1,14 @@
+[package]
+name = "rusqlite"
+version = "0.34.0"
+edition = "2021"
+publish = false
+description = "Private bridge from the pinned icm-store dependency to the proxy's rusqlite"
+
+[features]
+bundled = ["current/bundled"]
+modern_sqlite = ["current/modern_sqlite"]
+
+[dependencies]
+# ICM reads unsigned integers through the conversions enabled by fallible_uint.
+current = { package = "rusqlite", version = "0.43", features = ["fallible_uint"] }

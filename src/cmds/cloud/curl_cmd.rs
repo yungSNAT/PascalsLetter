@@ -317,3 +317,7 @@ mod tests {
         assert!(!is_binary(b"text with\0embedded nul"));
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/curl_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_cloud_curl_cmd;

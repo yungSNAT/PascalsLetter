@@ -477,3 +477,7 @@ mod probe_identity {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "session_start_coverage_gen.rs"]
+mod coverage_gen_src_hooks_session_start;

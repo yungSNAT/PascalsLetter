@@ -88,3 +88,37 @@ fn proxy_bill_prices_only_the_last_30_days_and_signs_increases() {
         "a cost increase must read as one:\n{output}"
     );
 }
+
+/// The hook's repeat pointers and hunked re-reads each get their own line in
+/// the panel.
+#[test]
+fn repeats_and_hunks_have_their_own_panel_lines() {
+    let home = common::tempdir();
+    // The first run creates the tracking database.
+    gain(home.path());
+    let db = rusqlite::Connection::open(home.path().join("rtk.db")).expect("open rtk db");
+    db.execute_batch(
+        "INSERT INTO engine_attribution (day, site, kind, name, calls, tokens_in, tokens_out) VALUES
+            (date('now'), 'hook', 'repeat', 'Bash', 1, 4000, 20),
+            (date('now'), 'hook', 'hunks', 'Read', 2, 6000, 200);",
+    )
+    .expect("book a repeat and 2 hunked re-reads");
+
+    let output = gain(home.path());
+    let line = |label: &str| {
+        output
+            .lines()
+            .find(|l| l.starts_with(label))
+            .map(|l| l[label.len()..].trim().to_string())
+    };
+    assert_eq!(
+        line("Repeats:").as_deref(),
+        Some("1 repeated output sent as a pointer: 4.0K \u{2192} 20 tokens   est."),
+        "{output}"
+    );
+    assert_eq!(
+        line("Hunks:").as_deref(),
+        Some("2 changed re-reads sent as hunks: 6.0K \u{2192} 200 tokens   est."),
+        "{output}"
+    );
+}

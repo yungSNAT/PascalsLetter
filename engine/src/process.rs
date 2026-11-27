@@ -281,3 +281,7 @@ mod tests {
         assert_eq!(names_with_extensions("cmd", ".EXE;;"), vec!["cmd.EXE"]);
     }
 }
+
+#[cfg(test)]
+#[path = "process_coverage_gen.rs"]
+mod coverage_gen_engine_src_process;

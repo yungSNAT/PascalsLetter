@@ -7,6 +7,7 @@ use crate::core::truncate::CAP_WARNINGS;
 use crate::core::utils::truncate;
 use anyhow::{Context, Result};
 use regex::Regex;
+use std::sync::LazyLock;
 
 const MAX_SUMMARY_LIST: usize = CAP_WARNINGS;
 const MAX_SUMMARY_KEYS: usize = CAP_WARNINGS;
@@ -311,9 +312,56 @@ fn summarize_generic(output: &str, result: &mut Vec<String>) {
     }
 }
 
+/// `<count> <word>` for each word `summarize_tests` counts, compiled once rather than per line.
+static COUNT_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(\d+)\s*(passed|failed|skipped|ignored)").unwrap());
+
+/// The count before the first `after` in `text`; `after` is one of `COUNT_RE`'s words.
 fn extract_number(text: &str, after: &str) -> Option<usize> {
-    let re = Regex::new(&format!(r"(\d+)\s*{}", after)).ok()?;
-    re.captures(text)
+    COUNT_RE
+        .captures_iter(text)
+        .find(|c| &c[2] == after)
         .and_then(|c| c.get(1))
         .and_then(|m| m.as_str().parse().ok())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_number_takes_the_count_before_the_requested_word() {
+        let line = "3 failed, 12 passed, 1 skipped";
+        assert_eq!(extract_number(line, "passed"), Some(12));
+        assert_eq!(extract_number(line, "failed"), Some(3));
+        assert_eq!(extract_number(line, "skipped"), Some(1));
+        assert_eq!(extract_number(line, "ignored"), None);
+        assert_eq!(extract_number("2 passed", "passed"), Some(2));
+        assert_eq!(extract_number("1failed 7passed", "passed"), Some(7));
+    }
+
+    #[test]
+    fn summarize_tests_counts_each_kind() {
+        let mut result = Vec::new();
+        summarize_tests(
+            "test result: FAILED. 15 passed; 2 failed; 3 ignored; 0 measured",
+            &mut result,
+        );
+        assert!(
+            result.contains(&"   [ok] 15 passed".to_string()),
+            "{result:?}"
+        );
+        assert!(
+            result.contains(&"   [FAIL] 2 failed".to_string()),
+            "{result:?}"
+        );
+        assert!(
+            result.contains(&"   skip 3 skipped".to_string()),
+            "{result:?}"
+        );
+    }
+}
+
+#[cfg(test)]
+#[path = "coverage_gen/summary_coverage_gen.rs"]
+mod coverage_gen_src_cmds_system_summary;
