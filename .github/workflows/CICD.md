@@ -1,10 +1,10 @@
 # CI/CD Flows
 
 This fork runs pull request checks in `ci.yml`, which also runs on each push to
-`develop` and saves the Rust caches pull requests restore, coverage after pushes
-to `develop` or manual dispatch, and draft releases in `release.yml`. Upstream's
-`cd.yml`, `next-release.yml`, `release.yml` and `stale.yml` workflows are
-removed; this `release.yml` is the fork's own.
+`develop` and saves the Rust caches pull requests restore, coverage on pull
+requests to `develop`, pushes to it or manual dispatch, and draft releases in
+`release.yml`. Upstream's `cd.yml`, `next-release.yml`, `release.yml` and
+`stale.yml` workflows are removed; this `release.yml` is the fork's own.
 
 ## PR Quality Gates (ci.yml)
 
@@ -46,7 +46,7 @@ as coverage.yml runs them on that push)
        Arm Windows), install.ps1 behind proxies, hook plugins, release
        (build) and the x86_64-pc-windows-gnu test leg also run on each PR
      + dependabot.yml (weekly: Cargo, npm, pip, GitHub Actions)
-     + coverage.yml (push to develop or manual dispatch only: cargo-llvm-cov, then Codecov)
+     + coverage.yml (pull request to develop, push to develop or manual dispatch: cargo-llvm-cov, then Codecov)
 ```
 
 The 'Protect main' ruleset, on `develop`, requires 6 of these checks to pass
@@ -55,7 +55,12 @@ before a merge, with the branch up to date: `fmt`, `clippy`, `rustdoc`,
 second ruleset blocks a merge until CodeQL (`codeql.yml`) has analysed the pull
 request, and whilst CodeQL reports an alert at error level or a security alert
 of high or critical severity. The other checks report on the pull request but
-do not block it. No workflow runs a DCO (sign-off) check.
+do not block it in GitHub. Codecov's `codecov/patch` (100% of changed lines)
+and `codecov/project` (no fall from the base) are not required checks either:
+the merge procedure reads them, and a missing `codecov/patch` counts as a
+fail. Whilst Codecov posts no `codecov/project` on this repository, the
+procedure compares the head's and the base's totals from Codecov's API
+instead. No workflow runs a DCO (sign-off) check.
 
 ## Draft release (release.yml)
 
