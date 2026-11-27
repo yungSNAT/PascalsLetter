@@ -243,13 +243,18 @@ fn swappable(
     if changes_directory(cmd) {
         return false;
     }
+    // Quotes inside a word join its pieces (`cu''rl` runs `curl`), so the
+    // opt-out checks also read the command with its quotes resolved.
+    let resolved = crate::discover::lexer::shell_split(cmd).join(" ");
     match rewrite {
-        HookDecision::AllowRewrite(_) | HookDecision::AskRewrite(..) => true,
+        HookDecision::AllowRewrite(_) | HookDecision::AskRewrite(..) => {
+            !registry::chain_mentions_excluded(cmd, excluded)
+                && !registry::chain_mentions_excluded(&resolved, excluded)
+                && !runs_rtk(cmd)
+                && !runs_rtk(&resolved)
+        }
         HookDecision::Deny => false,
         HookDecision::Defer => {
-            // Quotes inside a word join its pieces (`cu''rl` runs `curl`), so the
-            // opt-out checks also read the command with its quotes resolved.
-            let resolved = crate::discover::lexer::shell_split(cmd).join(" ");
             matches!(
                 verdict,
                 PermissionVerdict::Allow | PermissionVerdict::Ask | PermissionVerdict::Default
@@ -386,6 +391,36 @@ mod tests {
         assert!(decide("git log -3", PermissionVerdict::Default, &[]));
         assert!(decide("git log -3", PermissionVerdict::Allow, &[]));
         assert!(decide("bash -c 'ls'", PermissionVerdict::Ask, &[]));
+    }
+
+    #[test]
+    fn a_filtered_chain_with_an_excluded_segment_is_not_swapped() {
+        let excluded = vec!["./run-suite.sh".to_string()];
+        for verdict in [PermissionVerdict::Default, PermissionVerdict::Ask] {
+            assert!(!decide("git status && ./run-suite.sh", verdict, &excluded));
+        }
+    }
+
+    /// Quotes inside a word join its pieces, so a filtered chain whose excluded
+    /// segment or `rtk` call is spelt with quotes is not swapped either.
+    #[test]
+    fn a_filtered_chain_with_a_quoted_opt_out_is_not_swapped() {
+        let excluded = vec!["./run-suite.sh".to_string()];
+        for cmd in [
+            "git status && ./run-su''ite.sh",
+            "git status && r''tk bypass cat x",
+        ] {
+            for verdict in [PermissionVerdict::Default, PermissionVerdict::Ask] {
+                assert!(!decide(cmd, verdict, &excluded), "{cmd}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_filtered_chain_with_rtk_bypass_is_not_swapped() {
+        for verdict in [PermissionVerdict::Default, PermissionVerdict::Ask] {
+            assert!(!decide("git status && rtk bypass cat x", verdict, &[]));
+        }
     }
 
     #[test]
