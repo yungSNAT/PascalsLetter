@@ -11,6 +11,11 @@
 #[path = "../../src/core/test_isolation/scratch.rs"]
 mod scratch;
 
+#[cfg(target_os = "linux")]
+pub mod seed;
+#[cfg(target_os = "linux")]
+pub mod tty;
+
 use std::process::Command;
 
 /// A recall store (0x5254_4B02 is the recall kind) stamped at `version`, set up
@@ -105,6 +110,19 @@ pub fn isolate_git_in(cmd: &mut Command, home: &std::path::Path) {
 /// concurrent runs never share one. Keep the `TempDir` alive for the test.
 pub fn tempdir() -> tempfile::TempDir {
     scratch::tempdir()
+}
+
+/// A loopback address for `RTK_PROXY_BIND` where nothing answers as the rtk
+/// proxy: this process holds the port and drops every connection, so a proxy
+/// running on the developer's default port cannot change what a child reports.
+pub fn no_proxy_bind() -> String {
+    static BIND: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind loopback");
+        let addr = listener.local_addr().expect("address").to_string();
+        std::thread::spawn(move || listener.incoming().for_each(drop));
+        addr
+    });
+    BIND.clone()
 }
 
 /// A throwaway git repository with one commit, which works with no user git

@@ -2549,6 +2549,52 @@ mod tests {
         assert!(card.contains("## user pipeline.toml"));
         assert!(card.contains("```toml\n[pipeline]\nname = \"my-pipe\"\n```"));
         assert!(card.contains("v1.0.0 on 2026-09-22"));
+
+        let mut data = super::CardData {
+            display: "my-pipe".into(),
+            is_active: false,
+            sources,
+            what,
+            filtering: Some(gain_summary(4, 62.0)),
+            hook: Some(hook),
+            slices,
+            tasks: Vec::new(),
+            proxy: Some(proxy),
+            published: None,
+            date: "2026-09-22".into(),
+        };
+        assert_eq!(
+            data.headline().as_deref(),
+            Some("62% of command output removed")
+        );
+        data.filtering = None;
+        assert_eq!(
+            data.headline().as_deref(),
+            Some("70% of tool output removed")
+        );
+        let rows = super::terminal_card(&data.display, &data.stats(), None, "1.0.0", &data.date);
+        assert!(
+            rows.iter()
+                .any(|row| row.contains("llm proxy input") && row.contains("70%"))
+        );
+        assert!(
+            rows.iter()
+                .any(|row| row.contains("prompt-cache hit") && row.contains("80%"))
+        );
+        // Under 1% of tool output removed is no headline; the cache is.
+        data.hook = Some(crate::core::tracking::AttributionRow {
+            name: "my-pipe".into(),
+            calls: 1,
+            tokens_in: 1000,
+            tokens_out: 995,
+        });
+        assert_eq!(data.headline().as_deref(), Some("80% prompt-cache hit"));
+        data.hook = None;
+        assert_eq!(data.headline().as_deref(), Some("80% prompt-cache hit"));
+        data.proxy = Some(proxy_row(100, 0, 0, 0));
+        assert_eq!(data.headline(), None);
+        data.proxy = None;
+        assert_eq!(data.headline(), None);
     }
 
     #[test]
@@ -2770,6 +2816,20 @@ mod tests {
     }
 
     #[test]
+    fn referenced_plugin_methods_reads_method_chains_and_skips_inert_rules() {
+        let text = "[pipeline]\nname = \"t\"\n\n[method.mine]\nchain = [\"ansi\", \"mysterystep\"]\n\n[method.tuned]\nlevel = 1\n\n[[hook.after_tool.shell]]\nname = \"uses-mine\"\nuse = [\"mine\"]\n\n[[hook.after_tool.read]]\nname = \"locked-away\"\nuse = [\"lockedmystery\"]\nlocked = true\n";
+        let parsed = parse(text, "t.toml");
+        let (resolved, _) = resolve(&[SourceFile {
+            scope: Scope::User,
+            label: "t.toml".to_string(),
+            file: parsed.file.expect("parses"),
+        }]);
+        let (present, missing) = super::referenced_plugin_methods(&resolved);
+        assert!(present.is_empty(), "present={present:?}");
+        assert_eq!(missing, vec!["mysterystep".to_string()]);
+    }
+
+    #[test]
     fn scan_flags_known_secret_shapes_and_private_paths() {
         let sources = vec![(
             "user pipeline.toml".to_string(),
@@ -2827,6 +2887,257 @@ mod tests {
         let (present, missing) = super::referenced_plugin_methods(&resolved);
         assert!(present.is_empty(), "present={present:?}");
         assert!(missing.is_empty(), "missing={missing:?}");
+    }
+
+    fn gain_summary(
+        total_commands: usize,
+        avg_savings_pct: f64,
+    ) -> crate::core::tracking::GainSummary {
+        crate::core::tracking::GainSummary {
+            total_commands,
+            total_input: 0,
+            total_output: 0,
+            total_saved: 0,
+            avg_savings_pct,
+            total_time_ms: 0,
+            avg_time_ms: 0,
+            by_command: Vec::new(),
+            by_day: Vec::new(),
+            oversized_capped: 0,
+        }
+    }
+
+    fn proxy_row(
+        tokens_in: i64,
+        tokens_saved: i64,
+        cache_read: i64,
+        cache_created: i64,
+    ) -> crate::llm_proxy::ProxyPipelineRow {
+        crate::llm_proxy::ProxyPipelineRow {
+            name: "p".into(),
+            requests: 9,
+            tokens_in,
+            tokens_saved,
+            saved_ccr: 0,
+            saved_normalize: 0,
+            saved_ingest_filter: 0,
+            saved_pixel_compress: 0,
+            saved_rules: 0,
+            cache_read,
+            cache_created,
+        }
+    }
+
+    /// The card's rows without colour, joined.
+    fn shown(lines: &[String]) -> String {
+        let ansi = regex::Regex::new("\x1b\\[[0-9;]*m").unwrap();
+        lines
+            .iter()
+            .map(|line| ansi.replace_all(line, "").into_owned())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn terminal_card_draws_each_lever_and_the_share_prompt() {
+        let filtering = gain_summary(4, 62.0);
+        let hook = crate::core::tracking::AttributionRow {
+            name: "p".into(),
+            calls: 5,
+            tokens_in: 1000,
+            tokens_out: 300,
+        };
+        let slices = vec![
+            ("idle".to_string(), 1, 0, 0),
+            ("low".to_string(), 2, 100, 10),
+        ];
+        // 5 of 1,005 input tokens is under 1%, so only the cache row shows.
+        let proxy = proxy_row(1000, 5, 3, 1);
+        let stats = super::CardStats {
+            what: &[],
+            filtering: Some(&filtering),
+            hook: Some(&hook),
+            hook_slices: &slices,
+            tasks: &[],
+            proxy: Some(&proxy),
+        };
+        let card = shown(&super::terminal_card(
+            "p",
+            &stats,
+            None,
+            "1.0.0",
+            "2026-11-26",
+        ));
+        for expected in [
+            "(built-in — see its file comments for what it does)",
+            "command filtering",
+            "4 commands  ██████░░░░   62% removed",
+            "agent hooks (30d)",
+            "5 outputs  ███████░░░   70% removed",
+            "· low",
+            "2 outputs  █░░░░░░░░░   10% removed",
+            "prompt-cache hit",
+            "9 requests  ████████░░   75% cached",
+            "~ estimates (≈ bytes/4) — ratios reliable, absolutes approximate",
+            "Proud of these numbers? Put your pipeline in everyone's hands:",
+            "▶ rtk pipeline share publish",
+        ] {
+            assert!(card.contains(expected), "missing {expected:?} in:\n{card}");
+        }
+        assert!(!card.contains("· idle"), "{card}");
+        assert!(!card.contains("llm proxy input"), "{card}");
+    }
+
+    #[test]
+    fn terminal_card_without_activity_invites_sharing_or_names_the_published_link() {
+        let what = vec![(
+            "before shell".to_string(),
+            "rewrite -> rtk".to_string(),
+            String::new(),
+        )];
+        // A proxy that removed nothing and cached nothing draws no row.
+        let idle_proxy = proxy_row(1000, 0, 0, 0);
+        let stats = super::CardStats {
+            what: &what,
+            filtering: None,
+            hook: None,
+            hook_slices: &[],
+            tasks: &[],
+            proxy: Some(&idle_proxy),
+        };
+        let card = shown(&super::terminal_card(
+            "p",
+            &stats,
+            None,
+            "1.0.0",
+            "2026-11-26",
+        ));
+        assert!(card.contains("before shell"), "{card}");
+        assert!(
+            card.contains("no recorded activity yet — run sessions with this pipeline active"),
+            "{card}"
+        );
+        assert!(
+            card.contains("Put your pipeline in everyone's hands — one command:"),
+            "{card}"
+        );
+        assert!(!card.contains("~ estimates"), "{card}");
+
+        let gist = "https://gist.github.com/fixture/0123";
+        let card = shown(&super::terminal_card(
+            "p",
+            &stats,
+            Some(gist),
+            "1.0.0",
+            "2026-11-26",
+        ));
+        assert!(card.contains(&format!("rtk pipeline add {gist}")), "{card}");
+        assert!(
+            !card.contains("live at:"),
+            "only a repository has a page: {card}"
+        );
+        assert!(!card.contains("Share it"), "{card}");
+    }
+
+    #[test]
+    fn share_card_lists_filtering_idle_hooks_and_delegated_reads() {
+        let filtering = gain_summary(4, 62.0);
+        let hook = crate::core::tracking::AttributionRow {
+            name: "p".into(),
+            calls: 3,
+            tokens_in: 0,
+            tokens_out: 0,
+        };
+        let slices = vec![("idle slice".to_string(), 1, 0, 0)];
+        let tasks = vec![crate::core::tracking::AttributionRow {
+            name: "bulk-read".into(),
+            calls: 2,
+            tokens_in: 5000,
+            tokens_out: 1000,
+        }];
+        let proxy = proxy_row(1000, 5, 0, 0);
+        let card = super::share_card(
+            "p",
+            &[],
+            &super::CardStats {
+                what: &[],
+                filtering: Some(&filtering),
+                hook: Some(&hook),
+                hook_slices: &slices,
+                tasks: &tasks,
+                proxy: Some(&proxy),
+            },
+            "1.0.0",
+            "2026-11-26",
+        );
+        for expected in [
+            "| command filtering (rtk git/npm/…) | 4 commands | `██████░░░░` **62%** removed |",
+            "| agent hooks (last 30d) | 3 outputs | `░░░░░░░░░░` **0%** removed |",
+            "| delegated reads (`bulk-read`) | 2 reads | **",
+            " kept out of context |",
+        ] {
+            assert!(card.contains(expected), "missing {expected:?} in:\n{card}");
+        }
+        for absent in [
+            "idle slice",
+            "llm proxy input",
+            "prompt-cache",
+            "Install this pipeline",
+            "multiple configuration sources",
+        ] {
+            assert!(!card.contains(absent), "unexpected {absent:?} in:\n{card}");
+        }
+
+        let card = super::share_card(
+            "p",
+            &[("user pipeline.toml".to_string(), "x = 1".to_string())],
+            &super::CardStats {
+                what: &[],
+                filtering: None,
+                hook: None,
+                hook_slices: &[],
+                tasks: &[],
+                proxy: None,
+            },
+            "1.0.0",
+            "2026-11-26",
+        );
+        assert!(card.contains("```toml\nx = 1\n```"), "{card}");
+
+        let empty = super::CardStats {
+            what: &[],
+            filtering: None,
+            hook: None,
+            hook_slices: &[],
+            tasks: &[],
+            proxy: None,
+        };
+        let card = super::share_card(
+            "p",
+            &[],
+            &super::CardStats {
+                tasks: &tasks,
+                ..empty
+            },
+            "1.0.0",
+            "2026-11-26",
+        );
+        assert!(card.contains("| delegated reads (`bulk-read`)"), "{card}");
+        assert!(!card.contains("agent hooks"), "{card}");
+        let idle = proxy_row(0, 0, 0, 0);
+        let card = super::share_card(
+            "p",
+            &[],
+            &super::CardStats {
+                proxy: Some(&idle),
+                ..empty
+            },
+            "1.0.0",
+            "2026-11-26",
+        );
+        assert!(card.contains("## Measured impact"), "{card}");
+        assert!(!card.contains("llm proxy input"), "{card}");
+        assert!(!card.contains("prompt-cache"), "{card}");
     }
 }
 
