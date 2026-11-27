@@ -69,11 +69,17 @@ fn parse_diagnostic(line: &str) -> Option<Diagnostic<'_>> {
 }
 
 /// `TypeScript: N errors[, M warnings][ in K files]`; warnings are named only when present.
-fn headline(errors: usize, warnings: usize, files: usize) -> String {
-    let mut out = format!("TypeScript: {errors} errors");
+/// `N errors`, with `, M warnings` only when there are some.
+fn tally(errors: usize, warnings: usize) -> String {
     if warnings > 0 {
-        out.push_str(&format!(", {warnings} warnings"));
+        format!("{errors} errors, {warnings} warnings")
+    } else {
+        format!("{errors} errors")
     }
+}
+
+fn headline(errors: usize, warnings: usize, files: usize) -> String {
+    let mut out = format!("TypeScript: {}", tally(errors, warnings));
     if files > 0 {
         out.push_str(&format!(" in {files} files"));
     }
@@ -330,6 +336,11 @@ pub(crate) fn filter_tsc_output(output: &str) -> String {
 
     let warnings = errors.iter().filter(|err| err.warning).count();
     let mut result = headline(errors.len() - warnings, warnings, by_file.len());
+    let group_tally = |group: &[&TsError]| {
+        let warnings = group.iter().filter(|err| err.warning).count();
+        tally(group.len() - warnings, warnings)
+    };
+    let severity = |err: &TsError| if err.warning { "warning " } else { "" };
 
     // Top error codes summary (compact, one line)
     let mut code_counts: Vec<_> = by_code.iter().collect();
@@ -345,9 +356,14 @@ pub(crate) fn filter_tsc_output(output: &str) -> String {
     }
 
     if !global_errors.is_empty() {
-        result.push_str(&format!("global ({} errors)\n", global_errors.len()));
+        result.push_str(&format!("global ({})\n", group_tally(&global_errors)));
         for err in global_errors {
-            result.push_str(&format!("  {} {}\n", err.code, truncate(&err.message, 120)));
+            result.push_str(&format!(
+                "  {}{} {}\n",
+                severity(err),
+                err.code,
+                truncate(&err.message, 120)
+            ));
             for ctx in &err.context_lines {
                 result.push_str(&format!("    {}\n", truncate(ctx, 120)));
             }
@@ -361,12 +377,13 @@ pub(crate) fn filter_tsc_output(output: &str) -> String {
 
     // Show every error per file — no limits
     for (file, file_errors) in &files_sorted {
-        result.push_str(&format!("{} ({} errors)\n", file, file_errors.len()));
+        result.push_str(&format!("{} ({})\n", file, group_tally(file_errors)));
 
         for err in *file_errors {
             result.push_str(&format!(
-                "  L{}: {} {}\n",
+                "  L{}: {}{} {}\n",
                 err.line.unwrap_or(0),
+                severity(err),
                 err.code,
                 truncate(&err.message, 120)
             ));
