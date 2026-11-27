@@ -1056,6 +1056,10 @@ mod tests {
                 (PRE_COMPACT_KEY, "manual|auto".to_string()),
             ]
         );
+        // A second pass changes nothing: PreCompact is not added twice.
+        let once = events.clone();
+        add_repeat_tools(&mut events);
+        assert_eq!(events, once);
         let mut none = Vec::new();
         add_repeat_tools(&mut none);
         assert_eq!(
