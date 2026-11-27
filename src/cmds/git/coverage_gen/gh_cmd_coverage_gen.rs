@@ -213,14 +213,13 @@ fn format_pr_status_lists_created_prs_and_skips_nulls() {
             {"number": 3, "title": "c",
              "statusCheckRollup": [{"state": "FAILURE"}, {"state": "SUCCESS"}]},
             {"number": 4, "title": "d"},
-            {"number": 6, "title": "beyond the cap"}
+            {"number": 6, "title": "e"}
         ]
     });
     let out = format_pr_status(&json);
     assert!(!out.contains("Current Branch"), "{out}");
-    // The header count and the display cap are left unpinned: a `null`
-    // entry is counted and takes a display slot today.
-    assert!(out.starts_with("Your PRs ("), "{out}");
+    // The `null` entry is neither counted nor given a display slot.
+    assert!(out.starts_with("Your PRs (5):\n"), "{out}");
     assert!(out.contains("  #1 a [APPROVED] checks 1/1\n"), "{out}");
     assert!(out.contains("  #2 b [PENDING]\n"), "{out}");
     assert!(
@@ -228,6 +227,7 @@ fn format_pr_status_lists_created_prs_and_skips_nulls() {
         "{out}"
     );
     assert!(out.contains("  #4 d [PENDING]\n"), "{out}");
+    assert!(out.contains("  #6 e [PENDING]\n"), "{out}");
 
     let with_branch = json!({
         "currentBranch": {"number": 9, "title": "mine", "reviewDecision": "REVIEW_REQUIRED"}

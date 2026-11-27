@@ -680,12 +680,10 @@ fn format_pr_status(json: &Value) -> String {
     }
 
     if let Some(created_by) = json["createdBy"].as_array() {
-        out.push_str(&format!("Your PRs ({}):\n", created_by.len()));
-        for pr in created_by.iter().take(5) {
-            let entry = format_pr_status_entry(pr);
-            if !entry.is_empty() {
-                out.push_str(&entry);
-            }
+        let prs: Vec<&Value> = created_by.iter().filter(|pr| !pr.is_null()).collect();
+        out.push_str(&format!("Your PRs ({}):\n", prs.len()));
+        for pr in prs.into_iter().take(5) {
+            out.push_str(&format_pr_status_entry(pr));
         }
     }
     out
@@ -1746,6 +1744,21 @@ mod tests {
         assert!(result.contains("CHANGES_REQUESTED"));
         assert!(result.contains("checks 2/3"));
         assert!(result.contains("fail 1"));
+    }
+
+    #[test]
+    fn test_format_pr_status_skips_null_entries_in_count_and_cap() {
+        let pr = |n: i64| serde_json::json!({"number": n, "title": format!("PR {n}")});
+        let json = serde_json::json!({
+            "currentBranch": null,
+            "createdBy": [pr(1), null, pr(2), pr(3), pr(4), pr(5)]
+        });
+
+        let result = format_pr_status(&json);
+        assert!(result.starts_with("Your PRs (5):\n"), "{result}");
+        for n in 1..=5 {
+            assert!(result.contains(&format!("  #{n} PR {n} ")), "{result}");
+        }
     }
 
     // --- should_passthrough_issue_view tests ---
