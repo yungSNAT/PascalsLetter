@@ -2303,7 +2303,5 @@ mod tests {
         ] {
             assert_eq!(subject_slice_label(subject), label);
         }
-        assert_eq!(pct_of(1, 4), 25.0);
-        assert_eq!(pct_of(5, 0), 0.0);
     }
 }

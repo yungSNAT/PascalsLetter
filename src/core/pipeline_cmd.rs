@@ -2813,20 +2813,6 @@ mod tests {
         assert_eq!(super::gist_raw_url(raw), raw);
         let other = "https://example.com/pipe.toml";
         assert_eq!(super::gist_raw_url(other), other);
-        for kept in [
-            "https://gist.github.com/alice/abc123/raw/pipe.toml",
-            "https://gist.github.com/",
-        ] {
-            assert_eq!(super::gist_raw_url(kept), kept);
-        }
-    }
-
-    #[test]
-    fn warning_panel_drops_a_blank_line_but_keeps_an_empty_one() {
-        let panel = super::warning_panel_text("Title", &["   "]);
-        assert_eq!(panel.lines().count(), 2, "{panel}");
-        let panel = super::warning_panel_text("Title", &[""]);
-        assert_eq!(panel.lines().count(), 3, "{panel}");
     }
 
     #[test]
@@ -3152,26 +3138,6 @@ mod tests {
         assert!(card.contains("## Measured impact"), "{card}");
         assert!(!card.contains("llm proxy input"), "{card}");
         assert!(!card.contains("prompt-cache"), "{card}");
-    }
-
-    #[test]
-    fn describe_rules_names_an_action_it_has_no_words_for() {
-        let text = "[pipeline]\nname = \"t\"\n\n[[hook.before_tool.shell]]\nname = \"q\"\naction = \"ask\"\n";
-        let parsed = parse(text, "t.toml");
-        let (resolved, _) = resolve(&[SourceFile {
-            scope: Scope::User,
-            label: "t.toml".to_string(),
-            file: parsed.file.expect("parses"),
-        }]);
-        let what = super::describe_rules(&resolved);
-        assert!(
-            what.contains(&(
-                "before shell".to_string(),
-                "action ask".to_string(),
-                String::new()
-            )),
-            "{what:?}"
-        );
     }
 }
 

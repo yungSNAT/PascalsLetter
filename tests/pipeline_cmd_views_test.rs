@@ -894,8 +894,27 @@ fn promote_checks_the_shadow_and_asks_on_a_terminal() {
         std::fs::set_permissions(&live, permissions).expect("set mode");
     };
     mode(0o555);
+    // Makes the folder writable again even if an assertion below panics, so the
+    // temporary home can be removed.
+    struct Writable(std::path::PathBuf);
+    impl Drop for Writable {
+        fn drop(&mut self) {
+            if let Ok(metadata) = std::fs::metadata(&self.0) {
+                let mut permissions = metadata.permissions();
+                std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o755);
+                let _ = std::fs::set_permissions(&self.0, permissions);
+            }
+        }
+    }
+    let writable = Writable(live.clone());
     // A superuser writes through the mode, so only an ordinary user sees the refusal.
-    if std::fs::write(live.join("probe"), "").is_err() {
+    // CI runs as an ordinary user, so there the refusal must be checked.
+    let refused = std::fs::write(live.join("probe"), "").is_err();
+    assert!(
+        std::env::var_os("CI").is_none() || refused,
+        "the read-only folder took a write under CI"
+    );
+    if refused {
         let out = home.fails(&["pipeline", "promote", "stuck", "--force"]);
         assert!(
             out.contains(&format!(
@@ -912,7 +931,7 @@ fn promote_checks_the_shadow_and_asks_on_a_terminal() {
             "the shadow install stays"
         );
     }
-    mode(0o755);
+    drop(writable);
 
     let kept = "[pipeline]\nname = \"kept\"\n";
     home.write("config/pipelines/shadow/kept.toml", kept);

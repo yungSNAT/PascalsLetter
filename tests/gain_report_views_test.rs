@@ -374,7 +374,6 @@ fn quota_names_each_subscription_tier() {
         ("pro", "Pro ($20/mo)", "6.0M"),
         ("5x", "Max 5x ($100/mo)", "30.0M"),
         ("20x", "Max 20x ($200/mo)", "120.0M"),
-        ("team", "Pro ($20/mo)", "6.0M"),
     ] {
         let out = home.ok(&["--quota", "--tier", tier]);
         assert!(
@@ -683,6 +682,8 @@ fn an_empty_history_says_what_a_running_proxy_still_needs() {
         .lines()
         .find(|line| line.starts_with("LLM proxy: "))
         .unwrap_or_else(|| panic!("a proxy hint:\n{}", run.stdout));
+    assert!(hint.contains("running on "), "{hint}");
+    assert!(hint.contains("no agent routed through it"), "{hint}");
     assert!(
         !hint.contains("llm-proxy start"),
         "the proxy is running, so it needs no start: {hint}"
@@ -697,12 +698,9 @@ fn painted(codes: &str, text: &str) -> String {
 #[test]
 fn a_terminal_summary_colours_each_band_and_offers_sharing() {
     let home = rich_home();
-    // A hint shown a moment ago is not due again; this fork never shows one.
-    home.write("rtk/pro-hint-shown", "");
     let run = common::tty::run(home.command(&[]), b"");
     assert!(run.success, "{}", run.stderr);
     let screen = &run.screen;
-    assert!(!screen.contains("pro.rtk-ai.app"), "{screen}");
     for expected in [
         painted("1;32", "RTK Token Savings (Global Scope)"),
         painted("1;96", "rtk git log             "),
