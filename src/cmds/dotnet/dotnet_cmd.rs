@@ -3677,8 +3677,8 @@ mod tests {
 
     #[test]
     fn test_format_report_summary_uses_report_written_within_the_start_tick() {
-        // A coarse filesystem clock can stamp a report written after the start
-        // with a time just before it.
+        // A report absent before the run and present after it is fresh, even
+        // when a coarse filesystem clock stamps it just before the start.
         let temp_dir = test_isolation::tempdir();
         let report = temp_dir.path().join("report.json");
         let command_started_at = SystemTime::now();
