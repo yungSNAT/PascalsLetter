@@ -1085,3 +1085,7 @@ action = "deny"
         assert!(!file.enabled);
     }
 }
+
+#[cfg(test)]
+#[path = "schema_coverage_gen.rs"]
+mod coverage_gen_engine_src_pipeline_schema;

@@ -1335,3 +1335,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "harness_coverage_gen.rs"]
+mod coverage_gen_engine_src_harness;

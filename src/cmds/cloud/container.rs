@@ -1064,3 +1064,15 @@ api-1  | Connected to database";
         );
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/container_coverage_gen1.rs"]
+mod coverage_gen1_src_cmds_cloud_container;
+
+#[cfg(test)]
+#[path = "coverage_gen/container_coverage_gen.rs"]
+mod coverage_gen_src_cmds_cloud_container;
+
+#[cfg(test)]
+#[path = "coverage_gen/container_coverage_gen2.rs"]
+mod coverage_gen2_src_cmds_cloud_container;

@@ -1491,3 +1491,7 @@ mod tests {
         });
     }
 }
+
+#[cfg(test)]
+#[path = "decision_coverage_gen.rs"]
+mod coverage_gen_src_hooks_decision;

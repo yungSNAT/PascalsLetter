@@ -2548,3 +2548,7 @@ mod err_test_runner_tests {
         assert!(!is_bun_count_line("10 expect() calls"));
     }
 }
+
+#[cfg(test)]
+#[path = "runner_coverage_gen.rs"]
+mod coverage_gen_src_core_runner;

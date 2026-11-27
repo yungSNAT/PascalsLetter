@@ -125,3 +125,7 @@ mod tests {
         assert!(Position::parse("proxy.request.any").is_some());
     }
 }
+
+#[cfg(test)]
+#[path = "position_coverage_gen.rs"]
+mod coverage_gen_engine_src_pipeline_position;

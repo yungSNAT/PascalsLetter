@@ -376,3 +376,7 @@ Oh no! 💥 💔 💥
         assert_eq!(compact_path("relative/file.py"), "file.py");
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/format_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_system_format_cmd;

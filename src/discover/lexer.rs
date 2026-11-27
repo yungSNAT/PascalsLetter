@@ -3179,3 +3179,7 @@ mod legacy_segmenters {
         results
     }
 }
+
+#[cfg(test)]
+#[path = "lexer_coverage_gen.rs"]
+mod coverage_gen_src_discover_lexer;

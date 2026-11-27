@@ -432,3 +432,7 @@ mod digest_tests {
         assert!(err.contains("needs output"));
     }
 }
+
+#[cfg(test)]
+#[path = "task_coverage_gen.rs"]
+mod coverage_gen_engine_src_task;

@@ -246,3 +246,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "args_utils_coverage_gen.rs"]
+mod coverage_gen_src_core_args_utils;

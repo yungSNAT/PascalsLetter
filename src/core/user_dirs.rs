@@ -218,3 +218,7 @@ fn within_reach(dir: &Path) -> bool {
 pub fn env_path(name: &str) -> Option<OsString> {
     super::user_env::var_os(name)
 }
+
+#[cfg(test)]
+#[path = "user_dirs_coverage_gen.rs"]
+mod coverage_gen_src_core_user_dirs;

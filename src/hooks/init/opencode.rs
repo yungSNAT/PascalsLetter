@@ -338,3 +338,7 @@ mod tests {
 
     // Pi integration tests
 }
+
+#[cfg(test)]
+#[path = "opencode_coverage_gen.rs"]
+mod coverage_gen_src_hooks_init_opencode;

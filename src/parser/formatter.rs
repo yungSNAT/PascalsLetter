@@ -318,3 +318,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "formatter_coverage_gen.rs"]
+mod coverage_gen_src_parser_formatter;

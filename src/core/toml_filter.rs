@@ -2317,3 +2317,7 @@ expected = "output line 1\noutput line 2"
         assert_eq!(found.unwrap().name, "my-new-tool");
     }
 }
+
+#[cfg(test)]
+#[path = "toml_filter_coverage_gen.rs"]
+mod coverage_gen_src_core_toml_filter;

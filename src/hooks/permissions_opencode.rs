@@ -1229,3 +1229,7 @@ mod tests {
         });
     }
 }
+
+#[cfg(test)]
+#[path = "permissions_opencode_coverage_gen.rs"]
+mod coverage_gen_src_hooks_permissions_opencode;

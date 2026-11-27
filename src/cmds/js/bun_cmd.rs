@@ -478,3 +478,7 @@ error: failed to resolve left-pad
         }
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/bun_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_js_bun_cmd;

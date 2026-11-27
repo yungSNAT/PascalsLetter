@@ -1190,3 +1190,7 @@ Would reformat: tests/test_utils.py
         );
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/ruff_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_python_ruff_cmd;

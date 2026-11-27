@@ -715,3 +715,7 @@ mod tests {
         assert_eq!(parts[1], "rtk-rewrite.sh");
     }
 }
+
+#[cfg(test)]
+#[path = "integrity_coverage_gen.rs"]
+mod coverage_gen_src_hooks_integrity;

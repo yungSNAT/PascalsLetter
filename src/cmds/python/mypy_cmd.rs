@@ -371,3 +371,7 @@ Found 1 error in 1 file
         }
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/mypy_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_python_mypy_cmd;

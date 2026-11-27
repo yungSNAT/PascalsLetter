@@ -382,3 +382,7 @@ mod tests {
         assert!(result.is_err(), "reached the server around the proxy");
     }
 }
+
+#[cfg(test)]
+#[path = "http_coverage_gen.rs"]
+mod coverage_gen_src_core_http;

@@ -508,3 +508,7 @@ mod tests {
         assert!(force_tee_tail_hint("", "cmd", 5).is_none());
     }
 }
+
+#[cfg(test)]
+#[path = "tee_coverage_gen.rs"]
+mod coverage_gen_src_core_tee;
