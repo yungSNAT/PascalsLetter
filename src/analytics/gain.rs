@@ -1268,6 +1268,9 @@ fn print_efficiency_ledger(tracker: &Tracker) {
     if let Some(line) = hook.repeat_line() {
         print_kpi("Repeats", line);
     }
+    if let Some(line) = hook.hunk_line() {
+        print_kpi("Hunks", line);
+    }
     if directive_tokens > 0 {
         print_kpi(
             "Directives",
@@ -1355,17 +1358,14 @@ fn styled(text: &str, strong: bool) -> String {
 /// Print a key-value pair in KPI layout. // added
 const PANEL_RULES: usize = 5;
 
-/// The efficiency panel's line for repeated outputs that reached the agent as
-/// `rtk recall` pointers: how many, and the tokens they stood in for.
+/// The efficiency panel's line for results that reached the agent in a
+/// shorter form (`sent`, singular and plural): how many, and the tokens of
+/// the results against those of what was sent instead.
 #[cfg(feature = "engine")]
-fn repeat_kpi(calls: i64, tokens_in: i64, tokens_out: i64) -> String {
-    let sent = if calls == 1 {
-        "output sent as a pointer"
-    } else {
-        "outputs sent as pointers"
-    };
+fn sent_kpi(calls: i64, sent: [&str; 2], tokens_in: i64, tokens_out: i64) -> String {
+    let sent = sent[usize::from(calls != 1)];
     format!(
-        "{calls} repeated {sent}: {} → {} tokens   est.",
+        "{calls} {sent}: {} → {} tokens   est.",
         format_tokens(tokens_in.max(0) as usize),
         format_tokens(tokens_out.max(0) as usize),
     )
@@ -1379,6 +1379,7 @@ struct HookFigures {
     llm_spent: i64,
     recalls: i64,
     repeats: (i64, i64, i64),
+    hunks: (i64, i64, i64),
 }
 
 #[cfg(feature = "engine")]
@@ -1400,17 +1401,35 @@ impl HookFigures {
             llm_spent: sum("llm-spend").2,
             recalls: sum("recovery").0,
             repeats: sum("repeat"),
+            hunks: sum("hunks"),
         }
     }
 
     /// Whether the hook booked anything the panel shows.
     fn any(&self) -> bool {
-        self.comp_in > 0 || self.llm_spent > 0 || self.recalls > 0 || self.repeats.0 > 0
+        self.comp_in > 0
+            || self.llm_spent > 0
+            || self.recalls > 0
+            || self.repeats.0 > 0
+            || self.hunks.0 > 0
     }
 
     fn repeat_line(&self) -> Option<String> {
         let (calls, tokens_in, tokens_out) = self.repeats;
-        (calls > 0).then(|| repeat_kpi(calls, tokens_in, tokens_out))
+        let sent = [
+            "repeated output sent as a pointer",
+            "repeated outputs sent as pointers",
+        ];
+        (calls > 0).then(|| sent_kpi(calls, sent, tokens_in, tokens_out))
+    }
+
+    fn hunk_line(&self) -> Option<String> {
+        let (calls, tokens_in, tokens_out) = self.hunks;
+        let sent = [
+            "changed re-read sent as hunks",
+            "changed re-reads sent as hunks",
+        ];
+        (calls > 0).then(|| sent_kpi(calls, sent, tokens_in, tokens_out))
     }
 }
 
@@ -2058,12 +2077,13 @@ mod tests {
 
     #[cfg(feature = "engine")]
     #[test]
-    fn repeat_kpi_shows_the_count_and_the_tokens_replaced() {
+    fn sent_kpi_shows_the_count_and_the_tokens_replaced() {
+        let sent = ["thing sent", "things sent"];
         assert_eq!(
-            repeat_kpi(3, 12_000, 60),
-            "3 repeated outputs sent as pointers: 12.0K → 60 tokens   est."
+            sent_kpi(3, sent, 12_000, 60),
+            "3 things sent: 12.0K → 60 tokens   est."
         );
-        assert!(repeat_kpi(1, 400, 20).starts_with("1 repeated output sent as a pointer:"));
+        assert!(sent_kpi(1, sent, 400, 20).starts_with("1 thing sent:"));
     }
 
     /// A panel whose only hook figure is a repeat still prints, with its line.
@@ -2077,9 +2097,29 @@ mod tests {
             .expect("record");
         let hook = HookFigures::read(&tracker, 30);
         assert!(hook.any());
+        assert_eq!(hook.hunk_line(), None, "a repeat is not a hunked re-read");
         assert_eq!(
             hook.repeat_line().as_deref(),
             Some("1 repeated output sent as a pointer: 4.0K → 20 tokens   est.")
+        );
+    }
+
+    /// Hunked re-reads have their own line and alone fill the panel too.
+    #[cfg(feature = "engine")]
+    #[test]
+    fn hunked_rereads_alone_fill_the_panel() {
+        let tracker = Tracker::new_in_memory().expect("tracker");
+        for _ in 0..2 {
+            tracker
+                .record_attribution("hook", "hunks", "Read", 3000, 100)
+                .expect("record");
+        }
+        let hook = HookFigures::read(&tracker, 30);
+        assert!(hook.any());
+        assert_eq!(hook.repeat_line(), None, "hunks are not repeats");
+        assert_eq!(
+            hook.hunk_line().as_deref(),
+            Some("2 changed re-reads sent as hunks: 6.0K → 200 tokens   est.")
         );
     }
 
