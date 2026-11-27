@@ -153,8 +153,6 @@ With `[hooks] dedup_hunks = true` as well, a Read of a file that changed since t
 
 `rtk gain` counts each pointer that reached the agent: its 'Repeats' line gives how many there were in the last 30 days and the estimated tokens of the results they replaced against those of the pointers. Reads answered with hunks have their own 'Hunks' line.
 
-`rtk gain` counts each pointer that reached the agent: its 'Repeats' line gives how many there were in the last 30 days and the estimated tokens of the results they replaced against those of the pointers.
-
 To see how often your assistant actually goes back for elided output — and which filter caps deserve tuning — see [`rtk gain --recalls`](../analytics/gain.md#recall-efficiency).
 
 | Setting | Default | Description |
