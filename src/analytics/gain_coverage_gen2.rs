@@ -17,7 +17,7 @@ fn truncate_for_column_pads_cuts_and_elides() {
 }
 
 #[test]
-fn colorize_recall_rate_keeps_the_padded_text_in_every_band() {
+fn colorize_recall_rate_keeps_the_padded_text() {
     for (pct, padded) in [(0, "    0%"), (15, "   15%"), (45, "   45%")] {
         let out = colorize_recall_rate(pct, padded);
         // Coloured on a terminal, plain otherwise; the text survives either way.

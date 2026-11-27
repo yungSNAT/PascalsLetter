@@ -20,6 +20,8 @@ fn verbose_file_comparison_keeps_diff_exit_codes() {
 
 #[test]
 fn invisible_difference_diagnostic_does_not_invent_a_cause() {
+    // Out of contract on purpose: these lines differ, which the caller never passes,
+    // so the call reaches the fallback message.
     assert_eq!(
         describe_invisible_difference("old\n", "new\n"),
         "files differ only in whitespace or line endings (cause outside the line-ending and trailing-newline checks)"
