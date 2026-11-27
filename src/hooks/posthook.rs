@@ -2407,9 +2407,8 @@ mod tests {
     /// file changed.
     fn hunks_of(out: &Option<String>) -> Option<String> {
         let parsed: Value = serde_json::from_str(out.as_deref()?).ok()?;
-        let text = parsed
-            .pointer("/hookSpecificOutput/updatedToolOutput/file/content")?
-            .as_str()?;
+        let content = "/hookSpecificOutput/updatedToolOutput/file/content";
+        let text = parsed.pointer(content)?.as_str()?;
         text.contains(" changed since your last Read of it in this session ")
             .then(|| text.to_string())
     }
@@ -2451,8 +2450,32 @@ mod tests {
         text
     }
 
+    /// `native_pointer` itself refuses hunks for a Read that did not give the
+    /// whole file, even when its caller passes an earlier text.
+    #[test]
+    fn test_native_pointer_gives_no_hunks_for_a_partial_read() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = hunk_config(dir.path());
+        let old = lines(400);
+        let new = old.replace("line 10\n", "line ten\n");
+        let pointer = |edit: &dyn Fn(&mut Value)| {
+            let mut call = Call::read("a", "/repo/src/lib.rs", &new);
+            edit(&mut call.event);
+            let response = call.event["tool_response"].clone();
+            native_pointer(&config, &call.event, None, response, &new, Some(&old)).is_some()
+        };
+        assert!(pointer(&|_| {}), "the control: a whole Read gets hunks");
+        assert!(!pointer(
+            &|event| event["tool_input"]["offset"] = serde_json::json!(5)
+        ));
+        assert!(!pointer(&|event| {
+            event["tool_response"]["file"]["totalLines"] = serde_json::json!(800);
+        }));
+    }
+
     /// Hunks rebuild the current text byte for byte whether or not both texts
-    /// end with a newline, including a change to the last line.
+    /// end with a newline, including a change to the last line, and across
+    /// several hunks, one of them an added line.
     #[test]
     fn test_reread_hunks_rebuild_the_text_byte_for_byte() {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -2460,7 +2483,11 @@ mod tests {
         let first = lines(400);
         let middle = first.replace("line 10\n", "line ten\n");
         let last = first.replace("line 399\n", "line three nine nine\n");
+        let two = first
+            .replace("line 20\n", "line 20\nline 20.5\n")
+            .replace("line 300\n", "line three hundred\n");
         let cases = [
+            ("an added line and a changed one", first.clone(), two),
             ("final newline, middle", first.clone(), middle.clone()),
             ("final newline, last line", first.clone(), last.clone()),
             (
@@ -2477,14 +2504,22 @@ mod tests {
         for (n, (name, before, after)) in cases.into_iter().enumerate() {
             let path = format!("/repo/src/bytes{n}.rs");
             Call::read(&format!("{n}a"), &path, &before).run(&config);
-            let shown = hunks_of(&Call::read(&format!("{n}b"), &path, &after).run(&config))
-                .unwrap_or_else(|| panic!("{name}: hunks"));
+            let shown = hunks_of(&Call::read(&format!("{n}b"), &path, &after).run(&config));
+            assert!(shown.is_some(), "{name}: hunks");
+            let shown = shown.unwrap_or_default();
             let (_, hunks) = shown.split_once('\n').expect("hunks after the header");
             assert_eq!(
                 apply_classic(&before, hunks).as_bytes(),
                 after.as_bytes(),
                 "{name}"
             );
+            if name == "an added line and a changed one" {
+                // 2 hunks, the first an `a`, so both `apply_classic` arms run.
+                let headers = hunks.lines().filter(|l| l.as_bytes()[0].is_ascii_digit());
+                assert_eq!(headers.count(), 2, "{name}");
+                let first_header = hunks.lines().next().unwrap_or_default();
+                assert!(first_header.contains('a'), "{name}: {first_header}");
+            }
         }
     }
 
@@ -2734,16 +2769,8 @@ mod tests {
         };
         grep("ga", &first);
         let out = grep("gb", &small);
-        let replaced = out
-            .as_deref()
-            .and_then(|o| serde_json::from_str::<Value>(o).ok())
-            .and_then(|v| {
-                v.pointer("/hookSpecificOutput/updatedToolOutput/content")
-                    .and_then(Value::as_str)
-                    .map(str::to_string)
-            });
         assert!(
-            replaced.is_none_or(|c| !c.contains(" changed since your last Read")),
+            out.is_none_or(|o| !o.contains(" changed since your last Read")),
             "a Grep is never hunked"
         );
     }
