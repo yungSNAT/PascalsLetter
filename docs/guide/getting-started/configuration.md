@@ -148,6 +148,8 @@ With `[hooks] dedup_repeats = true`, the Claude Code PostToolUse hook replaces a
 
 Each agent (the main thread, or a subagent by `agent_id`) has its own records. The result is delivered whole whenever completion is in doubt: the agent's previous call failed, was denied or interrupted (Claude Code fires no PostToolUse for these), calls overlapped, the PreToolUse hook is not installed for the tool, the hook input lacks `tool_use_id`, or recall storage is not `sqlite`. A pointer is never longer than the result it replaces. Run `rtk init -g` after turning the option on: it adds Read, Grep and Glob to the PreToolUse and PostToolUse matchers. After a context compaction the pointer can name output that has left the context; `rtk recall <hash>` returns it. A Claude Code version that omits `agent_id` inside subagents makes them share the main thread's records. The records live in a `repeat` folder beside recall storage, one folder per session: another session's folder untouched for 7 days is removed when a session starts (where the SessionStart hook is registered) or makes its first call, and so is a file a hook left when it died, after an hour. The current session's folder is never removed this way.
 
+`rtk gain` counts each pointer that reached the agent: its 'Repeats' line gives how many there were in the last 30 days and the estimated tokens of the results they replaced against those of the pointers.
+
 To see how often your assistant actually goes back for elided output — and which filter caps deserve tuning — see [`rtk gain --recalls`](../analytics/gain.md#recall-efficiency).
 
 | Setting | Default | Description |
