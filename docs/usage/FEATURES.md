@@ -1504,13 +1504,16 @@ When a command fails (or a filter truncates a list), RTK saves the complete raw 
 
 **Commands:**
 ```bash
-rtk recall <hash>            # Part not shown (delta)
-rtk recall <hash> --full     # Complete output
-rtk recall <hash> --grep RE  # Filter by regex
-rtk recall <hash> --from A --lines N  # N lines from line A of the complete output
-rtk recall --list            # List entries
-rtk gain --recalls           # Retrieval rate per filter
-rtk config recall <mode>     # Change mode without editing the config (sqlite|tee|disabled)
+rtk recall <hash>                       # Part not shown (delta)
+rtk recall <hash> --digest              # Compact structural digest (metadata, head, diagnostic lines, tail)
+rtk recall <hash> --full                # Complete output
+rtk recall <hash> --from A --to B       # Inclusive line range A to B of the complete output
+rtk recall <hash> --from A --lines N    # N lines from line A of the complete output
+rtk recall <hash> --tail N              # Last N lines of the complete output
+rtk recall <hash> --grep RE [-C N] [-n] # Filter by regex, with optional context lines and 1-based line numbers
+rtk recall --list                       # List entries
+rtk gain --recalls                      # Retrieval rate per filter
+rtk config recall <mode>                # Change mode without editing the config (sqlite|tee|disabled)
 ```
 
 `rtk gain --recalls` keeps data strictly separated by mode: an exact rate in sqlite mode

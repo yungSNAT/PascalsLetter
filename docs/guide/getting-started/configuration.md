@@ -125,7 +125,7 @@ FAILED: 2/15 tests
 [full output: rtk recall 36365b69eda6c4f1]
 ```
 
-Your AI assistant runs `rtk recall <hash>` exactly as printed in the hint — that is the whole agent interface. For humans inspecting the store: `rtk recall <hash> --full | --from N | --lines N | --grep PAT` and `rtk recall --list`. Storage is byte-faithful (`BLOB` + lossless gzip); the stored input is the captured command text, as with the previous tee files.
+Your AI assistant runs `rtk recall <hash>` as printed in the hint, or `rtk recall <hash> --digest` to inspect a compact structural summary with 1-based line numbers before pulling a slice. For targeted reads: `rtk recall <hash> --full | --from A --to B | --from A --lines N | --tail N | --grep PAT [-C N] [-n]` and `rtk recall --list`. Storage is byte-faithful (`BLOB` + lossless gzip); the stored input is the captured command text, as with the previous tee files.
 
 ### Choosing the recovery mode
 

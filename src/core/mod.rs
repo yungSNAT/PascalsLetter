@@ -27,6 +27,7 @@ pub mod pipeline_log;
 pub mod pipeline_remote;
 #[cfg(feature = "engine")]
 pub mod plugins_cmd;
+pub(crate) mod recall_digest;
 pub mod retriever;
 pub mod runner;
 pub mod shell;

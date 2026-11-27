@@ -18,11 +18,8 @@ fn with_recall_path(test: impl FnOnce(&Path)) {
 fn recall_args(hash: Option<&str>, list: bool) -> RecallArgs<'_> {
     RecallArgs {
         hash,
-        full: false,
-        from: None,
-        lines: None,
-        grep: None,
         list,
+        ..RecallArgs::default()
     }
 }
 

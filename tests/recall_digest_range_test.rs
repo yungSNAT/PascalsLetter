@@ -4,45 +4,29 @@ use std::path::Path;
 use std::process::Output;
 
 fn seed_recall_db(path: &Path) {
-    let mut lines = Vec::new();
-    for i in 1..=30 {
-        if i == 12 {
-            lines.push("line 12: error[E0308]: mismatched types".to_string());
-        } else if i == 20 {
-            lines.push("line 20: thread 'worker' panicked at src/lib.rs:9:1".to_string());
-        } else {
-            lines.push(format!("line {i}: normal output"));
-        }
-    }
-    let body = format!("{}\n", lines.join("\n"));
-    let conn = rusqlite::Connection::open(path).expect("open recall db");
-    conn.execute_batch(
-        "PRAGMA application_id = 0x52544B02;
-         PRAGMA user_version = 2;
-         CREATE TABLE recall (
-             hash        TEXT PRIMARY KEY,
-             command     TEXT NOT NULL,
-             cwd         TEXT,
-             exit_code   INTEGER,
-             created_at  INTEGER NOT NULL,
-             total_lines INTEGER NOT NULL,
-             shown_upto  INTEGER NOT NULL,
-             byte_size   INTEGER NOT NULL,
-             truncated   INTEGER NOT NULL,
-             codec       TEXT NOT NULL,
-             blob        BLOB NOT NULL,
-             recalled    INTEGER NOT NULL DEFAULT 0
+    let body: String = (1..=30)
+        .map(|i| match i {
+            12 => "line 12: error[E0308]: mismatched types\n".to_string(),
+            20 => "line 20: thread 'worker' panicked at src/lib.rs:9:1\n".to_string(),
+            _ => format!("line {i}: normal output\n"),
+        })
+        .collect();
+    common::recall_store(
+        path,
+        2,
+        "CREATE TABLE recall (
+             hash TEXT PRIMARY KEY, command TEXT NOT NULL, cwd TEXT, exit_code INTEGER,
+             created_at INTEGER NOT NULL, total_lines INTEGER NOT NULL, shown_upto INTEGER NOT NULL,
+             byte_size INTEGER NOT NULL, truncated INTEGER NOT NULL, codec TEXT NOT NULL,
+             blob BLOB NOT NULL, recalled INTEGER NOT NULL DEFAULT 0
          );
          CREATE TABLE tee_reads (path TEXT PRIMARY KEY);
          CREATE TABLE recall_stats (
-             slug     TEXT NOT NULL,
-             mode     TEXT NOT NULL,
-             elisions INTEGER NOT NULL DEFAULT 0,
-             recalls  INTEGER NOT NULL DEFAULT 0,
-             PRIMARY KEY (slug, mode)
+             slug TEXT NOT NULL, mode TEXT NOT NULL, elisions INTEGER NOT NULL DEFAULT 0,
+             recalls INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (slug, mode)
          );",
-    )
-    .expect("create schema");
+    );
+    let conn = rusqlite::Connection::open(path).expect("open recall db");
     conn.execute(
         "INSERT INTO recall
          (hash, command, cwd, exit_code, created_at, total_lines, shown_upto, byte_size, truncated, codec, blob)
@@ -71,12 +55,15 @@ fn run_rtk(recall_db: &Path, tracking_db: &Path, args: &[&str]) -> Output {
 #[test]
 fn recall_ranged_to_and_tail_and_line_numbers_return_exact_lines() {
     let dir = common::tempdir();
-    let recall_db = dir.path().join("recall.db");
-    let tracking_db = dir.path().join("tracking.db");
+    let (recall_db, tracking_db) = (dir.path().join("recall.db"), dir.path().join("tracking.db"));
     seed_recall_db(&recall_db);
 
-    let to_only = run_rtk(&recall_db, &tracking_db, &["recall", "a1b2c3d4", "--to", "2"]);
-    assert!(to_only.status.success(), "stderr: {}", String::from_utf8_lossy(&to_only.stderr));
+    let to_only = run_rtk(
+        &recall_db,
+        &tracking_db,
+        &["recall", "a1b2c3d4", "--to", "2"],
+    );
+    assert!(to_only.status.success());
     assert_eq!(
         String::from_utf8(to_only.stdout).expect("utf8"),
         "line 1: normal output\nline 2: normal output\n"
@@ -87,27 +74,29 @@ fn recall_ranged_to_and_tail_and_line_numbers_return_exact_lines() {
         &tracking_db,
         &["recall", "a1b2c3d4", "--from", "11", "--to", "13"],
     );
-    assert!(inclusive.status.success(), "stderr: {}", String::from_utf8_lossy(&inclusive.stderr));
+    assert!(inclusive.status.success());
     assert_eq!(
         String::from_utf8(inclusive.stdout).expect("utf8"),
         "line 11: normal output\nline 12: error[E0308]: mismatched types\nline 13: normal output\n"
     );
 
-    let tail_numbered = run_rtk(
+    let tail = run_rtk(
         &recall_db,
         &tracking_db,
         &["recall", "a1b2c3d4", "--tail", "3", "-n"],
     );
-    assert!(
-        tail_numbered.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&tail_numbered.stderr)
-    );
+    assert!(tail.status.success());
     assert_eq!(
-        String::from_utf8(tail_numbered.stdout).expect("utf8"),
+        String::from_utf8(tail.stdout).expect("utf8"),
         "28:line 28: normal output\n29:line 29: normal output\n30:line 30: normal output\n"
     );
+}
 
+#[test]
+fn recall_rejects_inverted_to_range_cli() {
+    let dir = common::tempdir();
+    let (recall_db, tracking_db) = (dir.path().join("recall.db"), dir.path().join("tracking.db"));
+    seed_recall_db(&recall_db);
     let inverted = run_rtk(
         &recall_db,
         &tracking_db,
@@ -115,14 +104,16 @@ fn recall_ranged_to_and_tail_and_line_numbers_return_exact_lines() {
     );
     assert_eq!(inverted.status.code(), Some(2));
     assert!(inverted.stdout.is_empty());
-    assert!(String::from_utf8_lossy(&inverted.stderr).contains("--to (10) must be >= starting line (15)"));
+    assert!(
+        String::from_utf8_lossy(&inverted.stderr)
+            .contains("--to (10) must be >= starting line (15)")
+    );
 }
 
 #[test]
 fn recall_grep_context_and_line_numbers_show_disjoint_windows() {
     let dir = common::tempdir();
-    let recall_db = dir.path().join("recall.db");
-    let tracking_db = dir.path().join("tracking.db");
+    let (recall_db, tracking_db) = (dir.path().join("recall.db"), dir.path().join("tracking.db"));
     seed_recall_db(&recall_db);
 
     let out = run_rtk(
@@ -139,7 +130,7 @@ fn recall_grep_context_and_line_numbers_show_disjoint_windows() {
             "-n",
         ],
     );
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(out.status.success());
     assert_eq!(
         String::from_utf8(out.stdout).expect("utf8"),
         concat!(
@@ -157,40 +148,34 @@ fn recall_grep_context_and_line_numbers_show_disjoint_windows() {
 #[test]
 fn recall_digest_summarises_handle_and_matches_drill_down_range() {
     let dir = common::tempdir();
-    let recall_db = dir.path().join("recall.db");
-    let tracking_db = dir.path().join("tracking.db");
+    let (recall_db, tracking_db) = (dir.path().join("recall.db"), dir.path().join("tracking.db"));
     seed_recall_db(&recall_db);
 
-    let out = run_rtk(&recall_db, &tracking_db, &["recall", "a1b2c3d4", "--digest"]);
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let out = run_rtk(
+        &recall_db,
+        &tracking_db,
+        &["recall", "a1b2c3d4", "--digest"],
+    );
+    assert!(out.status.success());
     let digest = String::from_utf8(out.stdout).expect("utf8");
-    assert!(
-        digest.starts_with("[recall a1b2c3d4e5f60708 | cargo-test | 30 lines | "),
-        "unexpected header: {digest}"
-    );
-    assert!(digest.contains("| exit 101 | hidden 11-30]"), "digest: {digest}");
-    assert!(digest.contains(" 1: line 1: normal output\n"), "digest: {digest}");
-    assert!(digest.contains(" 5: line 5: normal output\n"), "digest: {digest}");
-    assert!(
-        digest.contains("... 20 lines omitted (lines 6-25); 2 diagnostic lines:\n"),
-        "digest: {digest}"
-    );
-    assert!(
-        digest.contains("12: line 12: error[E0308]: mismatched types\n"),
-        "digest: {digest}"
-    );
-    assert!(
-        digest.contains("20: line 20: thread 'worker' panicked at src/lib.rs:9:1\n"),
-        "digest: {digest}"
-    );
-    assert!(digest.contains("26: line 26: normal output\n"), "digest: {digest}");
-    assert!(digest.contains("30: line 30: normal output\n"), "digest: {digest}");
-    assert!(
-        digest.contains("[drill-down: rtk recall a1b2c3d4e5f60708 --from A --to B | --tail N | --grep PAT | --full]"),
-        "digest: {digest}"
-    );
+    for expected in [
+        "[recall a1b2c3d4e5f60708 | cargo-test | 30 lines | ",
+        "| exit 101 | hidden 11-30]",
+        " 1: line 1: normal output\n",
+        " 5: line 5: normal output\n",
+        "... 20 lines omitted (lines 6-25); 2 diagnostic lines:\n",
+        "12: line 12: error[E0308]: mismatched types\n",
+        "20: line 20: thread 'worker' panicked at src/lib.rs:9:1\n",
+        "26: line 26: normal output\n",
+        "30: line 30: normal output\n",
+        "[drill-down: rtk recall a1b2c3d4e5f60708 --from A --to B | --tail N | --grep PAT | --full]",
+    ] {
+        assert!(
+            digest.contains(expected),
+            "missing {expected:?} in:\n{digest}"
+        );
+    }
 
-    // Following the line number shown in the digest returns that exact line.
     let drill = run_rtk(
         &recall_db,
         &tracking_db,
@@ -206,8 +191,7 @@ fn recall_digest_summarises_handle_and_matches_drill_down_range() {
 #[test]
 fn recall_rejects_conflicting_range_and_digest_flags() {
     let dir = common::tempdir();
-    let recall_db = dir.path().join("recall.db");
-    let tracking_db = dir.path().join("tracking.db");
+    let (recall_db, tracking_db) = (dir.path().join("recall.db"), dir.path().join("tracking.db"));
 
     for args in [
         &["recall", "a1b2c3d4", "--to", "5", "--lines", "2"][..],
@@ -216,6 +200,10 @@ fn recall_rejects_conflicting_range_and_digest_flags() {
         &["recall", "a1b2c3d4", "-C", "2"][..],
     ] {
         let out = run_rtk(&recall_db, &tracking_db, args);
-        assert_eq!(out.status.code(), Some(2), "expected clap exit 2 for {args:?}");
+        assert_eq!(
+            out.status.code(),
+            Some(2),
+            "expected clap exit 2 for {args:?}"
+        );
     }
 }
