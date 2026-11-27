@@ -56,13 +56,13 @@ pub fn run_format(args: &[String], verbose: u8) -> Result<i32> {
         eprintln!("Running: dotnet format {}", args.join(" "));
     }
 
-    let command_started_at = SystemTime::now();
+    let report_before = report_path.as_deref().and_then(report_stamp);
     let result = exec_capture(&mut cmd).context("Failed to run dotnet format")?;
     let raw = format!("{}\n{}", result.stdout, result.stderr);
 
     let check_mode = !has_write_mode_override(&tokens);
     let filtered =
-        format_report_summary_or_raw(report_path.as_deref(), check_mode, &raw, command_started_at);
+        format_report_summary_or_raw(report_path.as_deref(), check_mode, &raw, report_before);
     let shown = never_worse(&raw, &filtered);
     println!("{}", shown);
 
@@ -382,13 +382,13 @@ fn format_report_summary_or_raw(
     report_path: Option<&Path>,
     check_mode: bool,
     raw: &str,
-    command_started_at: SystemTime,
+    report_before: Option<ReportStamp>,
 ) -> String {
     let Some(report_path) = report_path else {
         return raw.to_string();
     };
 
-    if !is_fresh_report(report_path, command_started_at) {
+    if !is_fresh_report(report_path, report_before) {
         return raw.to_string();
     }
 
@@ -398,16 +398,19 @@ fn format_report_summary_or_raw(
     }
 }
 
-fn is_fresh_report(path: &Path, command_started_at: SystemTime) -> bool {
-    let Ok(metadata) = std::fs::metadata(path) else {
-        return false;
-    };
+/// A report file's modification time and length.
+type ReportStamp = (SystemTime, u64);
 
-    let Ok(modified_at) = metadata.modified() else {
-        return false;
-    };
+fn report_stamp(path: &Path) -> Option<ReportStamp> {
+    let metadata = std::fs::metadata(path).ok()?;
+    Some((metadata.modified().ok()?, metadata.len()))
+}
 
-    modified_at.duration_since(command_started_at).is_ok()
+/// The run wrote the report: it exists and differs from what was there before.
+/// Comparing stamps, not the start time, survives a filesystem clock coarser
+/// than the run.
+fn is_fresh_report(path: &Path, before: Option<ReportStamp>) -> bool {
+    report_stamp(path).is_some_and(|after| Some(after) != before)
 }
 
 fn format_dotnet_format_output(
@@ -3665,14 +3668,33 @@ mod tests {
         let temp_dir = test_isolation::tempdir();
         let report = temp_dir.path().join("report.json");
         fs::write(&report, "[]").expect("write report");
-
-        let command_started_at = SystemTime::now()
-            .checked_add(Duration::from_secs(2))
-            .expect("future timestamp");
+        let before = report_stamp(&report);
         let raw = "RAW OUTPUT";
 
-        let output = format_report_summary_or_raw(Some(&report), true, raw, command_started_at);
+        let output = format_report_summary_or_raw(Some(&report), true, raw, before);
         assert_eq!(output, raw);
+    }
+
+    #[test]
+    fn test_format_report_summary_uses_report_written_within_the_start_tick() {
+        // A report absent before the run and present after it is fresh, even
+        // when a coarse filesystem clock stamps it just before the start.
+        let temp_dir = test_isolation::tempdir();
+        let report = temp_dir.path().join("report.json");
+        let command_started_at = SystemTime::now();
+        fs::copy(format_fixture("format_success.json"), &report).expect("write report");
+        std::fs::File::options()
+            .write(true)
+            .open(&report)
+            .expect("open report for mtime")
+            .set_modified(command_started_at - Duration::from_millis(500))
+            .expect("set report mtime");
+
+        let output = format_report_summary_or_raw(Some(&report), true, "RAW OUTPUT", None);
+        assert!(
+            output.contains("ok dotnet format: 2 files formatted correctly"),
+            "{output}"
+        );
     }
 
     #[test]
@@ -3680,7 +3702,7 @@ mod tests {
         let report = format_fixture("format_success.json");
         let raw = "RAW OUTPUT";
 
-        let output = format_report_summary_or_raw(Some(&report), true, raw, UNIX_EPOCH);
+        let output = format_report_summary_or_raw(Some(&report), true, raw, None);
         assert!(output.contains("ok dotnet format: 2 files formatted correctly"));
     }
 
