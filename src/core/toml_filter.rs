@@ -872,9 +872,14 @@ fn collect_test_outcomes(
 
         for test in tests {
             let actual = apply_filter(compiled, &test.input);
-            // Trim trailing newlines: TOML multiline strings end with a newline
+            // Trim trailing newlines: TOML multiline strings end with a newline.
+            // A file saved with CRLF keeps `\r` in `expected`; output lines never do.
             let actual_cmp = actual.trim_end_matches('\n').to_string();
-            let expected_cmp = test.expected.trim_end_matches('\n').to_string();
+            let expected_cmp = test
+                .expected
+                .replace("\r\n", "\n")
+                .trim_end_matches('\n')
+                .to_string();
             outcomes.push(TestOutcome {
                 filter_name: filter_name.clone(),
                 test_name: test.name,
