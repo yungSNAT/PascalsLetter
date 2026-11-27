@@ -2274,6 +2274,36 @@ mod tests {
         assert_eq!(command_time_label("rtk git zz (passthrough)", 3_002), "-");
         assert_eq!(command_time_label("rtk grep", 0), "0ms");
     }
+
+    #[test]
+    fn gain_column_pads_short_text_and_truncates_on_character_boundaries() {
+        assert_eq!(truncate_for_column("naïve", 0), "");
+        assert_eq!(truncate_for_column("café", 5), "café ");
+        assert_eq!(truncate_for_column("café", 3), "caf");
+        assert_eq!(truncate_for_column("Éclair", 4), "É...");
+    }
+
+    #[test]
+    fn gain_project_label_keeps_the_root_and_the_two_nearest_components() {
+        assert_eq!(shorten_path("repo/src"), "repo/src");
+        assert_eq!(shorten_path("work/org/repo/src/bin"), "work/.../src/bin");
+        #[cfg(unix)]
+        assert_eq!(shorten_path("/work/org/repo/src/bin"), "/.../src/bin");
+    }
+
+    #[test]
+    fn slice_labels_name_each_kind_of_tool_output() {
+        for (subject, label) in [
+            ("shell", "shell output (bash)"),
+            ("read", "file reads"),
+            ("search", "search results"),
+            ("web", "web content"),
+            ("mcp", "MCP tool output"),
+            ("notebook", "notebook"),
+        ] {
+            assert_eq!(subject_slice_label(subject), label);
+        }
+    }
 }
 
 #[cfg(test)]
