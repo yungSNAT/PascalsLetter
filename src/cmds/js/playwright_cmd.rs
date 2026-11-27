@@ -606,3 +606,7 @@ mod tests {
         assert!(!result.is_ok());
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/playwright_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_js_playwright_cmd;

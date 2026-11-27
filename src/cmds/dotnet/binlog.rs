@@ -1788,3 +1788,7 @@ Time Elapsed 00:00:00.12
         assert_eq!(selected, primary);
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/binlog_coverage_gen.rs"]
+mod coverage_gen_src_cmds_dotnet_binlog;

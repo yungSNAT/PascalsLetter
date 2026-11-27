@@ -606,3 +606,7 @@ mod tests {
         assert!(framed.ends_with("--- output ---\n0123456789"));
     }
 }
+
+#[cfg(test)]
+#[path = "classify_coverage_gen.rs"]
+mod coverage_gen_src_core_classify;

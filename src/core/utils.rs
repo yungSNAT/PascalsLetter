@@ -2086,3 +2086,7 @@ mod tests {
         assert_eq!(exec_runner(None, MissingTool::Fetch), "npx");
     }
 }
+
+#[cfg(test)]
+#[path = "utils_coverage_gen.rs"]
+mod coverage_gen_src_core_utils;

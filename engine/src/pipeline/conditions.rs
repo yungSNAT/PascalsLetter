@@ -426,3 +426,7 @@ mod tests {
         assert_eq!(check_key(p, "spend"), KeyCheck::Pro);
     }
 }
+
+#[cfg(test)]
+#[path = "conditions_coverage_gen.rs"]
+mod coverage_gen_engine_src_pipeline_conditions;

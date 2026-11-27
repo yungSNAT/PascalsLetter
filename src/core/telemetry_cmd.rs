@@ -427,3 +427,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "telemetry_cmd_coverage_gen.rs"]
+mod coverage_gen_src_core_telemetry_cmd;

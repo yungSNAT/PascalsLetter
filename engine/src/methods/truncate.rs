@@ -104,3 +104,7 @@ mod tests {
         assert!(out.contains("more lines]"), "trailer must be present");
     }
 }
+
+#[cfg(test)]
+#[path = "truncate_coverage_gen.rs"]
+mod coverage_gen_engine_src_methods_truncate;

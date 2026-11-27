@@ -654,3 +654,7 @@ mod rle_levels {
         assert!(rendered.is_some(), "ordinary output must render, not panic");
     }
 }
+
+#[cfg(test)]
+#[path = "strategy_coverage_gen.rs"]
+mod coverage_gen_engine_src_strategy;

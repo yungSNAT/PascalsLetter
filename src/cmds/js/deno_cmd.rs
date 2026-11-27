@@ -226,3 +226,7 @@ error: Module not found "https://deno.land/x/nonexistent/mod.ts"
         }
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/deno_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_js_deno_cmd;

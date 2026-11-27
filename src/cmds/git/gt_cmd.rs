@@ -789,3 +789,7 @@ Restacked branch fix/parsing on feat/add-db
         );
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/gt_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_git_gt_cmd;

@@ -361,3 +361,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/summary_coverage_gen.rs"]
+mod coverage_gen_src_cmds_system_summary;

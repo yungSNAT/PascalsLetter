@@ -327,3 +327,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "shell_wrapper_coverage_gen.rs"]
+mod coverage_gen_src_discover_shell_wrapper;

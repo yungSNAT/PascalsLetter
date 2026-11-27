@@ -133,3 +133,7 @@ mod tests {
         assert!(summary.files_with_changes.is_empty());
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/dotnet_format_report_coverage_gen.rs"]
+mod coverage_gen_src_cmds_dotnet_dotnet_format_report;

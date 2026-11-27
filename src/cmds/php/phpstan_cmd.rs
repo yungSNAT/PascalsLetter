@@ -580,3 +580,7 @@ Found 5 errors in 3 files"#;
         assert!(output.contains("+4 more files"));
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/phpstan_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_php_phpstan_cmd;

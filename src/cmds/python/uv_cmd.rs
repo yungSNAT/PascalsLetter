@@ -584,3 +584,7 @@ FAILED tests/test_api.py::test_healthcheck - AssertionError: expected 200
         assert!(!output.contains("Downloading cpython"));
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/uv_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_python_uv_cmd;

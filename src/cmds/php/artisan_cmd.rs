@@ -49,3 +49,7 @@ mod tests {
         assert!(filtered.contains("OK (4 tests, 4 assertions)"));
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/artisan_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_php_artisan_cmd;

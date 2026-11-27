@@ -659,3 +659,7 @@ mod tests {
         assert_eq!(remaining_commands, vec![user_cmd]);
     }
 }
+
+#[cfg(test)]
+#[path = "cursor_coverage_gen.rs"]
+mod coverage_gen_src_hooks_init_cursor;

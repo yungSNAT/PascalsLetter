@@ -678,3 +678,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "report_coverage_gen.rs"]
+mod coverage_gen_src_discover_report;
