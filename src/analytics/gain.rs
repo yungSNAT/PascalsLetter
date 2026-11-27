@@ -2305,3 +2305,19 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "gain_coverage_gen1.rs"]
+mod coverage_gen1_src_analytics_gain;
+
+#[cfg(test)]
+#[path = "gain_coverage_gen2.rs"]
+mod coverage_gen2_src_analytics_gain;
+
+#[cfg(test)]
+#[path = "gain_coverage_gen3.rs"]
+mod coverage_gen3_src_analytics_gain;
+
+#[cfg(test)]
+#[path = "gain_coverage_gen4.rs"]
+mod coverage_gen4_src_analytics_gain;

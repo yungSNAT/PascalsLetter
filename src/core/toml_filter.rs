@@ -872,9 +872,14 @@ fn collect_test_outcomes(
 
         for test in tests {
             let actual = apply_filter(compiled, &test.input);
-            // Trim trailing newlines: TOML multiline strings end with a newline
+            // Trim trailing newlines: TOML multiline strings end with a newline.
+            // A file saved with CRLF keeps `\r` in `expected`; output lines never do.
             let actual_cmp = actual.trim_end_matches('\n').to_string();
-            let expected_cmp = test.expected.trim_end_matches('\n').to_string();
+            let expected_cmp = test
+                .expected
+                .replace("\r\n", "\n")
+                .trim_end_matches('\n')
+                .to_string();
             outcomes.push(TestOutcome {
                 filter_name: filter_name.clone(),
                 test_name: test.name,
@@ -2070,6 +2075,41 @@ gcc -O2 foo.c
             "test should pass: {:?}",
             outcomes[0].actual
         );
+    }
+
+    /// A filter file saved with CRLF line endings (a Windows checkout of the
+    /// built-in filters, or a project file written on Windows) keeps `\r` in its
+    /// multi-line `expected`, whilst the filter's output lines carry none.
+    #[test]
+    fn test_run_filter_tests_passes_with_crlf_line_endings() {
+        let content = r#"
+schema_version = 1
+
+[filters.make]
+match_command = "^make\\b"
+strip_lines_matching = ["^make\\[\\d+\\]:"]
+
+[[tests.make]]
+name = "strips entering/leaving lines"
+input = """
+make[1]: Entering directory '/home/user'
+gcc -O2 foo.c
+gcc -O2 bar.c
+make[1]: Leaving directory '/home/user'
+"""
+expected = """
+gcc -O2 foo.c
+gcc -O2 bar.c
+"""
+"#
+        .replace('\n', "\r\n");
+        let mut outcomes = Vec::new();
+        let mut all_names = Vec::new();
+        let mut tested = std::collections::HashSet::new();
+        collect_test_outcomes(&content, None, &mut outcomes, &mut all_names, &mut tested);
+        assert_eq!(outcomes.len(), 1);
+        assert!(outcomes[0].passed, "{:?}", outcomes[0].actual);
+        assert_eq!(outcomes[0].expected, "gcc -O2 foo.c\ngcc -O2 bar.c");
     }
 
     #[test]
