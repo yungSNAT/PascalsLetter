@@ -1808,7 +1808,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "utoipa",
- "uuid",
  "wiremock",
 ]
 
@@ -2623,17 +2622,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.10",
-]
-
-[[package]]
-name = "uuid"
-version = "1.29.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c14b15dffa2f4bd712103e857140aa04a4f2ff6e955c77d7eb8e53ee02a3b64"
-dependencies = [
- "getrandom 0.4.3",
- "js-sys",
- "wasm-bindgen",
 ]
 
 [[package]]
