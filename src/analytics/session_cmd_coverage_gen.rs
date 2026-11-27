@@ -15,13 +15,15 @@ fn with_project(test: impl FnOnce(&Path, &Path)) {
     });
 }
 
-fn run_session(home: &Path) -> Option<String> {
+/// Runs the report in-process, then (Unix, binary built) through the CLI, handing
+/// its output to `check`.
+fn run_session(home: &Path, check: impl FnOnce(&str)) {
     // Run in-process for coverage even when the CLI binary is unavailable.
     run(0).expect("generate session report");
 
     // The CLI run is Unix-only; elsewhere the in-process run above is the test.
     let ready = cfg!(unix) && test_isolation::rtk_binary_ready();
-    let true = ready else { return None };
+    let true = ready else { return };
     let output = test_isolation::rtk_command()
         .env("HOME", home)
         .env("CLAUDE_CONFIG_DIR", home.join(".claude"))
@@ -34,7 +36,7 @@ fn run_session(home: &Path) -> Option<String> {
         "session command failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    Some(String::from_utf8(output.stdout).expect("decode session report"))
+    check(&String::from_utf8(output.stdout).expect("decode session report"));
 }
 
 fn write_bash_session(project: &Path, id: &str, command: &str) -> PathBuf {
@@ -58,8 +60,13 @@ fn write_bash_session(project: &Path, id: &str, command: &str) -> PathBuf {
 fn assert_row(stdout: &str, expected_columns: &[&str]) {
     let row = stdout
         .lines()
-        .find(|line| line.split_whitespace().next() == Some(expected_columns[0]))
-        .unwrap_or_else(|| panic!("missing session row for {}\n{stdout}", expected_columns[0]));
+        .find(|line| line.split_whitespace().next() == Some(expected_columns[0]));
+    assert!(
+        row.is_some(),
+        "missing session row for {}\n{stdout}",
+        expected_columns[0]
+    );
+    let row = row.unwrap_or_default();
     let columns: Vec<_> = row
         .split_whitespace()
         .take(expected_columns.len())
@@ -77,11 +84,11 @@ fn distinguishes_no_recent_logs_from_logs_without_bash() {
                 .expect("discover empty project")
                 .is_empty()
         );
-        if let Some(stdout) = run_session(home) {
+        run_session(home, |stdout| {
             assert!(stdout.contains("No Claude Code sessions found in the last 30 days."));
             assert!(stdout.contains("Make sure Claude Code has been used at least once."));
             assert!(!stdout.contains("No sessions with Bash commands found."));
-        }
+        });
 
         let notes = project.join("11111111-1111-4111-8111-111111111111.jsonl");
         fs::write(
@@ -112,11 +119,11 @@ fn distinguishes_no_recent_logs_from_logs_without_bash() {
                 .expect("read notes log")
                 .is_empty()
         );
-        if let Some(stdout) = run_session(home) {
+        run_session(home, |stdout| {
             assert!(stdout.contains("No sessions with Bash commands found."));
             assert!(!stdout.contains("No Claude Code sessions found"));
             assert!(!stdout.contains("RTK Session Overview"));
-        }
+        });
     });
 }
 
@@ -145,11 +152,11 @@ fn labels_yesterday_and_older_sessions_by_log_modification_time() {
                 .len(),
             2
         );
-        if let Some(stdout) = run_session(home) {
+        run_session(home, |stdout| {
             assert_row(&stdout, &["33333333", "Yesterday", "1", "1", "100%"]);
             assert_row(&stdout, &["44444444", "3d", "ago", "1", "0", "0%"]);
             assert!(stdout.contains("Average adoption: 50%"));
-        }
+        });
     });
 }
 
@@ -164,10 +171,10 @@ fn reports_zero_adoption_when_a_bash_entry_has_only_chain_separators() {
         let (total, adopted, _) = count_rtk_commands(&commands);
         assert_eq!((total, adopted), (0, 0));
 
-        if let Some(stdout) = run_session(home) {
+        run_session(home, |stdout| {
             assert_row(&stdout, &["55555555", "Today", "0", "0", "0%", "....."]);
             assert!(stdout.contains("Average adoption: 0%"));
             assert!(!stdout.contains("No sessions with Bash commands found."));
-        }
+        });
     });
 }

@@ -94,9 +94,9 @@ fn seed_parse_failures(db: &Connection, timestamp: &str, split_timestamp: &str) 
 }
 
 #[cfg(unix)]
-fn failure_report_stdout(db_path: &std::path::Path) -> Option<String> {
+fn failure_report_stdout(db_path: &std::path::Path, check: impl FnOnce(&str)) {
     let ready = test_isolation::rtk_binary_ready();
-    let true = ready else { return None };
+    let true = ready else { return };
     let output = test_isolation::rtk_command()
         .args(["gain", "--failures"])
         .env("RTK_DB_PATH", db_path)
@@ -112,7 +112,7 @@ fn failure_report_stdout(db_path: &std::path::Path) -> Option<String> {
         "gain --failures failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    Some(String::from_utf8(output.stdout).expect("UTF-8 failure report"))
+    check(&String::from_utf8(output.stdout).expect("UTF-8 failure report"));
 }
 
 #[test]
@@ -124,9 +124,9 @@ fn failure_report_handles_empty_data_utf8_timestamps_and_query_errors() {
         show_failures(&tracker).expect("report an empty failure history");
 
         #[cfg(unix)]
-        if let Some(stdout) = failure_report_stdout(&db_path) {
+        failure_report_stdout(&db_path, |stdout| {
             assert!(stdout.contains("No parse failures recorded."), "{stdout}");
-        }
+        });
 
         let db = Connection::open(&db_path).expect("open fixture database");
         let timestamp = jiff::Timestamp::now().to_string();
@@ -137,7 +137,7 @@ fn failure_report_handles_empty_data_utf8_timestamps_and_query_errors() {
         show_failures(&tracker).expect("render both failures without splitting UTF-8");
 
         #[cfg(unix)]
-        if let Some(stdout) = failure_report_stdout(&db_path) {
+        failure_report_stdout(&db_path, |stdout| {
             assert!(stdout.contains("RTK Parse Failures"), "{stdout}");
             assert!(stdout.contains("Top Commands (by frequency)"), "{stdout}");
             assert!(stdout.contains("Recent Failures (last 10)"), "{stdout}");
@@ -159,7 +159,7 @@ fn failure_report_handles_empty_data_utf8_timestamps_and_query_errors() {
                 stdout.contains(&format!("{} [FAIL] git log --oneline", &timestamp[..16])),
                 "{stdout}"
             );
-        }
+        });
 
         db.execute_batch("DROP TABLE parse_failures")
             .expect("remove failure table from the fixture");
