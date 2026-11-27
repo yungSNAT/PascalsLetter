@@ -2827,6 +2827,24 @@ fn condense_unified_diff_strict(diff: &str) -> Option<String> {
 mod tests {
     use super::*;
 
+    /// Classic hunks come only from a change list: identical text, a
+    /// difference `lines()` hides and an over-budget comparison give none.
+    #[cfg(feature = "engine")]
+    #[test]
+    fn test_classic_hunks_only_for_a_line_change_list() {
+        assert_eq!(
+            classic_hunks("a\nb\n", "a\nc\n").as_deref(),
+            Some("2c2\n< b\n---\n> c\n")
+        );
+        assert_eq!(classic_hunks("a\nb\n", "a\nb\n"), None, "identical");
+        assert_eq!(classic_hunks("a\nb\n", "a\nb"), None, "final newline only");
+        assert_eq!(
+            classic_hunks("a\nb\n", "a\r\nb\r\n"),
+            None,
+            "line endings only"
+        );
+    }
+
     /// Compare two file contents and render the result, which is the path
     /// `run` takes minus the guard and the tracking.
     ///

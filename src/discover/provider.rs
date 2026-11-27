@@ -851,6 +851,35 @@ mod tests {
         assert_eq!(usage.total(), 2263);
     }
 
+    /// A line that is not UTF-8, and an assistant line that mentions usage
+    /// without carrying it, count for nothing; the lines after them count.
+    #[test]
+    fn test_token_usage_skips_lines_without_readable_usage() {
+        let mut jsonl = make_jsonl(&[&usage_line(Some("msg_1"), 3, 0, 0, 2)]);
+        jsonl
+            .write_all(b"{\"type\":\"assistant\",\"usage\":\"\xE3\"}\n")
+            .unwrap();
+        writeln!(
+            jsonl,
+            r#"{{"type":"assistant","message":{{"id":"msg_2","content":"no usage here"}},"note":"usage"}}"#
+        )
+        .unwrap();
+        writeln!(jsonl, "{}", usage_line(Some("msg_3"), 5, 0, 0, 7)).unwrap();
+        jsonl.flush().unwrap();
+
+        let (usage, logs_read) = ClaudeProvider.token_usage(&[jsonl.path().to_path_buf()]);
+        assert_eq!(logs_read, 1);
+        assert_eq!(
+            usage,
+            TokenUsage {
+                input: 8,
+                cache_write: 0,
+                cache_read: 0,
+                output: 9,
+            }
+        );
+    }
+
     #[test]
     fn test_tool_output_bytes_counts_a_repeated_result_once() {
         let jsonl = make_jsonl(&[
