@@ -1626,3 +1626,7 @@ mod tests {
         assert!(h.starts_with("... (2 filtered"), "{h}");
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/find_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_system_find_cmd;

@@ -1677,3 +1677,7 @@ ERROR test_e.py::test_e - RuntimeError: fixture
         assert_eq!((c.passed, c.failed, c.errors), (3, 1, 2));
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/pytest_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_python_pytest_cmd;

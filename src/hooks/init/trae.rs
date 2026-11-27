@@ -953,3 +953,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "trae_coverage_gen.rs"]
+mod coverage_gen_src_hooks_init_trae;

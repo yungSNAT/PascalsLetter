@@ -131,3 +131,7 @@ mod tests {
         assert_eq!(out, Outcome::Continue("HELLO WORLD".to_string()));
     }
 }
+
+#[cfg(test)]
+#[path = "lib_coverage_gen.rs"]
+mod coverage_gen_plugin_src_lib;

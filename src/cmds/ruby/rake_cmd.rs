@@ -532,3 +532,7 @@ NoMethodError: undefined method `blah'
         assert!(!looks_like_test_path("12345"));
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/rake_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_ruby_rake_cmd;

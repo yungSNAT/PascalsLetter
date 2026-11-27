@@ -411,3 +411,7 @@ Output location: /workspace/scratch/72640dd8823a/rtk-angular-fixture-work/fixtur
         ));
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/ng_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_js_ng_cmd;

@@ -672,3 +672,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/dotnet_trx_coverage_gen.rs"]
+mod coverage_gen_src_cmds_dotnet_dotnet_trx;

@@ -2365,3 +2365,7 @@ mod tests {
         assert!(!removed.iter().any(|item| item.starts_with("RTK.md")));
     }
 }
+
+#[cfg(test)]
+#[path = "codex_coverage_gen.rs"]
+mod coverage_gen_src_hooks_init_codex;

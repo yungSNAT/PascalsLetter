@@ -3705,3 +3705,11 @@ mod tests {
         assert!(!missing_file.exists());
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/dotnet_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_dotnet_dotnet_cmd;
+
+#[cfg(test)]
+#[path = "coverage_gen/dotnet_cmd_coverage_gen1.rs"]
+mod coverage_gen1_src_cmds_dotnet_dotnet_cmd;

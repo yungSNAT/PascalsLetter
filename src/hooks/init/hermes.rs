@@ -1059,3 +1059,7 @@ mod tests {
         assert_eq!(missing_falls_back, home_dir.join(".hermes"));
     }
 }
+
+#[cfg(test)]
+#[path = "hermes_coverage_gen.rs"]
+mod coverage_gen_src_hooks_init_hermes;

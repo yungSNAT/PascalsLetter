@@ -182,3 +182,7 @@ Code style issues found in the above file(s). Forgot to run Prettier?
         assert!(!result.contains("All files formatted"));
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/prettier_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_js_prettier_cmd;

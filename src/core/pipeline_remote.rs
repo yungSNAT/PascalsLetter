@@ -1204,3 +1204,15 @@ use  = ["dedup"]
         );
     }
 }
+
+#[cfg(test)]
+#[path = "pipeline_remote_coverage_gen.rs"]
+mod coverage_gen_src_core_pipeline_remote;
+
+#[cfg(test)]
+#[path = "pipeline_remote_coverage_gen1.rs"]
+mod coverage_gen1_src_core_pipeline_remote;
+
+#[cfg(test)]
+#[path = "pipeline_remote_coverage_gen2.rs"]
+mod coverage_gen2_src_core_pipeline_remote;

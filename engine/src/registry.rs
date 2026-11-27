@@ -315,3 +315,7 @@ mod tests {
         assert_eq!(names.len(), deduped.len());
     }
 }
+
+#[cfg(test)]
+#[path = "registry_coverage_gen.rs"]
+mod coverage_gen_engine_src_registry;

@@ -2828,3 +2828,7 @@ mod tests {
         assert!(load_by_hash(&conn, prefix).unwrap().is_some());
     }
 }
+
+#[cfg(test)]
+#[path = "retriever_coverage_gen.rs"]
+mod coverage_gen_src_core_retriever;

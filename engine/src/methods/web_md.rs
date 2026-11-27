@@ -131,3 +131,7 @@ mod tests {
         assert_eq!(apply(""), "");
     }
 }
+
+#[cfg(test)]
+#[path = "web_md_coverage_gen.rs"]
+mod coverage_gen_engine_src_methods_web_md;

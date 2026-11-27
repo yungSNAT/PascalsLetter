@@ -509,3 +509,11 @@ CREATE INDEX "session_status_idx" ON "Session"("status");
         assert_eq!(extract_number("no numbers here"), None);
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/prisma_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_js_prisma_cmd;
+
+#[cfg(test)]
+#[path = "coverage_gen/prisma_cmd_coverage_gen1.rs"]
+mod coverage_gen1_src_cmds_js_prisma_cmd;

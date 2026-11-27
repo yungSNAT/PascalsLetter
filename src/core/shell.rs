@@ -653,3 +653,7 @@ mod tests {
         assert_eq!(display_args(&["-n", "a", "b", "f"]), "-n a b f");
     }
 }
+
+#[cfg(test)]
+#[path = "shell_coverage_gen.rs"]
+mod coverage_gen_src_core_shell;

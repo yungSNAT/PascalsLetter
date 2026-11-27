@@ -5723,3 +5723,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/mvn_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_jvm_mvn_cmd;

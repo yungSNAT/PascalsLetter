@@ -552,3 +552,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "tee_file_coverage_gen.rs"]
+mod coverage_gen_src_core_tee_file;

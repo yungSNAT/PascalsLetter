@@ -1854,3 +1854,7 @@ some unrelated tail
         );
     }
 }
+
+#[cfg(test)]
+#[path = "coverage_gen/ctest_cmd_coverage_gen.rs"]
+mod coverage_gen_src_cmds_system_ctest_cmd;
