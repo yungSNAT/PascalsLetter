@@ -2513,6 +2513,12 @@ mod tests {
                 after.as_bytes(),
                 "{name}"
             );
+            if name == "an added line and a changed one" {
+                // 2 hunks, the first an `a`, so both `apply_classic` arms run.
+                let headers = hunks.lines().filter(|l| l.as_bytes()[0].is_ascii_digit());
+                assert_eq!(headers.count(), 2, "{name}");
+                assert!(hunks.starts_with("20a21"), "{name}");
+            }
         }
     }
 

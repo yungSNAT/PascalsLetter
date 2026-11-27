@@ -2843,6 +2843,14 @@ mod tests {
             None,
             "line endings only"
         );
+        // Over the listing budget: a line comparison with no change list.
+        let old: String = (0..20_000).map(|i| format!("alpha {i}\n")).collect();
+        let new: String = (0..20_000).map(|i| format!("bravo {i}\n")).collect();
+        assert!(matches!(
+            compare_files(&old, &new),
+            FileComparison::Lines(ref diff) if diff.unaligned.is_some()
+        ));
+        assert_eq!(classic_hunks(&old, &new), None, "over budget");
     }
 
     /// Compare two file contents and render the result, which is the path
