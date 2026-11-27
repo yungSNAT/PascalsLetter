@@ -38,6 +38,25 @@ const READ_CONVERSION_NOTE: &str = "RTK compressed this Read output (format conv
      e.g. json->toon, lockfile summary). The on-disk file is unchanged; re-read with rtk \
      disabled or check the recall file before constructing Edit old_string values.";
 
+/// [`READ_CONVERSION_NOTE`], plus the lines a cut Read covered: a summary of
+/// part of a file (`Cargo.lock: 400 packages`) otherwise reads as the whole.
+fn conversion_note(event: &Value) -> String {
+    let file = event.pointer("/tool_response/file");
+    let count = |key: &str| file.and_then(|f| f.get(key)).and_then(Value::as_u64);
+    let start = count("startLine")
+        .or_else(|| event.pointer("/tool_input/offset").and_then(Value::as_u64))
+        .unwrap_or(1)
+        .max(1);
+    match (count("numLines"), count("totalLines")) {
+        (Some(lines), Some(total)) if lines > 0 && (start > 1 || lines < total) => format!(
+            "{READ_CONVERSION_NOTE} This Read covered lines {start}-{} of {total} only; \
+             the converted output describes those lines, not the whole file.",
+            start.saturating_add(lines - 1)
+        ),
+        _ => READ_CONVERSION_NOTE.to_string(),
+    }
+}
+
 fn apply_terminal(
     text: String,
     ctx: &MethodCtx,
@@ -165,7 +184,7 @@ fn filter_tool_output(event: &Value, config: &Config, pipeline: &Resolved) -> Op
         "updatedToolOutput": updated,
     });
     if converted {
-        hook_output["additionalContext"] = json!(READ_CONVERSION_NOTE);
+        hook_output["additionalContext"] = json!(conversion_note(event));
     }
 
     track(
@@ -3113,9 +3132,74 @@ mod tests {
             .unwrap();
         assert!(new_content.starts_with("Cargo.lock: "), "summary header");
         assert!(new_content.contains("serde@"));
+        assert_eq!(
+            hook["additionalContext"],
+            json!(READ_CONVERSION_NOTE),
+            "a whole Read gets the plain note"
+        );
+    }
+
+    /// The conversion note for a Read of this repository's `Cargo.lock` cut
+    /// to `kept` lines from `start` (1-based), with `startLine` in the
+    /// response only when `with_start`. Returns the note and the file's
+    /// line count.
+    fn cut_lock_note(input: Value, start: usize, kept: usize, with_start: bool) -> (String, usize) {
+        let whole = include_str!("../../Cargo.lock");
+        let total = whole.lines().count();
+        let content: String = whole
+            .lines()
+            .skip(start - 1)
+            .take(kept)
+            .map(|l| format!("{l}\n"))
+            .collect();
+        let mut file = json!({
+            "filePath": "/repo/Cargo.lock",
+            "content": content,
+            "numLines": kept,
+            "totalLines": total
+        });
+        if with_start {
+            file["startLine"] = json!(start);
+        }
+        let event = json!({
+            "tool_name": "Read",
+            "tool_input": input,
+            "tool_response": {"type": "text", "file": file},
+            "duration_ms": 3
+        });
+        let out = run_posthook(&event).expect("a cut lockfile still summarises");
+        let v: Value = serde_json::from_str(&out).expect("valid JSON");
+        let note = v["hookSpecificOutput"]["additionalContext"]
+            .as_str()
+            .expect("Read conversion note")
+            .to_string();
+        assert!(note.starts_with(READ_CONVERSION_NOTE), "{note}");
+        (note, total)
+    }
+
+    #[test]
+    fn test_read_cut_lockfile_note_names_the_lines_read() {
+        let total = include_str!("../../Cargo.lock").lines().count();
+        let kept = total / 2;
+        let (note, total) = cut_lock_note(json!({"file_path": "/repo/Cargo.lock"}), 1, kept, true);
         assert!(
-            hook["additionalContext"].as_str().is_some(),
-            "Read conversion note"
+            note.contains(&format!("lines 1-{kept} of {total}")),
+            "the note names the lines the summary covers: {note}"
+        );
+    }
+
+    #[test]
+    fn test_read_ranged_lockfile_note_names_the_window() {
+        let input = json!({"file_path": "/repo/Cargo.lock", "offset": 101, "limit": 50});
+        let (note, total) = cut_lock_note(input.clone(), 101, 50, true);
+        assert!(
+            note.contains(&format!("lines 101-150 of {total}")),
+            "{note}"
+        );
+        let (note, total) = cut_lock_note(input, 101, 50, false);
+        assert!(
+            note.contains(&format!("lines 101-150 of {total}")),
+            "without startLine the window starts at the offset: {note}"
         );
     }
 
