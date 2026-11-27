@@ -550,6 +550,27 @@ src/b.ts(2,5): error TS2322: Type 'string' is not assignable to type 'number'.
     }
 
     #[test]
+    fn test_filter_tsc_output_labels_warnings_in_groups_and_lines() {
+        let result = filter_tsc_output(WARNING_AND_ERROR.lines().next().unwrap());
+        assert!(
+            result.contains("src/a.ts (0 errors, 1 warnings)\n  L1: warning TS6133 "),
+            "got: {result}"
+        );
+
+        let result = filter_tsc_output("warning TS6385: 'x' is deprecated.");
+        assert!(
+            result.contains("global (0 errors, 1 warnings)\n  warning TS6385 "),
+            "got: {result}"
+        );
+
+        let result = filter_tsc_output(WARNING_AND_ERROR);
+        assert!(
+            result.contains("src/b.ts (1 errors)\n  L2: TS2322 "),
+            "got: {result}"
+        );
+    }
+
+    #[test]
     fn test_tsc_stream_pretty_ansi_errors() {
         let input = include_str!("../../../tests/fixtures/tsc_pretty_raw.txt");
         let mut f = BlockStreamFilter::new(TscHandler::new());
