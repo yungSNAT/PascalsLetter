@@ -1,6 +1,8 @@
-# Codecov reports coverage for the README badge and gates each pull request:
-# every changed coverable line must be hit, and the project figure must not
-# fall below the base commit's. It posts no comments.
+# Codecov reports coverage for the README badge and sets the merge gate's
+# targets: `codecov/patch` passes only when every changed coverable line is
+# hit, and `codecov/project` only when the project figure does not fall below
+# the base commit's. Neither is a required check, so the merge procedure
+# reads them and treats a missing status as a fail. It posts no comments.
 coverage:
   status:
     project:
