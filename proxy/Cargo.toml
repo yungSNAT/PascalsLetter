@@ -35,21 +35,21 @@ rtk-engine = { path = "../engine" }
 tiktoken-rs = "0.12.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
-base64 = "0.22.1"
+base64 = "0.23.1"
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg"] }
 font8x8 = "0.3"
-sha2 = "0.10"
+sha2 = "0.11"
 toml = "1.1.2"
 anyhow = "1"
 tracing = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
-utoipa = { version = "5", features = ["chrono"] }
+utoipa = { version = "6", features = ["chrono"] }
 tokio = { version = "1", features = ["full"] }
-axum = { version = "0.7", features = ["macros"] }
+axum = { version = "0.8", features = ["macros"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
 tower = "0.5"
-tower-http = { version = "0.6", features = ["trace", "cors", "catch-panic"] }
+tower-http = { version = "0.7", features = ["trace", "cors", "catch-panic"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 bytes = "1"
 futures = "0.3"
@@ -63,7 +63,7 @@ regex = "1"
 rusqlite = { version = "0.43", features = ["bundled"] }
 # User-level config/log dir resolution for `rtk-proxy service` (launchd /
 # systemd --user / Task Scheduler).
-dirs = "5"
+dirs = "7"
 # Permanent memory (ICM) — CCR's cache backend. FTS-only (no fastembed/ONNX),
 # sqlite backend only: this is a single-node local daemon, so there is no
 # postgres/multi-pod need here. Apache-2.0.

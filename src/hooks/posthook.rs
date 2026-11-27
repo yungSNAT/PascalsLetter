@@ -22,7 +22,7 @@ use crate::core::config::Config;
 use crate::core::pipeline_config::{self, LoadedPipeline};
 use crate::core::pipeline_log;
 use crate::core::tee;
-use crate::core::tracking::{Tracker, estimate_tokens};
+use crate::core::tracking::{Tracker, estimate_tokens, estimate_tokens_from_len};
 use regex::Regex;
 use rtk_engine::block::{Block, ContentFormat, Event, Origin, Provenance, Subject};
 use rtk_engine::method::{Method, MethodCtx};
@@ -1278,7 +1278,7 @@ fn deliver_seen(
     event: &Value,
     seen: Option<(&str, &str)>,
     emitted: Option<String>,
-    pointer: impl FnOnce() -> Option<String>,
+    pointer: impl FnOnce() -> Option<Pointer>,
 ) -> Option<String> {
     if !dedup_active(config, event) {
         return emitted;
@@ -1325,7 +1325,13 @@ fn deliver_seen(
             .is_some_and(|body| mark_id(&body) == id);
     if ours && sound {
         let _ = std::fs::remove_file(&taken);
-        return repeat.or(emitted);
+        return match repeat {
+            Some(pointer) => {
+                record_repeat(event, &pointer);
+                Some(pointer.output)
+            }
+            None => emitted,
+        };
     }
     if !clear(&record) {
         files.poison();
@@ -1338,6 +1344,41 @@ fn deliver_seen(
     }
     let _ = std::fs::remove_file(&taken);
     emitted
+}
+
+/// A repeat pointer: the hook output that carries it, and the byte lengths of
+/// the text it replaces and of the pointer line the agent gets instead.
+struct Pointer {
+    output: String,
+    replaced: usize,
+    line: usize,
+}
+
+#[cfg(test)]
+thread_local! {
+    /// The database [`record_repeat`] books into under test, kept per thread
+    /// so a test can read back what was booked.
+    static REPEAT_TRACKER: Tracker = Tracker::new_in_memory().expect("in-memory tracker");
+}
+
+/// Books a delivered pointer as its own `repeat` kind, per tool, so `rtk gain`
+/// counts what repeated outputs save.
+fn record_repeat(event: &Value, pointer: &Pointer) {
+    let tool = event
+        .get("tool_name")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let tokens_in = estimate_tokens_from_len(pointer.replaced);
+    let tokens_out = estimate_tokens_from_len(pointer.line);
+    let book = |tracker: &Tracker| {
+        let _ = tracker.record_attribution("hook", "repeat", tool, tokens_in, tokens_out);
+    };
+    #[cfg(test)]
+    REPEAT_TRACKER.with(book);
+    #[cfg(not(test))]
+    if let Ok(tracker) = tracker() {
+        book(&tracker);
+    }
 }
 
 /// Saves `delivered` for `rtk recall`; its handle.
@@ -1364,7 +1405,7 @@ fn hook_output(updated: Value) -> String {
     .to_string()
 }
 
-fn pointer(config: &Config, response: &Value, delivered: &str) -> Option<String> {
+fn pointer(config: &Config, response: &Value, delivered: &str) -> Option<Pointer> {
     let hash = store_repeat(config, delivered)?;
     let text = format!(
         "[rtk: same output as the previous run of this command ({} lines): rtk recall {hash}]",
@@ -1377,7 +1418,11 @@ fn pointer(config: &Config, response: &Value, delivered: &str) -> Option<String>
     let obj = updated.as_object_mut()?;
     obj.insert("stdout".into(), json!(text));
     obj.insert("stderr".into(), json!(""));
-    Some(hook_output(updated))
+    Some(Pointer {
+        output: hook_output(updated),
+        replaced: delivered.len(),
+        line: text.len(),
+    })
 }
 
 /// The text a Read, Grep or Glob result shows: a file's content, matching
@@ -1405,7 +1450,7 @@ fn native_pointer(
     envelope: Option<Value>,
     mut response: Value,
     text: &str,
-) -> Option<String> {
+) -> Option<Pointer> {
     let tool = event.get("tool_name").and_then(Value::as_str)?;
     let hash = store_repeat(config, text)?;
     let line = format!(
@@ -1423,13 +1468,18 @@ fn native_pointer(
         response["filenames"] = json!([line]);
     }
     // The rest of the hook's own output (a format conversion note) stays.
-    match envelope {
+    let output = match envelope {
         Some(mut envelope) => {
             *envelope.pointer_mut("/hookSpecificOutput/updatedToolOutput")? = response;
-            Some(envelope.to_string())
+            envelope.to_string()
         }
-        None => Some(hook_output(response)),
-    }
+        None => hook_output(response),
+    };
+    Some(Pointer {
+        output,
+        replaced: text.len(),
+        line: line.len(),
+    })
 }
 
 /// Path or URL the tracking rows and `when` facts key on.
@@ -1764,6 +1814,40 @@ mod tests {
         stdout
             .starts_with("[rtk: same output as the previous run")
             .then(|| stdout.to_string())
+    }
+
+    /// A pointer that reaches the agent is booked as a `repeat` for its tool,
+    /// the text it replaced in and the pointer line out, so `rtk gain` counts
+    /// what it saved; a whole delivery books nothing.
+    #[test]
+    fn test_repeat_pointer_books_its_saving() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = repeat_config(dir.path(), true);
+        let output = lines(400);
+        let booked = || {
+            REPEAT_TRACKER.with(|tracker| {
+                tracker
+                    .attribution_site("hook", "repeat", 30)
+                    .expect("attribution")
+                    .into_iter()
+                    .map(|row| (row.name, row.calls, row.tokens_in, row.tokens_out))
+                    .collect::<Vec<_>>()
+            })
+        };
+        let first = Call::new("b1", "make test", &output, None).run(&config);
+        assert!(pointer_of(&first).is_none());
+        assert_eq!(booked(), vec![], "a whole delivery is not a repeat");
+        let second = Call::new("b2", "make test", &output, None).run(&config);
+        let pointer = pointer_of(&second).expect("a pointer");
+        assert_eq!(
+            booked(),
+            vec![(
+                "Bash".to_string(),
+                1,
+                estimate_tokens(&output) as i64,
+                estimate_tokens(&pointer) as i64
+            )]
+        );
     }
 
     /// Off by default: a repeated output reaches the agent exactly as before.
