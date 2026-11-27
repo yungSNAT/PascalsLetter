@@ -459,9 +459,8 @@ fn rtk_dotnet_help_passthrough_with_fake_tool() {
 #[cfg(unix)]
 #[test]
 fn rtk_dotnet_format_summarises_only_a_report_the_run_wrote() {
-    if !test_isolation::rtk_binary_ready() {
-        return;
-    }
+    let ready = test_isolation::rtk_binary_ready();
+    let true = ready else { return };
 
     // The run writes RTK's own report: its summary replaces the raw output.
     let out = run_rtk_with_fake_dotnet(&["dotnet", "format"]);
