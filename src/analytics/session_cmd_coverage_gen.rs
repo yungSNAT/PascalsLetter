@@ -153,8 +153,8 @@ fn labels_yesterday_and_older_sessions_by_log_modification_time() {
             2
         );
         run_session(home, |stdout| {
-            assert_row(&stdout, &["33333333", "Yesterday", "1", "1", "100%"]);
-            assert_row(&stdout, &["44444444", "3d", "ago", "1", "0", "0%"]);
+            assert_row(stdout, &["33333333", "Yesterday", "1", "1", "100%"]);
+            assert_row(stdout, &["44444444", "3d", "ago", "1", "0", "0%"]);
             assert!(stdout.contains("Average adoption: 50%"));
         });
     });
@@ -172,7 +172,7 @@ fn reports_zero_adoption_when_a_bash_entry_has_only_chain_separators() {
         assert_eq!((total, adopted), (0, 0));
 
         run_session(home, |stdout| {
-            assert_row(&stdout, &["55555555", "Today", "0", "0", "0%", "....."]);
+            assert_row(stdout, &["55555555", "Today", "0", "0", "0%", "....."]);
             assert!(stdout.contains("Average adoption: 0%"));
             assert!(!stdout.contains("No sessions with Bash commands found."));
         });
