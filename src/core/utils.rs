@@ -260,21 +260,32 @@ pub fn ok_confirmation(action: &str, detail: &str) -> String {
 /// `128 + signal` per Unix convention when terminated by a signal (no exit code
 /// available). Falls back to 1 on non-Unix platforms.
 pub fn exit_code_from_output(output: &std::process::Output, label: &str) -> i32 {
-    match output.status.code() {
-        Some(code) => code,
-        None => {
-            #[cfg(unix)]
-            {
-                use std::os::unix::process::ExitStatusExt;
-                if let Some(sig) = output.status.signal() {
-                    eprintln!("[rtk] {}: process terminated by signal {}", label, sig);
-                    return 128 + sig;
-                }
-            }
-            eprintln!("[rtk] {}: process terminated by signal", label);
-            1
-        }
+    exit_code_from_status(&output.status, label)
+}
+
+/// The signal behind an exit `code` that an MSYS/Cygwin program reports to a native
+/// Windows parent when a signal killed it: `signal << 8`, e.g. 1536 for SIGABRT from
+/// Git for Windows' grep (rtk-ai/rtk#5073). A POSIX shell keeps only the low byte of an
+/// exit code, so passed through as is it reads as 0, success.
+pub(crate) fn msys_signal_code(code: i32) -> Option<i32> {
+    let sig = code >> 8;
+    (code & 0xFF == 0 && (1..=64).contains(&sig)).then_some(sig)
+}
+
+pub(crate) fn decode_status_code(code: i32, decode_msys: bool) -> i32 {
+    if decode_msys && let Some(sig) = msys_signal_code(code) {
+        128 + sig
+    } else {
+        code
     }
+}
+
+fn exit_code_from_code(code: i32, label: &str, decode_msys: bool) -> i32 {
+    if decode_msys && let Some(sig) = msys_signal_code(code) {
+        eprintln!("[rtk] {}: process terminated by signal {}", label, sig);
+        return 128 + sig;
+    }
+    code
 }
 
 /// Extract exit code from an ExitStatus (for `.status()` calls, not `.output()`).
@@ -282,7 +293,7 @@ pub fn exit_code_from_output(output: &std::process::Output, label: &str) -> i32 
 /// terminated by a signal. Falls back to 1 on non-Unix platforms.
 pub fn exit_code_from_status(status: &std::process::ExitStatus, label: &str) -> i32 {
     match status.code() {
-        Some(code) => code,
+        Some(code) => exit_code_from_code(code, label, cfg!(windows)),
         None => {
             #[cfg(unix)]
             {
@@ -2084,6 +2095,22 @@ mod tests {
 
         // Nothing named and rtk may fetch: npx is the only runner that can.
         assert_eq!(exec_runner(None, MissingTool::Fetch), "npx");
+    }
+
+    #[test]
+    fn test_msys_signal_exit_code_decoding() {
+        assert_eq!(msys_signal_code(1536), Some(6));
+        assert_eq!(msys_signal_code(256), Some(1));
+        assert_eq!(msys_signal_code(64 << 8), Some(64));
+        for code in [0, 1, 255, 1537, 65 << 8, -256] {
+            assert_eq!(msys_signal_code(code), None, "code {code}");
+        }
+        assert_eq!(decode_status_code(1536, true), 134);
+        assert_eq!(decode_status_code(1536, false), 1536);
+        assert_eq!(decode_status_code(1537, true), 1537);
+        assert_eq!(exit_code_from_code(1536, "grep", true), 134);
+        assert_eq!(exit_code_from_code(1536, "grep", false), 1536);
+        assert_eq!(exit_code_from_code(2, "grep", true), 2);
     }
 }
 

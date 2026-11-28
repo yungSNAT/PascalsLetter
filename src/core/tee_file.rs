@@ -199,11 +199,61 @@ pub(crate) fn write_named_tee_file(
     Some(filepath)
 }
 
+/// Convert an MSYS/Git-Bash-style home path (e.g. `/c/Users/name`) to a
+/// native Windows path (`C:\Users\name`) so it can be compared against
+/// native paths via `strip_prefix` (rtk-ai/rtk#3339).
+#[cfg(windows)]
+fn msys_home_to_native(raw: &str) -> Option<PathBuf> {
+    let rest = raw.strip_prefix('/')?;
+    let mut chars = rest.chars();
+    let drive = chars.next()?;
+    if !drive.is_ascii_alphabetic() {
+        return None;
+    }
+    match chars.next() {
+        None => Some(PathBuf::from(format!("{}:\\", drive.to_ascii_uppercase()))),
+        Some('/') => {
+            let tail: String = chars.collect();
+            Some(PathBuf::from(format!(
+                "{}:\\{}",
+                drive.to_ascii_uppercase(),
+                tail.replace('/', "\\")
+            )))
+        }
+        _ => None,
+    }
+}
+
+/// The home the hint's `~/` and `$HOME/` are expanded against: the invoking
+/// shell's `$HOME`, falling back to `user_dirs::home` when `HOME` is unset or empty.
+fn hint_home() -> Option<PathBuf> {
+    let raw = user_dirs::env_path("HOME")
+        .and_then(|s| s.into_string().ok())
+        .filter(|s| !s.is_empty());
+    let from_env = raw.map(|raw| {
+        #[cfg(windows)]
+        {
+            msys_home_to_native(&raw).unwrap_or_else(|| PathBuf::from(raw))
+        }
+        #[cfg(not(windows))]
+        {
+            PathBuf::from(raw)
+        }
+    });
+    from_env.or_else(user_dirs::home)
+}
+
 fn display_path(path: &Path) -> String {
-    if let Some(home) = user_dirs::home()
+    if let Some(home) = hint_home()
         && let Ok(relative) = path.strip_prefix(&home)
     {
-        return format!("~/{}", relative.display());
+        // Normalize to forward slashes so the hint never mixes `~/` with
+        // native (backslash) separators on Windows.
+        let relative = relative
+            .display()
+            .to_string()
+            .replace(std::path::MAIN_SEPARATOR, "/");
+        return format!("~/{}", relative);
     }
     path.display().to_string()
 }
@@ -550,6 +600,61 @@ mod tests {
             display_shell_path(&path),
             "\"$HOME/Library/Application Support/rtk/tee/123_go_test.log\""
         );
+    }
+
+    #[test]
+    fn test_display_path_resolves_against_home_var() {
+        // The shell expands `~` and `$HOME` against its own HOME, so the
+        // hint must be relative to that, not to the OS profile folder.
+        let home = user_dirs::home().expect("test home").join("shell-home");
+        let path = home.join("rtk").join("tee").join("123_test.log");
+        user_env::with_path("HOME", Some(&home), || {
+            assert_eq!(display_path(&path), "~/rtk/tee/123_test.log");
+        });
+    }
+
+    #[test]
+    fn test_display_path_ignores_empty_home_var() {
+        let path = PathBuf::from("/opt/rtk/tee/123_test.log");
+        user_env::with_vars(&[("HOME", Some(""))], || {
+            assert_eq!(display_path(&path), path.display().to_string());
+        });
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_msys_home_to_native_converts_drive_letter_path() {
+        assert_eq!(
+            msys_home_to_native("/c/Users/name"),
+            Some(PathBuf::from(r"C:\Users\name"))
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_msys_home_to_native_converts_bare_drive_root() {
+        assert_eq!(msys_home_to_native("/c"), Some(PathBuf::from(r"C:\")));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_msys_home_to_native_rejects_non_msys_paths() {
+        assert_eq!(msys_home_to_native("C:/SPB_Data/Users/name"), None);
+        assert_eq!(msys_home_to_native("/home/name"), None);
+        assert_eq!(msys_home_to_native("/1/Users/name"), None);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_display_path_accepts_msys_home_var() {
+        let path = PathBuf::from(r"C:\Users\name\AppData\Local\rtk\tee\123_test.log");
+        user_env::with_vars(&[("HOME", Some("/c/Users/name"))], || {
+            assert_eq!(display_path(&path), "~/AppData/Local/rtk/tee/123_test.log");
+            assert_eq!(
+                display_shell_path(&path),
+                "~/AppData/Local/rtk/tee/123_test.log"
+            );
+        });
     }
 }
 
