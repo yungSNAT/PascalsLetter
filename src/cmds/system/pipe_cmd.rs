@@ -719,6 +719,107 @@ Total Test time (real) =   0.01 sec\n";
         let out = f(input);
         assert!(!out.is_empty());
     }
+
+    #[test]
+    fn test_grep_wrapper_and_auto_detect_windows_paths() {
+        let backslash_input = "C:\\proj\\src\\main.rs:42:fn main()\n\
+                               C:\\proj\\src\\main.rs:50:    let x: usize = Foo::bar();\n";
+        let f_back = auto_detect_filter(backslash_input);
+        let out_back = f_back(backslash_input);
+        assert!(out_back.contains("2 matches in 1F:"), "out={out_back}");
+        assert!(
+            out_back.contains(r"[file] C:\proj\src\main.rs (2):"),
+            "out={out_back}"
+        );
+        assert!(out_back.contains("  42: fn main()"), "out={out_back}");
+        assert!(
+            out_back.contains("  50: let x: usize = Foo::bar();"),
+            "out={out_back}"
+        );
+
+        let slash_input = "D:/repo/lib.rs:7:let x = 1;\n";
+        let f_slash = auto_detect_filter(slash_input);
+        let out_slash = f_slash(slash_input);
+        assert!(out_slash.contains("1 matches in 1F:"), "out={out_slash}");
+        assert!(
+            out_slash.contains("[file] D:/repo/lib.rs (1):"),
+            "out={out_slash}"
+        );
+        assert!(out_slash.contains("   7: let x = 1;"), "out={out_slash}");
+    }
+
+    #[test]
+    fn test_grep_wrapper_mixed_windows_and_unix_paths() {
+        let input = "C:\\proj\\src\\main.rs:42:fn main()\n\
+                     D:/repo/lib.rs:7:let x = 1;\n\
+                     src/unix.rs:19:pub fn run() {}\n";
+        let f = auto_detect_filter(input);
+        let out = f(input);
+        assert!(out.contains("3 matches in 3F:"), "out={out}");
+        assert!(
+            out.contains(r"[file] C:\proj\src\main.rs (1):"),
+            "out={out}"
+        );
+        assert!(out.contains("[file] D:/repo/lib.rs (1):"), "out={out}");
+        assert!(out.contains("[file] src/unix.rs (1):"), "out={out}");
+    }
+
+    #[test]
+    fn test_grep_wrapper_truncation_emits_tee_tail_hint() {
+        let input: String = (1..=15)
+            .map(|n| format!("src/cmds/system/pipe_cmd.rs:{n}:    let item_{n} = compute({n});\n"))
+            .collect();
+        let tmp = crate::core::test_isolation::tempdir();
+        let tee_dir = tmp.path().join("tee");
+        crate::core::test_isolation::with_root(tmp.path(), || {
+            let cfg_dir = crate::core::user_dirs::config().expect("test config dir");
+            std::fs::create_dir_all(&cfg_dir).expect("create config dir");
+            std::fs::write(cfg_dir.join("config.toml"), "[retriever]\nmode = \"tee\"\n")
+                .expect("write config.toml");
+
+            crate::core::user_env::with_path("RTK_TEE_DIR", Some(&tee_dir), || {
+                let out = grep_wrapper(&input);
+                assert!(
+                    out.contains("  +5 [see remaining: tail -n +11 "),
+                    "expected tee tail hint in output, got:\n{out}"
+                );
+                let logs: Vec<_> = std::fs::read_dir(&tee_dir)
+                    .expect("tee dir created")
+                    .filter_map(|e| e.ok())
+                    .filter(|e| e.path().extension().is_some_and(|ext| ext == "log"))
+                    .collect();
+                assert_eq!(logs.len(), 1, "expected 1 tee log file");
+                let saved = std::fs::read_to_string(logs[0].path()).expect("read tee log");
+                assert_eq!(saved.lines().count(), 15);
+                assert!(saved.contains("src/cmds/system/pipe_cmd.rs:15:"));
+            });
+        });
+    }
+
+    #[test]
+    fn test_grep_wrapper_truncation_emits_recall_and_disabled_fallback() {
+        let input: String = (1..=15)
+            .map(|n| format!("src/cmds/system/pipe_cmd.rs:{n}:    let item_{n} = compute({n});\n"))
+            .collect();
+
+        let tmp_sqlite = crate::core::test_isolation::tempdir();
+        crate::core::test_isolation::with_root(tmp_sqlite.path(), || {
+            let out = grep_wrapper(&input);
+            assert!(
+                out.contains("  +5 [+5 hidden (lines 11-15): rtk recall "),
+                "expected recall hint in default mode, got:\n{out}"
+            );
+        });
+
+        crate::core::user_env::with_vars(&[("RTK_RECALL", Some("0"))], || {
+            let out = grep_wrapper(&input);
+            assert!(
+                out.contains("  +5\n"),
+                "expected bare +5 when recovery is disabled, got:\n{out}"
+            );
+            assert!(!out.contains("[see remaining:") && !out.contains("rtk recall"));
+        });
+    }
 }
 
 #[cfg(test)]

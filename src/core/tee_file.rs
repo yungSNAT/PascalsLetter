@@ -551,6 +551,25 @@ mod tests {
             "\"$HOME/Library/Application Support/rtk/tee/123_go_test.log\""
         );
     }
+
+    #[test]
+    fn test_display_path_resolves_against_home_var() {
+        // The shell expands `~` and `$HOME` against its own HOME, so the
+        // hint must be relative to that, not to the OS profile folder.
+        let home = user_dirs::home().expect("test home").join("shell-home");
+        let path = home.join("rtk").join("tee").join("123_test.log");
+        user_env::with_path("HOME", Some(&home), || {
+            assert_eq!(display_path(&path), "~/rtk/tee/123_test.log");
+        });
+    }
+
+    #[test]
+    fn test_display_path_ignores_empty_home_var() {
+        let path = PathBuf::from("/opt/rtk/tee/123_test.log");
+        user_env::with_vars(&[("HOME", Some(""))], || {
+            assert_eq!(display_path(&path), path.display().to_string());
+        });
+    }
 }
 
 #[cfg(test)]

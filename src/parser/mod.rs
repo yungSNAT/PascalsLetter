@@ -349,6 +349,51 @@ Scope: all 6 workspace projects
             extract_json_object(input).expect("Should extract nested JSON with mixed multibyte");
         assert_eq!(extracted, input);
     }
+
+    #[test]
+    fn test_extract_json_object_crlf_multibyte_prefix() {
+        let input = "ligne un\r\n ligne deux\r\n fin é\r\n{\"a\": 1}\r\n";
+        assert_eq!(extract_json_object(input), Some(r#"{"a": 1}"#));
+    }
+
+    #[test]
+    fn test_extract_json_object_line_endings_and_unicode() {
+        let objects = [
+            r#"{"a": 1}"#,
+            r#"{"message": "café 中文 🚀 {\"quoted\"}", "nested": {"ok": true}}"#,
+            r#"{"numTotalTests": 1, "message": "café 中文 🚀", "nested": {"ok": true}}"#,
+        ];
+        for (first_eol, second_eol) in [("\n", "\n"), ("\r\n", "\r\n"), ("\r\n", "\n")] {
+            for prefix in ["", "build output", "café 中文 🚀"] {
+                for indent in ["", " \t", "\u{2003}"] {
+                    for object in objects {
+                        for suffix in ["", "\r\ntrailing 中文 🚀 output"] {
+                            let input = format!(
+                                "{prefix}{first_eol}warning{second_eol}{indent}{object}{suffix}"
+                            );
+                            let extracted =
+                                extract_json_object(&input).expect("Should extract JSON");
+                            assert_eq!(extracted, object, "input: {input:?}");
+                            let parsed: serde_json::Value = serde_json::from_str(extracted)
+                                .expect("Extracted JSON must be valid");
+                            assert!(parsed.is_object());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_extract_json_object_incomplete_crlf_fallback() {
+        for input in [
+            "café\r\n中文\r\nno object here 🚀",
+            "café\r\n中文\r\n  {\"nested\": {\"ok\": true}",
+            "café\r\n中文\r\n  {\"message\": \"unterminated 🚀",
+        ] {
+            assert_eq!(extract_json_object(input), None, "input: {input:?}");
+        }
+    }
 }
 
 #[cfg(test)]
