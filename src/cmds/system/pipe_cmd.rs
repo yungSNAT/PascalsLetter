@@ -85,6 +85,43 @@ fn vitest_wrapper(input: &str) -> String {
     }
 }
 
+fn parse_pipe_grep_line(line: &str) -> Option<(&str, &str, &str)> {
+    let bytes = line.as_bytes();
+    let search_start = if bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && (bytes[2] == b'\\' || bytes[2] == b'/')
+    {
+        2
+    } else {
+        0
+    };
+
+    let rel_colon = line[search_start..].find(':')?;
+    let colon1 = search_start + rel_colon;
+    let file = &line[..colon1];
+    if file.is_empty() || (search_start == 2 && colon1 <= 3) {
+        return None;
+    }
+
+    let rest = &line[colon1 + 1..];
+    let (line_num, content) = rest.split_once(':')?;
+    if line_num.parse::<usize>().is_ok() {
+        Some((file, line_num, content))
+    } else {
+        None
+    }
+}
+
+fn pipe_grep_slug(idx: usize, path: &str) -> String {
+    let cleaned: String = path
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    let tail = &cleaned[cleaned.len().saturating_sub(32)..];
+    format!("pipe_grep_{}_{}", idx, tail)
+}
+
 fn grep_wrapper(input: &str) -> String {
     use std::collections::HashMap;
 
@@ -92,15 +129,9 @@ fn grep_wrapper(input: &str) -> String {
     let mut total = 0;
 
     for line in input.lines() {
-        let parts: Vec<&str> = line.splitn(3, ':').collect();
-        if parts.len() == 3
-            && let Ok(_line_num) = parts[1].parse::<usize>()
-        {
+        if let Some((file, line_num, content)) = parse_pipe_grep_line(line) {
             total += 1;
-            by_file
-                .entry(parts[0])
-                .or_default()
-                .push((parts[1], parts[2]));
+            by_file.entry(file).or_default().push((line_num, content));
         }
     }
 
@@ -112,13 +143,22 @@ fn grep_wrapper(input: &str) -> String {
     let mut files: Vec<_> = by_file.iter().collect();
     files.sort_by_key(|(f, _)| *f);
 
-    for (file, matches) in files {
+    for (idx, (file, matches)) in files.into_iter().enumerate() {
         out.push_str(&format!("[file] {} ({}):\n", file, matches.len()));
         for (line_num, content) in matches.iter().take(MAX_PIPE_MATCHES) {
             out.push_str(&format!("  {:>4}: {}\n", line_num, content.trim()));
         }
         if matches.len() > MAX_PIPE_MATCHES {
-            out.push_str(&format!("  +{}\n", matches.len() - MAX_PIPE_MATCHES));
+            let remaining = matches.len() - MAX_PIPE_MATCHES;
+            let mut full_block = String::new();
+            for (line_num, content) in matches {
+                full_block.push_str(&format!("{}:{}:{}\n", file, line_num, content));
+            }
+            let slug = pipe_grep_slug(idx, file);
+            match crate::core::tee::force_tee_tail_hint(&full_block, &slug, MAX_PIPE_MATCHES + 1) {
+                Some(hint) => out.push_str(&format!("  +{} {}\n", remaining, hint)),
+                None => out.push_str(&format!("  +{}\n", remaining)),
+            }
         }
         out.push('\n');
     }
@@ -212,10 +252,7 @@ pub fn auto_detect_filter(input: &str) -> fn(&str) -> String {
         .lines()
         .take(5)
         .filter(|l| !l.trim().is_empty())
-        .any(|l| {
-            let parts: Vec<_> = l.splitn(3, ':').collect();
-            parts.len() == 3 && parts[1].parse::<usize>().is_ok()
-        })
+        .any(|l| parse_pipe_grep_line(l).is_some())
     {
         return grep_wrapper;
     }
@@ -676,7 +713,8 @@ Total Test time (real) =   0.01 sec\n";
                 ));
             }
         }
-        let output = grep_wrapper(&input);
+        let tmp = crate::core::test_isolation::tempdir();
+        let output = crate::core::test_isolation::with_root(tmp.path(), || grep_wrapper(&input));
         let savings = 100.0 - (count_tokens(&output) as f64 / count_tokens(&input) as f64 * 100.0);
         assert!(
             savings >= 40.0, // TODO: grep pipe filter below 60% target — improve grouping
@@ -718,6 +756,38 @@ Total Test time (real) =   0.01 sec\n";
         let f = auto_detect_filter(input);
         let out = f(input);
         assert!(!out.is_empty());
+    }
+
+    #[test]
+    fn test_parse_pipe_grep_line_unix_and_windows_paths() {
+        assert_eq!(
+            parse_pipe_grep_line("src/main.rs:42:fn main() {"),
+            Some(("src/main.rs", "42", "fn main() {"))
+        );
+        assert_eq!(
+            parse_pipe_grep_line(r"C:\proj\src\main.rs:42:fn main()"),
+            Some((r"C:\proj\src\main.rs", "42", "fn main()"))
+        );
+        assert_eq!(
+            parse_pipe_grep_line("D:/repo/lib.rs:7:let x: i32 = Foo::bar();"),
+            Some(("D:/repo/lib.rs", "7", "let x: i32 = Foo::bar();"))
+        );
+        assert_eq!(
+            parse_pipe_grep_line(r"e:\work\mod.rs:100:let url = 'http://localhost:8080';"),
+            Some((
+                r"e:\work\mod.rs",
+                "100",
+                "let url = 'http://localhost:8080';"
+            ))
+        );
+        assert_eq!(parse_pipe_grep_line(r"C:\proj\src\main.rs"), None);
+        assert_eq!(parse_pipe_grep_line("src/main.rs:42"), None);
+        assert_eq!(parse_pipe_grep_line(":42:missing_file"), None);
+        assert_eq!(parse_pipe_grep_line(r"C:\:42:missing_filename"), None);
+        assert_eq!(
+            parse_pipe_grep_line("src/main.rs:not_a_num:fn main()"),
+            None
+        );
     }
 
     #[test]

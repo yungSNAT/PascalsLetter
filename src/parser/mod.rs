@@ -150,19 +150,15 @@ pub fn extract_json_object(input: &str) -> Option<&str> {
     } else {
         // Fallback: find first `{` on its own line or after whitespace
         let mut found_start = None;
-        for (idx, line) in input.lines().enumerate() {
-            let trimmed = line.trim();
+        let mut line_start = 0;
+        // Keep line terminators so offsets remain exact for LF, CRLF, or a mix.
+        for line in input.split_inclusive('\n') {
+            let trimmed = line.trim_start();
             if trimmed.starts_with('{') {
-                // Calculate byte offset
-                found_start = Some(
-                    input[..]
-                        .lines()
-                        .take(idx)
-                        .map(|l| l.len() + 1)
-                        .sum::<usize>(),
-                );
+                found_start = Some(line_start + line.len() - trimmed.len());
                 break;
             }
+            line_start += line.len();
         }
         found_start?
     };
