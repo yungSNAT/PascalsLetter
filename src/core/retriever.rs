@@ -1,6 +1,11 @@
 //! Content-addressed recall store backing `rtk recall`.
 
 use super::constants::RECALL_DB;
+#[cfg(test)]
+use super::recall_digest::grep_bytes;
+#[cfg(test)]
+pub(crate) use super::recall_digest::select_lines;
+use super::recall_digest::{DigestMeta, format_recall_output};
 use crate::core::config::Config;
 use crate::core::db::{self, DbKind, Migration, MigrationMode, Opened, Schema, Version};
 use crate::core::user_dirs;
@@ -96,7 +101,7 @@ fn content_hash(command: &str, content: &[u8]) -> String {
     format!("{:x}", HexDisplay(&hasher.finalize()[..HASH_HEX_LEN / 2]))
 }
 
-fn count_lines(bytes: &[u8]) -> usize {
+pub(super) fn count_lines(bytes: &[u8]) -> usize {
     if bytes.is_empty() {
         return 0;
     }
@@ -108,7 +113,7 @@ fn count_lines(bytes: &[u8]) -> usize {
     }
 }
 
-fn slice_from_line(bytes: &[u8], from: usize) -> &[u8] {
+pub(super) fn slice_from_line(bytes: &[u8], from: usize) -> &[u8] {
     if from <= 1 {
         return bytes;
     }
@@ -124,7 +129,7 @@ fn slice_from_line(bytes: &[u8], from: usize) -> &[u8] {
     &[]
 }
 
-fn slice_first_lines(bytes: &[u8], n: usize) -> &[u8] {
+pub(super) fn slice_first_lines(bytes: &[u8], n: usize) -> &[u8] {
     if n == 0 {
         return &[];
     }
@@ -138,24 +143,6 @@ fn slice_first_lines(bytes: &[u8], n: usize) -> &[u8] {
         }
     }
     bytes
-}
-
-fn grep_bytes(input: &[u8], pattern: &str) -> Vec<u8> {
-    use regex::bytes::Regex;
-    let re = Regex::new(pattern)
-        .or_else(|_| Regex::new(&regex::escape(pattern)))
-        .ok();
-    let Some(re) = re else {
-        return input.to_vec();
-    };
-    let mut out = Vec::new();
-    for line in input.split_inclusive(|&b| b == b'\n') {
-        let body = line.strip_suffix(b"\n").unwrap_or(line);
-        if re.is_match(body) {
-            out.extend_from_slice(line);
-        }
-    }
-    out
 }
 
 fn gzip(data: &[u8]) -> Result<Vec<u8>> {
@@ -789,6 +776,8 @@ pub(crate) struct Row {
     blob: Vec<u8>,
     command: String,
     hash: String,
+    exit_code: Option<i32>,
+    byte_size: usize,
 }
 
 fn map_row(r: &rusqlite::Row) -> rusqlite::Result<Row> {
@@ -799,10 +788,12 @@ fn map_row(r: &rusqlite::Row) -> rusqlite::Result<Row> {
         blob: r.get(3)?,
         command: r.get(4)?,
         hash: r.get(5)?,
+        exit_code: r.get::<_, Option<i64>>(6)?.map(|e| e as i32),
+        byte_size: r.get::<_, i64>(7)?.max(0) as usize,
     })
 }
 
-const SELECT_COLS: &str = "shown_upto, truncated, codec, blob, command, hash";
+const SELECT_COLS: &str = "shown_upto, truncated, codec, blob, command, hash, exit_code, byte_size";
 
 pub(crate) fn load_by_hash(conn: &Connection, hash: &str) -> Result<Option<Row>> {
     let exact = format!("SELECT {SELECT_COLS} FROM recall WHERE hash = ?1");
@@ -853,36 +844,18 @@ pub(crate) fn recalled_content(hash: &str) -> Option<String> {
     .flatten()
 }
 
-/// The lines `rtk recall` prints: everything with `full`; from line `from`;
-/// the first `lines`, or `lines` starting at `from`; else the part the hint
-/// said was hidden.
-pub(crate) fn select_lines(
-    full: &[u8],
-    shown_upto: usize,
-    all: bool,
-    from: Option<usize>,
-    lines: Option<usize>,
-) -> &[u8] {
-    if all {
-        return full;
-    }
-    let start = match (from, lines) {
-        (Some(n), _) => slice_from_line(full, n),
-        (None, Some(_)) => full,
-        (None, None) => slice_from_line(full, shown_upto),
-    };
-    match lines {
-        Some(n) => slice_first_lines(start, n),
-        None => start,
-    }
-}
-
+#[derive(Default)]
 pub struct RecallArgs<'a> {
     pub hash: Option<&'a str>,
     pub full: bool,
     pub from: Option<usize>,
+    pub to: Option<usize>,
     pub lines: Option<usize>,
+    pub tail: Option<usize>,
     pub grep: Option<&'a str>,
+    pub context: usize,
+    pub line_numbers: bool,
+    pub digest: bool,
     pub list: bool,
 }
 
@@ -894,6 +867,13 @@ pub fn run_recall(args: RecallArgs) -> Result<i32> {
     if args.hash.is_none() && !args.list {
         eprintln!("rtk recall: provide a <hash> (from a recovery hint) or --list");
         return Ok(2);
+    }
+    if let Some(to) = args.to {
+        let start = args.from.unwrap_or(1).max(1);
+        if to < start {
+            eprintln!("rtk recall: --to ({to}) must be >= starting line ({start})");
+            return Ok(2);
+        }
     }
     let cfg = Config::load().unwrap_or_default().retriever;
     let recalled = db_path(&cfg).context(UNAVAILABLE).and_then(|path| {
@@ -952,18 +932,15 @@ fn recall_from(conn: &Connection, args: &RecallArgs, writer: &mut impl Write) ->
     };
 
     let full = decode(&row)?;
-    let sliced = select_lines(&full, row.shown_upto, args.full, args.from, args.lines).to_vec();
-    let out = match args.grep {
-        Some(pat) => {
-            if regex::bytes::Regex::new(pat).is_err() {
-                eprintln!(
-                    "rtk recall: note: --grep pattern is not a valid regex, matching it literally"
-                );
-            }
-            grep_bytes(&sliced, pat)
-        }
-        None => sliced,
+    let meta = DigestMeta {
+        hash: &row.hash,
+        command: &row.command,
+        shown_upto: row.shown_upto,
+        truncated: row.truncated,
+        exit_code: row.exit_code,
+        byte_size: row.byte_size,
     };
+    let out = format_recall_output(&meta, &full, args);
 
     if out.is_empty() && row.truncated && args.grep.is_none() {
         eprintln!(
@@ -1128,10 +1105,7 @@ mod tests {
         let args = RecallArgs {
             hash: Some(&stored.hash),
             full: true,
-            from: None,
-            lines: None,
-            grep: None,
-            list: false,
+            ..RecallArgs::default()
         };
         user_env::with_path("RTK_DB_PATH", Some(dir.path().join("tracking.db")), || {
             let error =
@@ -1173,10 +1147,7 @@ mod tests {
         let args = RecallArgs {
             hash: Some(&stored.hash),
             full: true,
-            from: None,
-            lines: None,
-            grep: None,
-            list: false,
+            ..RecallArgs::default()
         };
 
         // A tracking path whose parent is a regular file cannot be created.
@@ -2826,6 +2797,70 @@ mod tests {
         let conn = open(&cfg).unwrap();
         let prefix = &stored.hash[..6];
         assert!(load_by_hash(&conn, prefix).unwrap().is_some());
+    }
+
+    #[test]
+    fn test_run_recall_rejects_inverted_to_range() {
+        let inverted = RecallArgs {
+            hash: Some("deadbeef"),
+            from: Some(5),
+            to: Some(3),
+            ..RecallArgs::default()
+        };
+        assert_eq!(run_recall(inverted).unwrap(), 2);
+        let zero = RecallArgs {
+            hash: Some("deadbeef"),
+            to: Some(0),
+            ..RecallArgs::default()
+        };
+        assert_eq!(run_recall(zero).unwrap(), 2);
+    }
+
+    #[test]
+    fn test_recall_digest_and_line_numbers_book_emitted_bytes() {
+        let dir = crate::core::test_isolation::tempdir();
+        let cfg = temp_cfg(dir.path());
+        let payload: String = (1..=60)
+            .map(|i| format!("line {i}: repeated payload content for digest sizing\n"))
+            .collect();
+        let stored =
+            store_inner(&cfg, payload.as_bytes(), "cargo-test", Some(101), 1).expect("store");
+        let conn = open(&cfg).expect("open");
+        let tracking_db = dir.path().join("tracking.db");
+
+        user_env::with_path("RTK_DB_PATH", Some(tracking_db), || {
+            let mut digest_out = Vec::new();
+            let digest_args = RecallArgs {
+                hash: Some(&stored.hash),
+                digest: true,
+                ..RecallArgs::default()
+            };
+            assert_eq!(
+                recall_from(&conn, &digest_args, &mut digest_out).unwrap(),
+                0
+            );
+            assert!(digest_out.len() < payload.len());
+
+            let mut numbered = Vec::new();
+            let num_args = RecallArgs {
+                hash: Some(&stored.hash),
+                from: Some(59),
+                to: Some(60),
+                line_numbers: true,
+                ..RecallArgs::default()
+            };
+            assert_eq!(recall_from(&conn, &num_args, &mut numbered).unwrap(), 0);
+            let numbered_len = numbered.len() as i64;
+            let numbered_str = String::from_utf8(numbered).unwrap();
+            assert!(numbered_str.starts_with("59:line 59: "));
+            assert!(numbered_str.contains("\n60:line 60: "));
+
+            let tracker = tracking::Tracker::new().expect("tracking");
+            let events = tracker.recall_event_history(10, None).expect("events");
+            assert_eq!(events.len(), 2);
+            assert_eq!(events[0].emitted_bytes, numbered_len);
+            assert_eq!(events[1].emitted_bytes, digest_out.len() as i64);
+        });
     }
 }
 

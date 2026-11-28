@@ -847,12 +847,27 @@ enum Commands {
         /// Start from this 1-based line of the full output
         #[arg(long)]
         from: Option<usize>,
+        /// End at this 1-based inclusive line of the full output (from line 1 unless --from is set)
+        #[arg(long, conflicts_with_all = ["lines", "full", "tail", "digest", "list"])]
+        to: Option<usize>,
         /// Return only N lines: the first N of the full output, or N from --from
         #[arg(long)]
         lines: Option<usize>,
+        /// Return the last N lines of the full output
+        #[arg(long, conflicts_with_all = ["full", "from", "to", "lines", "digest", "list"])]
+        tail: Option<usize>,
         /// Filter recalled lines by regex
         #[arg(long)]
         grep: Option<String>,
+        /// Include N lines of context before and after each --grep match
+        #[arg(short = 'C', long, requires = "grep", default_value_t = 0)]
+        context: usize,
+        /// Prefix each emitted line with its 1-based line number in the stored output
+        #[arg(short = 'n', long, conflicts_with_all = ["digest", "list"])]
+        line_numbers: bool,
+        /// Show a compact structural digest of the stored entry (metadata, head, signals, tail)
+        #[arg(long, conflicts_with_all = ["full", "from", "to", "lines", "tail", "grep", "line_numbers", "list"])]
+        digest: bool,
         /// List stored entries
         #[arg(long)]
         list: bool,
@@ -3846,15 +3861,25 @@ fn run_cli() -> Result<i32> {
             hash,
             full,
             from,
+            to,
             lines,
+            tail,
             grep,
+            context,
+            line_numbers,
+            digest,
             list,
         } => core::retriever::run_recall(core::retriever::RecallArgs {
             hash: hash.as_deref(),
             full,
             from,
+            to,
             lines,
+            tail,
             grep: grep.as_deref(),
+            context,
+            line_numbers,
+            digest,
             list,
         })?,
 
